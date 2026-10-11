@@ -310,6 +310,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   background: var(--panel); color: var(--fg); border-radius: 12px; padding: 8px 12px;
   font: 600 14px var(--font-body); box-shadow: var(--shadow);
 }
+.popup-time { margin-top: 4px; font-weight: 500; font-size: 13px; color: var(--danger); }
 .maplibregl-popup-tip { border-top-color: var(--panel) !important; border-bottom-color: var(--panel) !important; }
 .maplibregl-ctrl-attrib { font-size: 10px; }
 

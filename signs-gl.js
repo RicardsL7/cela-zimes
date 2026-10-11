@@ -28,6 +28,7 @@ class SignStore {
     this.heading = null;
     this.roads = null;       // roadIndex vai null
     this.enabled = true;
+    this.decorate = null;    // s → { time, off, unk, info } (laika ierobežojumi)
     this.iconUrl = new Map(); // attēla id -> adrese
     this.loading = new Set();
     this._timer = null;
@@ -220,8 +221,22 @@ class SignStore {
         'icon-padding': 1,
         'icon-pitch-alignment': 'viewport',
         'icon-rotation-alignment': 'viewport',
+        // Laiks zem zīmes, piem. "P–Pk 7–19" (paslēpjas, ja nav vietas).
+        'text-field': ['coalesce', ['get', 'time'], ''],
+        'text-font': ['Noto Sans Bold'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 13, 10, 17, 12.5],
+        'text-anchor': 'top',
+        'text-offset': [0, 1.2],
+        'text-optional': true,
+        'text-padding': 1,
       },
-      paint: { 'icon-opacity': relCase(1, 0.4, 1) },
+      paint: {
+        // Ja aizliegums tagad nav spēkā — zīme blāva.
+        'icon-opacity': ['case', ['boolean', ['get', 'off'], false], 0.45, relCase(1, 0.4, 1)],
+        'text-color': ['case', ['any', ['boolean', ['get', 'off'], false], ['boolean', ['get', 'unk'], false]], '#5f6b7a', '#c62828'],
+        'text-halo-color': '#ffffff',
+        'text-halo-width': 2.2,
+      },
     }, beforeId);
     this.refresh(true);
   }
@@ -318,7 +333,8 @@ class SignStore {
       features: list.map(({ s, pos, rel }) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [pos.lng, pos.lat] },
-        properties: { icon: s.icon, title: s.title, rel, prio: rank[rel] + SIGN_PRIORITY[s.cat] },
+        properties: Object.assign({ icon: s.icon, title: s.title, rel, prio: rank[rel] + SIGN_PRIORITY[s.cat] },
+          this.decorate ? this.decorate(s) : null),
       })),
     });
   }

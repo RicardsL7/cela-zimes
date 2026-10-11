@@ -11,6 +11,7 @@ const BASEMAP_STYLES = {
 
 const CLASSIC_STYLE = {
   version: 8,
+  glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf', // zīmju laikiem
   sources: {
     osm: {
       type: 'raster', tileSize: 256, maxzoom: 19,

@@ -134,6 +134,7 @@ function addSign(lat, lng, sign, mlyValue) {
   Object.assign(s, { lat, lng, cat: sign.cat, title: sign.title, face: null });
   if (sign.cat === 'speed') s.limit = Number(sign.value || (String(mlyValue).match(/limit-(\d+)/) || [])[1]) || null;
   if (mlyValue) { const f = faceCache.get(faceKey(mlyValue, lat, lng)); if (f != null) s.face = f; }
+  if (mlyValue && /time-restrictions/.test(mlyValue)) timePlates.push({ lat, lng, done: false });
   signs.add(s);
   return s;
 }
@@ -156,6 +157,14 @@ function buildQuery(s, w, n, e) {
   node["traffic_calming"](${bb});
   node["railway"="level_crossing"](${bb});
   way["highway"]["maxspeed"](${bb});
+  way["highway"]["maxspeed:conditional"](${bb});
+  way["highway"]["access:conditional"](${bb});
+  way["highway"]["motor_vehicle:conditional"](${bb});
+  way["highway"]["parking:both:restriction:conditional"](${bb});
+  way["highway"]["parking:left:restriction:conditional"](${bb});
+  way["highway"]["parking:right:restriction:conditional"](${bb});
+  relation["type"="restriction"]["restriction:conditional"](${bb});
+  relation["type"="restriction"]["hour_on"](${bb});
 );
 out tags geom;`;
 }
@@ -191,6 +200,7 @@ async function loadOsmForView() {
     const data = await fetchOverpass(buildQuery(s.toFixed(4), w.toFixed(4), n.toFixed(4), e.toFixed(4)));
     let added = 0;
     for (const el of data.elements || []) {
+      if (el.type !== 'node') readTimeRules(el);
       if (el.type === 'node') {
         if (state.seenNodes.has(el.id)) continue;
         state.seenNodes.add(el.id);
@@ -201,11 +211,12 @@ async function loadOsmForView() {
         if (!limit) continue;
         const pts = el.geometry.map(p => [p.lat, p.lon]);
         state.ways.set(el.id, { limit, pts });
-        indexWay(limit, pts);
+        indexWay(limit, pts, speedCondition(el.tags));
         added += addWaySpeedSign(pts, limit);
       }
     }
     missing.forEach(c => state.loadedCells.add(c));
+    attachTimesSoon();
     state.osmRetryMs = 0;
     state.counts.osm += added;
     signs.refresh();
@@ -252,7 +263,7 @@ function pointAlong(pts, meters) {
 // Ātruma ierobežojums zem manis: ceļu posmi nelielās šūnās.
 const WAY_CELL = 0.002;
 const wayGrid = new Map();
-function indexWay(limit, pts) {
+function indexWay(limit, pts, cond) {
   for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1], b = pts[i];
     const la0 = Math.floor(Math.min(a[0], b[0]) / WAY_CELL), la1 = Math.floor(Math.max(a[0], b[0]) / WAY_CELL);
@@ -260,7 +271,7 @@ function indexWay(limit, pts) {
     for (let la = la0; la <= la1; la++) for (let lo = lo0; lo <= lo1; lo++) {
       const k = la + ':' + lo;
       if (!wayGrid.has(k)) wayGrid.set(k, []);
-      wayGrid.get(k).push([a, b, limit]);
+      wayGrid.get(k).push([a, b, limit, cond]);
     }
   }
 }
@@ -276,9 +287,10 @@ function nearestLimit(lat, lng) {
   let best = null, bestD = 30;
   const la = Math.floor(lat / WAY_CELL), lo = Math.floor(lng / WAY_CELL);
   for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
-    for (const [a, b, limit] of wayGrid.get((la + i) + ':' + (lo + j)) || []) {
+    for (const [a, b, limit, cond] of wayGrid.get((la + i) + ':' + (lo + j)) || []) {
       const d = distToSegment([lat, lng], a, b);
-      if (d < bestD) { bestD = d; best = limit; }
+      // Mainīgs ātrums (piem. 30 darbdienās 7–22): tagad spēkā esošais.
+      if (d < bestD) { bestD = d; best = cond && cond.test(new Date()) ? cond.limit : limit; }
     }
   }
   return best;
@@ -297,6 +309,161 @@ function updateLimit() {
   const over = state.warn && limit != null && state.me.speedKmh != null && state.me.speedKmh > limit + 3;
   $('speedBox').classList.toggle('over', over);
   badge.classList.toggle('pulse', over);
+}
+
+// ---------- Laika ierobežojumi ----------
+// No OSM: aizliegtie pagriezieni noteiktos laikos, apstāties/stāvēt aizliegts
+// noteiktos laikos, mainīgs ātrums, slēgtas ielas naktī. Tos piesien atbilstošajām
+// zīmēm kartē; ja pagrieziena zīmes Mapillary nav, to uzliek pati lietotne.
+const timeRules = [];
+const timePlates = [];          // Mapillary atrastās laika plāksnītes zem zīmēm
+const seenTimeEls = new Set();
+const TURN_SIGN = {
+  no_left_turn: [/no-left-turn/, 'regulatory--no-left-turn--g1'],
+  no_right_turn: [/no-right-turn/, 'regulatory--no-right-turn--g1'],
+  no_u_turn: [/no-u-turn/, 'regulatory--no-u-turn--g1'],
+  no_straight_on: [/no-straight-through/, 'regulatory--no-straight-through--g1'],
+  only_straight_on: [/go-straight--/, 'regulatory--go-straight--g1'],
+  only_right_turn: [/turn-right(-ahead)?--/, 'regulatory--turn-right-ahead--g1'],
+  only_left_turn: [/turn-left(-ahead)?--/, 'regulatory--turn-left-ahead--g1'],
+};
+
+function speedCondition(tags) {
+  const p = tags && tags['maxspeed:conditional'] && splitConditional(tags['maxspeed:conditional'])[0];
+  const limit = p && parseMaxspeed(p.value);
+  if (!limit) return null;
+  const c = parseCondition(p.cond);
+  return c.short ? { limit, test: d => c.test(d) === true } : null;
+}
+
+function distToPolyline(p, pts) {
+  let best = Infinity;
+  for (let i = 1; i < pts.length; i++) best = Math.min(best, distToSegment(p, pts[i - 1], pts[i]));
+  return best;
+}
+function bboxOf(pts, pad = 0.0004) {
+  let s = 90, w = 180, n = -90, e = -180;
+  for (const [la, lo] of pts) { s = Math.min(s, la); n = Math.max(n, la); w = Math.min(w, lo); e = Math.max(e, lo); }
+  return [s - pad, w - pad / 0.55, n + pad, e + pad / 0.55];
+}
+
+function readTimeRules(el) {
+  const key = el.type + el.id;
+  if (seenTimeEls.has(key)) return;
+  seenTimeEls.add(key);
+  const t = el.tags || {};
+  if (el.type === 'relation' && t.type === 'restriction') {
+    let type = t.restriction, cond = null;
+    const p = t['restriction:conditional'] && splitConditional(t['restriction:conditional'])[0];
+    if (p) {
+      const c = parseCondition(p.cond);
+      if (p.value === 'none' && type) cond = invertCondition(c);   // aizliegts, izņemot laiku
+      else if (TURN_SIGN[p.value]) { type = p.value; cond = c; }   // aizliegts tikai šajā laikā
+    } else if (t.hour_on || t.day_on) cond = parseCondition(legacyCondition(t));
+    if (!cond || !cond.short || !TURN_SIGN[type]) return;
+    const from = (el.members || []).find(m => m.role === 'from' && m.type === 'way' && m.geometry);
+    const via = (el.members || []).find(m => m.role === 'via');
+    if (!from || !via) return;
+    const fpts = from.geometry.map(g => [g.lat, g.lon]);
+    let vp = via.type === 'node' && via.lat != null ? [via.lat, via.lon] : null;
+    if (!vp && via.geometry) {
+      const vg = via.geometry.map(g => [g.lat, g.lon]);
+      const near = q => Math.min(distM(q[0], q[1], fpts[0][0], fpts[0][1]), distM(q[0], q[1], fpts.at(-1)[0], fpts.at(-1)[1]));
+      vp = near(vg[0]) < near(vg.at(-1)) ? vg[0] : vg.at(-1);
+    }
+    if (!vp) return;
+    // Pieeja krustojumam: no-ceļa punkti virzienā uz krustojumu.
+    const toVia = distM(fpts[0][0], fpts[0][1], vp[0], vp[1]) < distM(fpts.at(-1)[0], fpts.at(-1)[1], vp[0], vp[1]) ? fpts.slice().reverse() : fpts;
+    const back = pointAlong(toVia.slice().reverse(), 18);
+    const heading = bearingDeg(back[0], back[1], vp[0], vp[1]);
+    timeRules.push({ kind: 'turn', match: TURN_SIGN[type][0], value: TURN_SIGN[type][1], cond, approach: toVia, via: vp, heading, back, done: false });
+  } else if (el.type === 'way' && el.geometry) {
+    const pts = el.geometry.map(g => [g.lat, g.lon]);
+    const add = (kind, match, cond) => cond.short && timeRules.push({ kind, match, cond, pts, bbox: bboxOf(pts), done: false });
+    for (const [k, v] of Object.entries(t)) {
+      if (!k.endsWith(':conditional')) continue;
+      const p = splitConditional(v)[0];
+      if (!p) continue;
+      const c = parseCondition(p.cond);
+      if (k === 'maxspeed:conditional') {
+        const lim = parseMaxspeed(p.value);
+        if (lim) add('speed', new RegExp(`maximum-speed-limit-${lim}--`), c);
+      } else if (/^(access|motor_vehicle|vehicle):conditional$/.test(k)) {
+        const ACCESS = /no-entry|road-closed|no-motor-vehicles/;
+        if (p.value === 'no') add('access', ACCESS, c);
+        else if (p.value === 'yes' && /^(no|private)$/.test(t[k.replace(':conditional', '')] || '')) add('access', ACCESS, invertCondition(c));
+      } else if (/^parking:(both|left|right):restriction:conditional$/.test(k)) {
+        if (p.value === 'no_stopping') add('parking', /no-stopping/, c);
+        else if (p.value === 'no_parking') add('parking', /no-parking|no-stopping/, c);
+      }
+    }
+  }
+}
+
+// Vai Mapillary zīmes šai vietai jau ir ielādētas (lai neliktu dubultu zīmi)?
+function mlyReadyAt(lat, lng) {
+  return !state.mlyToken || state.mlyTiles.has(lngToTileX(lng, MLY_ZOOM) + ':' + latToTileY(lat, MLY_ZOOM));
+}
+
+function attachTimes() {
+  let changed = false;
+  for (const p of timePlates) {
+    if (p.done) continue;
+    const s = signs.findNear(p.lat, p.lng, 4, x => x.value && /^(regulatory|warning)--/.test(x.value));
+    if (s) { s.timePlate = true; p.done = true; changed = true; }
+  }
+  for (const r of timeRules) {
+    if (r.done) continue;
+    let found = 0;
+    if (r.kind === 'turn') {
+      const [la, lo] = r.via, pad = 0.0005;
+      signs.eachInBox(la - pad, lo - pad / 0.55, la + pad, lo + pad / 0.55, s => {
+        if (!s.value || s.timeRule || !r.match.test(s.value)) return;
+        if (distM(s.lat, s.lng, la, lo) > 45 || distToPolyline([s.lat, s.lng], r.approach) > 25) return;
+        if (s.face != null && angleDiff((s.face + 180) % 360, r.heading) > 60) return;
+        s.timeRule = r; found++;
+      });
+      if (!found && mlyReadyAt(la, lo)) {
+        // Mapillary šo zīmi nav atradis — uzliek to ceļa labajā pusē pirms krustojuma.
+        const b = (r.heading + 90) * Math.PI / 180, off = 5;
+        const lat = r.back[0] + Math.cos(b) * off / 111320;
+        const lng = r.back[1] + Math.sin(b) * off / (111320 * Math.cos(r.back[0] * Math.PI / 180));
+        const s = addSign(lat, lng, classifyMapillary(r.value), r.value);
+        if (s) { s.face = (r.heading + 180) % 360; s.timeRule = r; found++; }
+        r.done = true;
+      }
+    } else {
+      const [S, W, N, E] = r.bbox;
+      signs.eachInBox(S, W, N, E, s => {
+        if (!s.value || s.timeRule || !r.match.test(s.value)) return;
+        if (distToPolyline([s.lat, s.lng], r.pts) > 20) return;
+        if (r.kind === 'access') {
+          const a = r.pts[0], z = r.pts.at(-1);
+          if (Math.min(distM(s.lat, s.lng, a[0], a[1]), distM(s.lat, s.lng, z[0], z[1])) > 40) return;
+        }
+        s.timeRule = r; found++;
+      });
+      const c = r.pts[Math.floor(r.pts.length / 2)];
+      if (mlyReadyAt(c[0], c[1])) r.done = true;
+    }
+    if (found) { r.done = true; changed = true; }
+  }
+  if (changed) signs.refresh();
+}
+let attachTimer = null;
+function attachTimesSoon() { clearTimeout(attachTimer); attachTimer = setTimeout(attachTimes, 300); }
+
+// Ko rādīt pie zīmes: laiks zem tās, blāva, ja aizliegums tagad nav spēkā.
+function signTimeInfo(s) {
+  if (s.timeRule) {
+    const c = s.timeRule.cond, on = c.test(new Date());
+    return {
+      time: c.short, off: on === false,
+      info: `Spēkā: ${c.long}` + (on === true ? ' · tagad ir spēkā' : on === false ? ' · tagad NAV spēkā' : ''),
+    };
+  }
+  if (s.timePlate) return { time: 'laiks?', unk: true, info: 'Zem zīmes ir plāksnīte ar laiku. Precīzs laiks nav zināms — paskaties uz zīmes.' };
+  return null;
 }
 
 // ---------- Mapillary zīmes ----------
@@ -329,6 +496,7 @@ async function loadMlyTiles(tiles) {
     state.counts.mly += added;
     signs.refresh();
     showCounts();
+    attachTimesSoon();
   }
   return added;
 }
@@ -768,7 +936,9 @@ function updateNextSign() {
   const d = next.along - along;
   if ($('nextSignImg').dataset.src !== next.s.src) { $('nextSignImg').src = next.s.src; $('nextSignImg').dataset.src = next.s.src; }
   $('nextSignDist').textContent = d < 30 ? 'Tagad' : 'Pēc ' + navDist(d);
-  $('nextSignTitle').textContent = next.s.title.replace(/^Ceļa zīme: /, '');
+  const ti = signTimeInfo(next.s);
+  $('nextSignTitle').textContent = next.s.title.replace(/^Ceļa zīme: /, '') +
+    (ti && !ti.unk ? ` · ${ti.time}${ti.off ? ' (tagad nav spēkā)' : ''}` : ti ? ' · ar laika plāksnīti' : '');
   card.hidden = false;
 }
 // Maršruta kartītē: cik un kādas zīmes būs pa ceļam.
@@ -973,6 +1143,8 @@ async function init() {
     attributionControl: { compact: true },
   });
   signs = new SignStore(map);
+  signs.decorate = signTimeInfo;
+  setInterval(() => { signs.refresh(); updateLimit(); }, 60000); // laika ierobežojumi mainās
 
   map.on('style.load', () => {
     installRouteLayers();
@@ -1012,8 +1184,13 @@ async function init() {
   map.on('click', 'signs', e => {
     const f = e.features && e.features[0];
     if (!f) return;
+    const el = document.createElement('div');
+    const b = document.createElement('div'); b.textContent = f.properties.title; el.appendChild(b);
+    if (f.properties.info) {
+      const i = document.createElement('div'); i.className = 'popup-time'; i.textContent = f.properties.info; el.appendChild(i);
+    }
     new maplibregl.Popup({ closeButton: false, offset: 18, maxWidth: '260px' })
-      .setLngLat(f.geometry.coordinates).setText(f.properties.title).addTo(map);
+      .setLngLat(f.geometry.coordinates).setDOMContent(el).addTo(map);
   });
   map.on('mouseenter', 'signs', () => { map.getCanvas().style.cursor = 'pointer'; });
   map.on('mouseleave', 'signs', () => { map.getCanvas().style.cursor = ''; });
