@@ -141,6 +141,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .navigating .loader { top: calc(env(safe-area-inset-top, 0px) + 176px); }
 .loader.show { opacity: 1; transform: translate(-50%, 0); }
+/* Maršruta priekšskatījumā — virs kartītes, lai neaizsedz galamērķi. */
+.previewing .loader { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + var(--card-h, 220px) + 24px); }
 .loader-spin {
   width: 18px; height: 18px; border-radius: 50%;
   border: 2.5px solid color-mix(in srgb, var(--accent) 22%, transparent);

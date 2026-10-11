@@ -530,7 +530,8 @@ function onPosition(pos) {
   const sp = pos.coords.speed;
   const first = !state.me;
   onFix(pos.coords.latitude, pos.coords.longitude, sp == null || sp < 0 ? null : sp * 3.6, pos.coords.heading, first ? 0 : 900);
-  if (first) { map.jumpTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: Math.max(map.getZoom(), 15.5) }); loadAllForView(); }
+  if (first && state.nav.dest && !state.nav.active) previewRoute(); // maršruts no manas īstās vietas
+  else if (first) { map.jumpTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: Math.max(map.getZoom(), 15.5) }); loadAllForView(); }
   gpsProblem = null;
   if (!state.nav.active && !state.counts.mly && !state.counts.osm) setStatus('GPS darbojas.');
 }
@@ -636,6 +637,22 @@ async function selectDestination(place) {
   await previewRoute();
 }
 
+// Parāda visu maršrutu un manu bultu tā, lai tos neaizsedz augšējā josla un maršruta kartīte.
+function fitRoute() {
+  const route = state.nav.route;
+  if (!route || state.nav.active) return;
+  const pts = route.coords.slice();
+  if (state.me) pts.push([state.me.lng, state.me.lat]);
+  const lngs = pts.map(c => c[0]), lats = pts.map(c => c[1]);
+  const card = $('routeCard').hidden ? 0 : $('routeCard').offsetHeight;
+  const h = map.getContainer().clientHeight;
+  const top = 90, bottom = Math.min(card + 50, h - top - 120);
+  document.documentElement.style.setProperty('--card-h', card + 'px');
+  map.easeTo({ padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 0 });
+  map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+    { padding: { top, bottom, left: 50, right: 90 }, pitch: 0, bearing: 0, duration: 800, maxZoom: 17 });
+}
+
 async function previewRoute() {
   const dest = state.nav.dest;
   if (!dest) return;
@@ -648,17 +665,17 @@ async function previewRoute() {
     signs.setRoute(route);     // rāda tikai maršruta zīmes manā virzienā
     prepareRoute(route);
     state.follow = false;
-    const lngs = route.coords.map(c => c[0]), lats = route.coords.map(c => c[1]);
-    map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-      { padding: { top: 110, bottom: 280, left: 40, right: 90 }, pitch: 0, bearing: 0, duration: 900 });
     $('routeDest').textContent = dest.name;
-    $('routeSub').textContent = dest.sub || '';
+    $('routeSub').textContent = state.me ? (dest.sub || '')
+      : 'Tava atrašanās vieta vēl nav zināma — maršruts no kartes centra. Atļauj atrašanās vietu.';
     $('routeTime').textContent = navTime(route.duration);
     $('routeMeta').textContent = `${navDist(route.distance)} · ieradīsies ${clockIn(route.duration)}`;
     $('routeCard').hidden = false;
     $('bottombar').hidden = true;
+    document.documentElement.classList.add('previewing');
     updateRouteSummary();
-    if (!state.me) setStatus('Maršruts no kartes centra, jo atrašanās vieta nav zināma.');
+    // Telefonā tastatūra vēl aizveras — karti pielāgo, kad ekrāns ir pilnā izmērā.
+    setTimeout(fitRoute, 350);
   } catch (err) {
     console.error(err);
     setStatus('Maršrutu neizdevās atrast. Pamēģini vēlreiz.');
@@ -672,6 +689,7 @@ function startNav() {
   state.nav.active = true;
   state.nav.offCount = 0;
   document.documentElement.classList.add('navigating');
+  document.documentElement.classList.remove('previewing');
   $('routeCard').hidden = true;
   $('bottombar').hidden = false;
   $('navBanner').hidden = false;
@@ -940,6 +958,7 @@ function cancelPreview() {
   if (destMarker) { destMarker.remove(); destMarker = null; }
   $('routeCard').hidden = true;
   $('bottombar').hidden = false;
+  document.documentElement.classList.remove('previewing');
 }
 
 // ---------- Starts ----------
@@ -984,6 +1003,7 @@ async function init() {
   map.on('idle', scheduleRoads);
   map.on('moveend', scheduleRoads);
   map.on('sourcedata', e => { if (e.sourceId === 'openmaptiles' && e.tile) { roadGen++; scheduleRoads(); } });
+  map.on('resize', () => { clearTimeout(init._fit); init._fit = setTimeout(fitRoute, 250); });
   map.on('styleimagemissing', e => { if (/^(mly|own):/.test(e.id)) signs.loadImage(e.id); });
   map.on('moveend', () => { signs.refresh(); clearTimeout(init._t); init._t = setTimeout(loadAllForView, 150); });
   for (const ev of ['dragstart', 'rotatestart', 'pitchstart']) {
