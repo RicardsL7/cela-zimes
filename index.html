@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=3">
+  <link rel="stylesheet" href="style-gl.css?v=4">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -35,6 +35,15 @@
       <div class="nav-instr" id="navInstr">Pagriezies pa labi</div>
     </div>
   </section>
+
+  <!-- Nākamā zīme uz maršruta (navigācijas laikā) -->
+  <div id="nextSign" class="next-sign" hidden aria-live="polite">
+    <img id="nextSignImg" alt="" width="44" height="44">
+    <div class="ns-text">
+      <div class="ns-dist" id="nextSignDist">Pēc 200 m</div>
+      <div class="ns-title" id="nextSignTitle">Ātruma ierobežojums 30 km/h</div>
+    </div>
+  </div>
 
   <!-- Ielādes indikators -->
   <div id="loader" class="loader" role="status" aria-live="polite">
@@ -73,6 +82,7 @@
       <span class="route-time" id="routeTime">12 min</span>
       <span class="route-meta" id="routeMeta">5,3 km · ieradīsies 17:42</span>
     </div>
+    <div class="route-signs" id="routeSigns"></div>
     <div class="route-actions">
       <button id="cancelRoute" class="btn ghost" type="button">Atcelt</button>
       <button id="startNav" class="btn primary" type="button">
@@ -137,12 +147,12 @@
   </section>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script src="signs.js?v=3"></script>
-  <script src="mapillary.js?v=3"></script>
-  <script src="roads-gl.js?v=3"></script>
-  <script src="basemap-gl.js?v=3"></script>
-  <script src="signs-gl.js?v=3"></script>
-  <script src="nav.js?v=3"></script>
-  <script src="app-gl.js?v=3"></script>
+  <script src="signs.js?v=4"></script>
+  <script src="mapillary.js?v=4"></script>
+  <script src="roads-gl.js?v=4"></script>
+  <script src="basemap-gl.js?v=4"></script>
+  <script src="signs-gl.js?v=4"></script>
+  <script src="nav.js?v=4"></script>
+  <script src="app-gl.js?v=4"></script>
 </body>
 </html>

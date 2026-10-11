@@ -110,6 +110,23 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .nav-dist { font: 700 34px/1 var(--font-sign); letter-spacing: .01em; font-variant-numeric: tabular-nums; }
 .nav-instr { font: 600 17px/1.25 var(--font-body); margin-top: 4px; overflow-wrap: anywhere; opacity: .95; }
 
+/* ---- Nākamā zīme ---- */
+.next-sign {
+  position: fixed; z-index: 11; left: 10px;
+  top: calc(env(safe-area-inset-top, 0px) + 108px);
+  max-width: min(330px, calc(100vw - 100px));
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px 8px 8px; border-radius: 16px;
+  background: var(--panel); color: var(--fg); box-shadow: var(--shadow);
+  animation: drop .25s ease-out;
+}
+.next-sign img { flex: none; width: 44px; height: 44px; object-fit: contain; }
+.ns-text { min-width: 0; }
+.ns-dist { font: 700 18px/1.1 var(--font-sign); color: var(--accent); }
+.ns-title { font: 600 14px/1.25 var(--font-body); overflow-wrap: anywhere; }
+.route-signs { color: var(--muted); font-size: 14px; font-weight: 500; margin-top: -4px; }
+.route-signs:empty { display: none; }
+
 /* ---- Ielādes indikators ---- */
 .loader {
   position: fixed; z-index: 12; left: 50%;
@@ -122,7 +139,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   transform: translate(-50%, -8px);
   transition: opacity .25s ease, transform .25s ease;
 }
-.navigating .loader { top: calc(env(safe-area-inset-top, 0px) + 112px); }
+.navigating .loader { top: calc(env(safe-area-inset-top, 0px) + 176px); }
 .loader.show { opacity: 1; transform: translate(-50%, 0); }
 .loader-spin {
   width: 18px; height: 18px; border-radius: 50%;

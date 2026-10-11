@@ -46,7 +46,7 @@ const state = {
   osmRetryMs: 0,
   mlyTiles: new Set(),
   counts: { osm: 0, mly: 0 },
-  nav: { dest: null, route: null, active: false, offCount: 0, lastReroute: 0 },
+  nav: { dest: null, route: null, active: false, offCount: 0, lastReroute: 0, along: null },
 };
 
 let map, signs;
@@ -77,19 +77,40 @@ function viewBox(pad = 0) {
 }
 
 // ---------- Ielādes indikators ----------
+// Rāda tikai, ja darbs ilgst ilgāk par ~0,35 s (ātra ielāde nemirgo).
 const busy = new Map();
+let busyTimer = null;
 function setBusy(key, text) {
   if (text) busy.set(key, text); else busy.delete(key);
-  $('loader').classList.toggle('show', busy.size > 0);
-  if (busy.size) $('loaderText').textContent = [...busy.values()].pop();
+  clearTimeout(busyTimer);
+  if (!busy.size) { $('loader').classList.remove('show'); return; }
+  $('loaderText').textContent = [...busy.values()].pop();
+  if (!$('loader').classList.contains('show')) busyTimer = setTimeout(() => $('loader').classList.toggle('show', busy.size > 0), 350);
+}
+
+// ---------- Zīmju virzienu kešatmiņa ----------
+// Zīmju virzienus ielādēt ir lēni, tāpēc tos atceras šajā ierīcē.
+const faceCache = new Map(Object.entries(store.get('faces', {})));
+let faceSaveTimer = null;
+function faceKey(value, lat, lng) { return value + '@' + lat.toFixed(5) + ',' + lng.toFixed(5); }
+function rememberFace(s) {
+  faceCache.set(faceKey(s.value, s.lat, s.lng), Math.round(s.face));
+  clearTimeout(faceSaveTimer);
+  faceSaveTimer = setTimeout(() => {
+    let entries = [...faceCache];
+    if (entries.length > 30000) entries = entries.slice(-30000);
+    store.set('faces', Object.fromEntries(entries));
+  }, 2000);
 }
 
 // ---------- Zīmes ----------
 // Vienas un tās pašas zīmes neliek divreiz (piem. no OSM un Mapillary).
+// Mapillary zīmes vienmēr ir atsevišķas (arī vienādas zīmes abās ceļa pusēs);
+// OSM zīmi neliek, ja tuvumā jau ir tāda paša veida zīme.
 const placedGrid = new Map();
-function isDuplicate(lat, lng, cat) {
+function isDuplicate(lat, lng, cat, check = true) {
   const gx = Math.round(lat / 0.0003), gy = Math.round(lng / 0.0005);
-  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+  for (let i = -1; check && i <= 1; i++) for (let j = -1; j <= 1; j++) {
     for (const p of placedGrid.get((gx + i) + ':' + (gy + j)) || []) {
       if (p.cat === cat && distM(p.lat, p.lng, lat, lng) < 20) return true;
     }
@@ -102,12 +123,14 @@ function isDuplicate(lat, lng, cat) {
 
 // sign: { cat, kind?, value?, title }; mlyValue: Mapillary zīmes kods (ja no Mapillary)
 function addSign(lat, lng, sign, mlyValue) {
-  if (isDuplicate(lat, lng, sign.cat)) return null;
+  if (isDuplicate(lat, lng, sign.cat, !mlyValue)) return null;
   const own = sign.kind ? sign : { kind: 'other' };
   const s = mlyValue
     ? { icon: 'mly:' + mlyValue, src: MLY_ICON_URL + encodeURIComponent(mlyValue) + '.svg', value: mlyValue }
     : { icon: 'own:' + own.kind + ':' + (own.value || ''), src: svgDataUrl(own) };
   Object.assign(s, { lat, lng, cat: sign.cat, title: sign.title, face: null });
+  if (sign.cat === 'speed') s.limit = Number(sign.value || (String(mlyValue).match(/limit-(\d+)/) || [])[1]) || null;
+  if (mlyValue) { const f = faceCache.get(faceKey(mlyValue, lat, lng)); if (f != null) s.face = f; }
   signs.add(s);
   return s;
 }
@@ -160,7 +183,7 @@ async function loadOsmForView() {
   const w = Math.min(...los) * CELL, e = (Math.max(...los) + 1) * CELL;
 
   state.loading = true;
-  setBusy('osm', 'Ielādē ceļa zīmes…');
+  if (!state.mlyToken) setBusy('osm', 'Ielādē ceļa zīmes…');
   try {
     const data = await fetchOverpass(buildQuery(s.toFixed(4), w.toFixed(4), n.toFixed(4), e.toFixed(4)));
     let added = 0;
@@ -260,7 +283,12 @@ function nearestLimit(lat, lng) {
 function updateLimit() {
   const badge = $('limitBadge');
   if (!state.me) { badge.hidden = true; return; }
-  const limit = nearestLimit(state.me.lat, state.me.lng);
+  let limit = nearestLimit(state.me.lat, state.me.lng);
+  // Ja OSM ceļam ātrums nav norādīts: pēdējā garām pabrauktā ātruma zīme maršrutā.
+  if (limit == null && state.nav.active && state.nav.along != null) {
+    const last = signs.lastRouteSignBefore(state.nav.along + 10, 2000, x => x.cat === 'speed' && x.limit);
+    if (last) limit = last.s.limit;
+  }
   badge.hidden = limit == null;
   if (limit != null) $('limitValue').textContent = limit;
   const over = state.warn && limit != null && state.me.speedKmh != null && state.me.speedKmh > limit + 3;
@@ -269,6 +297,39 @@ function updateLimit() {
 }
 
 // ---------- Mapillary zīmes ----------
+const mlyIds = new Set();       // katru Mapillary zīmi pievieno tikai vienreiz
+const mlyTilesLoading = new Set();
+
+// Ielādē norādītās flīzes (paralēli) un pievieno zīmes. Atgriež pievienoto skaitu.
+async function loadMlyTiles(tiles) {
+  tiles = tiles.filter(([x, y]) => !state.mlyTiles.has(x + ':' + y) && !mlyTilesLoading.has(x + ':' + y));
+  if (!tiles.length || !state.mlyToken) return 0;
+  tiles.forEach(([x, y]) => mlyTilesLoading.add(x + ':' + y));
+  let added = 0;
+  const results = await Promise.allSettled(tiles.map(([x, y]) => fetchMapillaryTile(x, y, state.mlyToken)));
+  results.forEach((r, i) => {
+    const key = tiles[i][0] + ':' + tiles[i][1];
+    mlyTilesLoading.delete(key);
+    if (r.status === 'rejected') {
+      if (r.reason && r.reason.badToken) { setStatus('Mapillary atslēga nav derīga. Pārbaudi to iestatījumos.'); state.mlyToken = ''; }
+      return;
+    }
+    state.mlyTiles.add(key);
+    for (const z of r.value) {
+      if (mlyIds.has(z.id)) continue;
+      mlyIds.add(z.id);
+      if (!isPlausibleSign(z.value, z.lat, z.lng)) continue; // acīmredzamas atpazīšanas kļūdas
+      if (addSign(z.lat, z.lng, classifyMapillary(z.value), z.value)) added++;
+    }
+  });
+  if (added) {
+    state.counts.mly += added;
+    signs.refresh();
+    showCounts();
+  }
+  return added;
+}
+
 let mlyLoading = false;
 async function loadMapillaryForView() {
   if (!state.mlyToken || mlyLoading || map.getZoom() < MIN_SIGN_ZOOM) return;
@@ -278,23 +339,8 @@ async function loadMapillaryForView() {
   mlyLoading = true;
   setBusy('mly', 'Ielādē zīmes…');
   let added = 0;
-  try {
-    const results = await Promise.allSettled(tiles.map(([x, y]) => fetchMapillaryTile(x, y, state.mlyToken)));
-    results.forEach((r, i) => {
-      if (r.status === 'rejected') {
-        if (r.reason && r.reason.badToken) { setStatus('Mapillary atslēga nav derīga. Pārbaudi to iestatījumos.'); state.mlyToken = ''; }
-        return;
-      }
-      state.mlyTiles.add(tiles[i][0] + ':' + tiles[i][1]);
-      for (const z of r.value) {
-        if (!isPlausibleSign(z.value, z.lat, z.lng)) continue; // acīmredzamas atpazīšanas kļūdas
-        if (addSign(z.lat, z.lng, classifyMapillary(z.value), z.value)) added++;
-      }
-    });
-    state.counts.mly += added;
-    signs.refresh();
-    showCounts();
-  } finally {
+  try { added = await loadMlyTiles(tiles); }
+  finally {
     mlyLoading = false;
     setBusy('mly', null);
   }
@@ -302,29 +348,35 @@ async function loadMapillaryForView() {
   setTimeout(loadMapillaryForView, 100);
 }
 
+// Ielādē virzienus zīmēm apgabalā (tikai tām, kuru virziens vēl nav zināms).
+async function loadDirectionsBox(s, w, n, e) {
+  const counts = new Map();
+  signs.eachInBox(s, w, n, e, x => {
+    if (x.value && x.face == null) counts.set(x.value, (counts.get(x.value) || 0) + 1);
+  });
+  if (!counts.size) return 0;
+  const found = await fetchMapillaryDirectionsArea(w, s, e, n, state.mlyToken, counts);
+  let matched = 0;
+  for (const f of found) {
+    const x = signs.findNear(f.lat, f.lng, 5, z => z.value === f.value && z.face == null);
+    if (x) { x.face = MLY_DIR_IS_FACE ? f.dir : (f.dir + 180) % 360; rememberFace(x); matched++; }
+  }
+  if (matched) signs.facesChanged();
+  return matched;
+}
+
 // Zīmju virzieni ~300 m ap braucēju (API ir lēns, tāpēc ne visai kartei).
 let dirCenter = null, dirLoading = false;
 async function loadDirectionsNearMe() {
-  if (!state.mlyToken || !state.me || dirLoading) return;
+  if (!state.mlyToken || !state.me || dirLoading || state.nav.route) return; // maršrutam ir sava ielāde
   const { lat, lng } = state.me;
   if (dirCenter && distM(dirCenter[0], dirCenter[1], lat, lng) < 150) return;
   dirLoading = true;
   dirCenter = [lat, lng];
   try {
     const dLat = 0.003, dLng = 0.003 / Math.cos(lat * Math.PI / 180);
-    const counts = new Map();
-    signs.eachInBox(lat - dLat, lng - dLng, lat + dLat, lng + dLng, s => {
-      if (s.value && s.face == null) counts.set(s.value, (counts.get(s.value) || 0) + 1);
-    });
-    if (!counts.size) return;
-    if (!state.nav.active) setBusy('dir', 'Nosaka zīmju virzienus…'); // braucot — klusi fonā
-    const found = await fetchMapillaryDirectionsArea(lng - dLng, lat - dLat, lng + dLng, lat + dLat, state.mlyToken, counts);
-    let matched = 0;
-    for (const f of found) {
-      const s = signs.findNear(f.lat, f.lng, 5, x => x.value === f.value);
-      if (s) { s.face = MLY_DIR_IS_FACE ? f.dir : (f.dir + 180) % 360; matched++; }
-    }
-    if (matched) signs.refresh();
+    setBusy('dir', 'Nosaka zīmju virzienus…');
+    await loadDirectionsBox(lat - dLat, lng - dLng, lat + dLat, lng + dLng);
   } catch (err) {
     console.warn('Virzieni nav ielādēti', err);
     dirCenter = null;
@@ -332,6 +384,52 @@ async function loadDirectionsNearMe() {
     dirLoading = false;
     setBusy('dir', null);
   }
+}
+
+// Sagatavo zīmes visam maršrutam: vispirms visas zīmes gar maršrutu, tad to
+// virzienus — pa ~600 m gabaliem no sākuma, lai tuvākās ir gatavas pirmās.
+let routePrepId = 0;
+function routeChunks(route, step = 600) {
+  const chunks = [];
+  let cur = null;
+  for (let i = 0; i < route.coords.length; i++) {
+    const [lng, lat] = route.coords[i];
+    if (!cur || route.cum[i] - cur.start > step) {
+      if (cur) chunks.push(cur);
+      cur = { start: route.cum[i], s: lat, w: lng, n: lat, e: lng };
+      if (i > 0) { const [pl, pa] = route.coords[i - 1]; cur.s = Math.min(lat, pa); cur.n = Math.max(lat, pa); cur.w = Math.min(lng, pl); cur.e = Math.max(lng, pl); }
+    }
+    cur.s = Math.min(cur.s, lat); cur.n = Math.max(cur.n, lat); cur.w = Math.min(cur.w, lng); cur.e = Math.max(cur.e, lng);
+  }
+  if (cur) chunks.push(cur);
+  const pad = 0.0004;
+  return chunks.map(c => ({ start: c.start, s: c.s - pad, w: c.w - pad / 0.55, n: c.n + pad, e: c.e + pad / 0.55 }));
+}
+async function prepareRoute(route) {
+  if (!state.mlyToken) return;
+  const id = ++routePrepId;
+  const chunks = routeChunks(route);
+  const tiles = new Map();
+  for (const c of chunks) if (c.start < 15000) for (const t of tilesForBounds(c.s, c.w, c.n, c.e)) tiles.set(t.join(':'), t);
+  setBusy('prep', 'Sagatavo maršruta zīmes…');
+  try { await loadMlyTiles([...tiles.values()]); }
+  finally { setBusy('prep', null); }
+  updateRouteSummary();
+  for (let i = 0; i < chunks.length; i++) {
+    if (id !== routePrepId) return; // maršruts mainījies
+    const c = chunks[i];
+    // Tālākos gabalus gatavo tikai braucot, kad līdz tiem palikuši ~2,5 km.
+    const far = () => state.nav.active ? (state.nav.along != null && c.start - state.nav.along > 2500) : c.start > 5000;
+    if (far()) setBusy('prep', null);
+    while (id === routePrepId && far()) await new Promise(r => setTimeout(r, 3000));
+    if (id !== routePrepId) return;
+    await loadMlyTiles(tilesForBounds(c.s, c.w, c.n, c.e));
+    if (!state.nav.active) setBusy('prep', `Nosaka zīmju virzienus maršrutā… ${Math.round(100 * i / chunks.length)}%`);
+    try { await loadDirectionsBox(c.s, c.w, c.n, c.e); }
+    catch (err) { console.warn('Virzieni maršrutam nav ielādēti', err); }
+    updateRouteSummary();
+  }
+  if (id === routePrepId) setBusy('prep', null);
 }
 
 function loadAllForView() {
@@ -544,6 +642,8 @@ async function previewRoute() {
     const route = await requestRoute(from, dest);
     state.nav.route = route;
     drawRoute(route);
+    signs.setRoute(route);     // rāda tikai maršruta zīmes manā virzienā
+    prepareRoute(route);
     state.follow = false;
     const lngs = route.coords.map(c => c[0]), lats = route.coords.map(c => c[1]);
     map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
@@ -554,6 +654,7 @@ async function previewRoute() {
     $('routeMeta').textContent = `${navDist(route.distance)} · ieradīsies ${clockIn(route.duration)}`;
     $('routeCard').hidden = false;
     $('bottombar').hidden = true;
+    updateRouteSummary();
     if (!state.me) setStatus('Maršruts no kartes centra, jo atrašanās vieta nav zināma.');
   } catch (err) {
     console.error(err);
@@ -575,15 +676,18 @@ function startNav() {
   $('etaBox').hidden = false;
   $('endNav').hidden = false;
   state.follow = true;
-  signs.setDriveMode(true);
+  setBusy('prep', null);
   if (state.testMode) startSimulation();
   else if (state.me) { updateNav(); followCamera(1200); }
 }
 
 function endNav() {
   stopSimulation();
-  signs.setDriveMode(false);
-  state.nav = { dest: null, route: null, active: false, offCount: 0, lastReroute: 0 };
+  routePrepId++;
+  setBusy('prep', null);
+  signs.setRoute(null);
+  $('nextSign').hidden = true;
+  state.nav = { dest: null, route: null, active: false, offCount: 0, lastReroute: 0, along: null };
   drawRoute(null);
   if (destMarker) { destMarker.remove(); destMarker = null; }
   document.documentElement.classList.remove('navigating');
@@ -617,9 +721,45 @@ function updateNav() {
   $('navInstr').textContent = maneuverText(p.next);
   $('etaTime').textContent = clockIn(p.timeLeft);
   $('etaMeta').textContent = `${navTime(p.timeLeft)} · ${navDist(p.remaining)}`;
+  if (p.loc.off < 50) {
+    state.nav.along = p.loc.along;
+    signs.setRouteProgress(p.loc.along);
+  }
+  updateNextSign();
   // Nobrauci no maršruta: pēc diviem mērījumiem pārrēķina (ne biežāk kā reizi 15 s).
   if (p.loc.off > 50) state.nav.offCount++; else state.nav.offCount = 0;
   if (state.nav.offCount >= 2 && Date.now() - state.nav.lastReroute > 15000) reroute();
+}
+
+// Zīmes, par kurām brīdina "nākamā zīme" kartītē: ātrums, prioritāte, aizliegumi,
+// brīdinājumi (bez informatīvajām un papildzīmēm).
+function isNoticeSign(x) {
+  if (x.value) return /^(regulatory|warning)--/.test(x.value) && !/^regulatory--(maximum-speed-limit-5--)/.test(x.value);
+  return x.cat !== 'other';
+}
+function updateNextSign() {
+  const card = $('nextSign');
+  const along = state.nav.along;
+  if (!state.nav.active || along == null || !state.signsOn) { card.hidden = true; return; }
+  const next = signs.routeSignsAhead(along + 3, 700, isNoticeSign)[0];
+  if (!next) { card.hidden = true; return; }
+  const d = next.along - along;
+  if ($('nextSignImg').dataset.src !== next.s.src) { $('nextSignImg').src = next.s.src; $('nextSignImg').dataset.src = next.s.src; }
+  $('nextSignDist').textContent = d < 30 ? 'Tagad' : 'Pēc ' + navDist(d);
+  $('nextSignTitle').textContent = next.s.title.replace(/^Ceļa zīme: /, '');
+  card.hidden = false;
+}
+// Maršruta kartītē: cik un kādas zīmes būs pa ceļam.
+function updateRouteSummary() {
+  if (!state.nav.route || state.nav.active) return;
+  const list = signs.routeSignsAhead(-1, Infinity, isNoticeSign).map(it => it.s);
+  if (!list.length) { $('routeSigns').textContent = state.mlyToken ? 'Meklē zīmes pa ceļam…' : ''; return; }
+  const n = c => list.filter(x => x.cat === c).length;
+  const parts = [`${list.length} zīmes pa ceļam`];
+  if (n('speed')) parts.push(`${n('speed')} ātruma ierobežojumi`);
+  if (n('camera')) parts.push(`${n('camera')} ātruma kameras`);
+  if (n('rail')) parts.push(`${n('rail')} dzelzceļa pārbrauktuves`);
+  $('routeSigns').textContent = parts.join(' · ');
 }
 
 async function reroute() {
@@ -629,7 +769,10 @@ async function reroute() {
   try {
     const route = await requestRoute(state.me, state.nav.dest);
     state.nav.route = route;
+    state.nav.along = null;
     drawRoute(route);
+    signs.setRoute(route);
+    prepareRoute(route);
   } catch (err) { console.warn('Pārrēķins neizdevās', err); }
   finally { setBusy('route', null); }
 }
@@ -779,6 +922,9 @@ function wireUi() {
 
 function cancelPreview() {
   state.nav.route = null; state.nav.dest = null;
+  routePrepId++;
+  setBusy('prep', null);
+  signs.setRoute(null);
   drawRoute(null);
   if (destMarker) { destMarker.remove(); destMarker = null; }
   $('routeCard').hidden = true;
@@ -806,17 +952,29 @@ async function init() {
     if (state.nav.route) drawRoute(state.nav.route);
     applySignVisibility();
   });
-  // Ceļi zīmju piesaistei: pārbūvē, kad karte ielādējusi jaunu apgabalu.
-  let lastRoadKey = '';
-  map.on('idle', () => {
-    if (!state.vector) return;
-    const b = map.getBounds(), key = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast(), map.getZoom()].map(v => v.toFixed(4)).join();
-    if (key === lastRoadKey) return;
-    lastRoadKey = key;
-    if (roadIndex.rebuild(map)) signs.refresh();
-  });
+  // Ceļi zīmju piesaistei: pārbūvē, kad kartē ielādēti jauni ceļi — arī braucot
+  // (agrāk to darīja tikai, kad karte apstājās, tāpēc braucot zīmes kavējās).
+  let lastRoadKey = '', roadTimer = null, lastRoadAt = 0, roadGen = 0;
+  const scheduleRoads = () => {
+    if (!state.vector || roadTimer) return;
+    roadTimer = setTimeout(() => {
+      roadTimer = null;
+      let loaded = false;
+      try { loaded = !!map.getSource('openmaptiles') && map.isSourceLoaded('openmaptiles'); } catch { return; }
+      if (!loaded) return scheduleRoads(); // gaida, kamēr ielādējas
+      const b = map.getBounds();
+      const key = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast(), map.getZoom()].map(v => v.toFixed(4)).join() + ':' + roadGen;
+      if (key === lastRoadKey) return;
+      lastRoadKey = key;
+      lastRoadAt = performance.now();
+      if (roadIndex.rebuild(map)) signs.refresh();
+    }, Math.max(150, 900 - (performance.now() - lastRoadAt)));
+  };
+  map.on('idle', scheduleRoads);
+  map.on('moveend', scheduleRoads);
+  map.on('sourcedata', e => { if (e.sourceId === 'openmaptiles' && e.tile) { roadGen++; scheduleRoads(); } });
   map.on('styleimagemissing', e => { if (/^(mly|own):/.test(e.id)) signs.loadImage(e.id); });
-  map.on('moveend', () => { signs.refresh(); clearTimeout(init._t); init._t = setTimeout(loadAllForView, 400); });
+  map.on('moveend', () => { signs.refresh(); clearTimeout(init._t); init._t = setTimeout(loadAllForView, 150); });
   for (const ev of ['dragstart', 'rotatestart', 'pitchstart']) {
     map.on(ev, e => { if (e.originalEvent) state.follow = false; });
   }

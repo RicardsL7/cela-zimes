@@ -119,12 +119,33 @@ function tilesForBounds(s, w, n, e, z = MLY_ZOOM) {
 }
 
 // Ielādē vienu flīzi un atgriež zīmes: [{ lat, lng, value, id }]
+// Flīzes glabā telefona kešatmiņā 3 dienas: atkārtoti braucot zīmes parādās uzreiz.
+const MLY_CACHE = 'cz-mly-tiles-v1', MLY_CACHE_MS = 3 * 24 * 3600 * 1000;
+let mlyCachePromise = null;
+function mlyCache() {
+  if (!mlyCachePromise) mlyCachePromise = (self.caches ? caches.open(MLY_CACHE) : Promise.reject()).catch(() => null);
+  return mlyCachePromise;
+}
 async function fetchMapillaryTile(x, y, token) {
   const url = MLY_TILE_URL.replace('{z}', MLY_ZOOM).replace('{x}', x).replace('{y}', y) + encodeURIComponent(token);
-  const res = await fetch(url);
-  if (res.status === 401 || res.status === 403) throw Object.assign(new Error('token'), { badToken: true });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const layers = decodeTile(new Uint8Array(await res.arrayBuffer()));
+  const key = `https://cela-zimes.cache/mly/${MLY_ZOOM}/${x}/${y}`; // bez atslēgas
+  const cache = await mlyCache();
+  let bytes = null;
+  if (cache) {
+    try {
+      const hit = await cache.match(key);
+      if (hit && Date.now() - Number(hit.headers.get('x-saved') || 0) < MLY_CACHE_MS) bytes = new Uint8Array(await hit.arrayBuffer());
+    } catch { /* kešatmiņa nav pieejama */ }
+  }
+  if (!bytes) {
+    const res = await fetch(url);
+    if (res.status === 401 || res.status === 403) throw Object.assign(new Error('token'), { badToken: true });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const buf = await res.arrayBuffer();
+    bytes = new Uint8Array(buf);
+    if (cache) cache.put(key, new Response(buf, { headers: { 'x-saved': String(Date.now()) } })).catch(() => {});
+  }
+  const layers = decodeTile(bytes);
   const layer = layers.traffic_sign;
   if (!layer) return [];
   const out = [];
@@ -205,6 +226,39 @@ function isPlausibleSign(value, lat, lng) {
   return n === 5 || n % 10 === 0;
 }
 
+// Biežākās zīmes latviski (pārējām paliek Mapillary nosaukums).
+const MLY_NAMES = [
+  [/no-entry/, 'Iebraukt aizliegts'],
+  [/no-stopping/, 'Apstāties aizliegts'],
+  [/no-parking/, 'Stāvēt aizliegts'],
+  [/no-left-turn/, 'Pa kreisi nogriezties aizliegts'],
+  [/no-right-turn/, 'Pa labi nogriezties aizliegts'],
+  [/no-u-turn/, 'Apgriezties aizliegts'],
+  [/no-overtaking/, 'Apdzīt aizliegts'],
+  [/no-motor-vehicles|road-closed/, 'Braukt aizliegts'],
+  [/no-heavy-goods|no-trucks/, 'Kravas automobiļiem braukt aizliegts'],
+  [/maximum-weight|weight-limit/, 'Masas ierobežojums'],
+  [/maximum-height|height-limit/, 'Augstuma ierobežojums'],
+  [/end-of-maximum-speed|end-of-speed-limit/, 'Ātruma ierobežojuma beigas'],
+  [/end-of-priority-road/, 'Galvenā ceļa beigas'],
+  [/priority-road/, 'Galvenais ceļš'],
+  [/one-way/, 'Vienvirziena ceļš'],
+  [/keep-right/, 'Apbraukt no labās puses'],
+  [/keep-left/, 'Apbraukt no kreisās puses'],
+  [/turn-right|go-straight-or-turn-right/, 'Braukt taisni vai pa labi'],
+  [/turn-left|go-straight-or-turn-left/, 'Braukt taisni vai pa kreisi'],
+  [/go-straight/, 'Braukt tikai taisni'],
+  [/roundabout/, 'Aplis'],
+  [/parking/, 'Stāvvieta'],
+  [/bus-stop/, 'Autobusa pietura'],
+  [/pedestrians-only|pedestrian-zone/, 'Gājēju ceļš'],
+  [/bicycles-only|bicycle/, 'Velosipēdu ceļš'],
+  [/children|school/, 'Bērni'],
+  [/road-works|roadworks/, 'Ceļa remonts'],
+  [/residential-area|living-street/, 'Dzīvojamā zona'],
+  [/added-lane|lane/, 'Joslu zīme'],
+];
+
 // Mapillary zīmes kods → mūsu kategorija.
 function classifyMapillary(value) {
   const v = value.toLowerCase();
@@ -221,6 +275,7 @@ function classifyMapillary(value) {
   if (/camera|speed-enforcement/.test(v)) return { cat: 'camera', title: 'Ātruma kamera' };
   if (/speed-bump|road-bump|speed-hump|uneven-road/.test(v)) return { cat: 'calming', title: 'Ātrumvalnis' };
   if (/railroad|railway|level-crossing/.test(v)) return { cat: 'rail', title: 'Dzelzceļa pārbrauktuve' };
+  for (const [re, title] of MLY_NAMES) if (re.test(v)) return { cat: 'other', title };
   return { cat: 'other', title: `Ceļa zīme: ${pretty}` };
 }
 
