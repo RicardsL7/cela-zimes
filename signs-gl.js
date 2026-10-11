@@ -164,7 +164,16 @@ class SignStore {
       if (m && this._routeApplies(x, m)) list.push({ s: x, along: m.along });
     });
     list.sort((a, b) => a.along - b.along);
-    this.routeList = list;
+    // Vienādas zīmes manā virzienā tuvāk par 25 m viena otrai neko jaunu nepasaka —
+    // atstāj vienu (Mapillary bieži vienu zīmi saglabā vairākas reizes).
+    const kept = [], lastAt = new Map();
+    for (const it of list) {
+      const key = it.s.value || it.s.icon, prev = lastAt.get(key);
+      if (prev != null && it.along - prev < 25) continue;
+      lastAt.set(key, it.along);
+      kept.push(it);
+    }
+    this.routeList = kept;
   }
 
   // Maršruta zīmes priekšā: no "from" līdz "from + ahead" metriem.

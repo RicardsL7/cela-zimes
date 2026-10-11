@@ -108,22 +108,25 @@ function rememberFace(s) {
 // Mapillary zīmes vienmēr ir atsevišķas (arī vienādas zīmes abās ceļa pusēs);
 // OSM zīmi neliek, ja tuvumā jau ir tāda paša veida zīme.
 const placedGrid = new Map();
-function isDuplicate(lat, lng, cat, check = true) {
+// Mapillary bieži vienu un to pašu zīmi saglabā vairākas reizes: tādu pašu zīmi
+// tuvāk par 5 m neliek otrreiz.
+function isDuplicate(lat, lng, cat, value) {
   const gx = Math.round(lat / 0.0003), gy = Math.round(lng / 0.0005);
-  for (let i = -1; check && i <= 1; i++) for (let j = -1; j <= 1; j++) {
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
     for (const p of placedGrid.get((gx + i) + ':' + (gy + j)) || []) {
-      if (p.cat === cat && distM(p.lat, p.lng, lat, lng) < 20) return true;
+      if (value ? (p.value === value && distM(p.lat, p.lng, lat, lng) < 5)
+                : (p.cat === cat && distM(p.lat, p.lng, lat, lng) < 20)) return true;
     }
   }
   const k = gx + ':' + gy;
   if (!placedGrid.has(k)) placedGrid.set(k, []);
-  placedGrid.get(k).push({ lat, lng, cat });
+  placedGrid.get(k).push({ lat, lng, cat, value });
   return false;
 }
 
 // sign: { cat, kind?, value?, title }; mlyValue: Mapillary zīmes kods (ja no Mapillary)
 function addSign(lat, lng, sign, mlyValue) {
-  if (isDuplicate(lat, lng, sign.cat, !mlyValue)) return null;
+  if (isDuplicate(lat, lng, sign.cat, mlyValue)) return null;
   const own = sign.kind ? sign : { kind: 'other' };
   const s = mlyValue
     ? { icon: 'mly:' + mlyValue, src: MLY_ICON_URL + encodeURIComponent(mlyValue) + '.svg', value: mlyValue }
@@ -734,8 +737,9 @@ function updateNav() {
 // Zīmes, par kurām brīdina "nākamā zīme" kartītē: ātrums, prioritāte, aizliegumi,
 // brīdinājumi (bez informatīvajām un papildzīmēm).
 function isNoticeSign(x) {
-  if (x.value) return /^(regulatory|warning)--/.test(x.value) && !/^regulatory--(maximum-speed-limit-5--)/.test(x.value);
-  return x.cat !== 'other';
+  if (x.cat !== 'other') return true;
+  if (!x.value) return false;
+  return /no-entry|no-(left|right|u)-turn|no-overtaking|road-closed|no-motor|no-heavy|maximum-(weight|height|width)|one-way|roundabout|children|school|roadworks|road-works|dangerous|curve|narrow/.test(x.value);
 }
 function updateNextSign() {
   const card = $('nextSign');
@@ -755,11 +759,14 @@ function updateRouteSummary() {
   const list = signs.routeSignsAhead(-1, Infinity, isNoticeSign).map(it => it.s);
   if (!list.length) { $('routeSigns').textContent = state.mlyToken ? 'Meklē zīmes pa ceļam…' : ''; return; }
   const n = c => list.filter(x => x.cat === c).length;
-  const parts = [`${list.length} zīmes pa ceļam`];
-  if (n('speed')) parts.push(`${n('speed')} ātruma ierobežojumi`);
-  if (n('camera')) parts.push(`${n('camera')} ātruma kameras`);
-  if (n('rail')) parts.push(`${n('rail')} dzelzceļa pārbrauktuves`);
-  $('routeSigns').textContent = parts.join(' · ');
+  const limits = [...new Set(list.filter(x => x.cat === 'speed' && x.limit >= 20).map(x => x.limit))].sort((a, b) => a - b);
+  const parts = [];
+  if (limits.length) parts.push('Ātrums ' + (limits.length > 1 ? `${limits[0]}–${limits[limits.length - 1]}` : limits[0]) + ' km/h');
+  if (n('camera')) parts.push(`${n('camera')} ātruma kam.`);
+  if (n('rail')) parts.push(`${n('rail')} dzelzceļa pārbr.`);
+  if (n('calming')) parts.push(`${n('calming')} ātrumvaļņi`);
+  if (n('signals')) parts.push(`${n('signals')} luksofori`);
+  $('routeSigns').textContent = parts.length ? 'Pa ceļam: ' + parts.join(' · ') : '';
 }
 
 async function reroute() {
