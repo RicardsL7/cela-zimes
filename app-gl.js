@@ -166,7 +166,7 @@ function buildQuery(s, w, n, e) {
   relation["type"="restriction"]["restriction:conditional"](${bb});
   relation["type"="restriction"]["hour_on"](${bb});
 );
-out tags geom;`;
+out body geom;`;
 }
 
 async function fetchOverpass(query) {
@@ -416,13 +416,16 @@ function attachTimes() {
     if (r.done) continue;
     let found = 0;
     if (r.kind === 'turn') {
-      const [la, lo] = r.via, pad = 0.0005;
+      const [la, lo] = r.via, pad = 0.0005, cand = [];
       signs.eachInBox(la - pad, lo - pad / 0.55, la + pad, lo + pad / 0.55, s => {
         if (!s.value || s.timeRule || !r.match.test(s.value)) return;
-        if (distM(s.lat, s.lng, la, lo) > 45 || distToPolyline([s.lat, s.lng], r.approach) > 25) return;
+        const d = distM(s.lat, s.lng, la, lo);
+        if (d > 45 || distToPolyline([s.lat, s.lng], r.approach) > 25) return;
         if (s.face != null && angleDiff((s.face + 180) % 360, r.heading) > 60) return;
-        s.timeRule = r; found++;
+        cand.push([d, s]);
       });
+      // Tikai 2 tuvākās krustojumam (citas parasti ir citām joslām / dublikāti).
+      cand.sort((a, b) => a[0] - b[0]).slice(0, 2).forEach(([, s]) => { s.timeRule = r; found++; });
       if (!found && mlyReadyAt(la, lo)) {
         // Mapillary šo zīmi nav atradis — uzliek to ceļa labajā pusē pirms krustojuma.
         const b = (r.heading + 90) * Math.PI / 180, off = 5;
