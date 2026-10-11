@@ -27,16 +27,14 @@ const SignCanvasLayer = L.Layer.extend({
     this._ctx = this._canvas.getContext('2d');
     map.on('move', this.redraw, this);
     map.on('resize', this._resize, this);
-    map.on('zoomstart', this._hide, this);
-    map.on('zoomend', this._show, this);
+    map.on('zoom zoomend viewreset', this.redraw, this);
     this._resize();
   },
 
   onRemove(map) {
     map.off('move', this.redraw, this);
     map.off('resize', this._resize, this);
-    map.off('zoomstart', this._hide, this);
-    map.off('zoomend', this._show, this);
+    map.off('zoom zoomend viewreset', this.redraw, this);
     this._canvas.remove();
     this._drawn = [];
   },
@@ -65,9 +63,6 @@ const SignCanvasLayer = L.Layer.extend({
     if (!this._map || this._frame) return;
     this._frame = requestAnimationFrame(() => { this._frame = null; this._draw(); });
   },
-
-  _hide() { this._canvas.style.visibility = 'hidden'; },
-  _show() { this._canvas.style.visibility = ''; this._draw(); },
 
   _resize() {
     const size = this._map.getSize(), dpr = window.devicePixelRatio || 1;
