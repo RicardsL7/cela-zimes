@@ -5,6 +5,9 @@
 const MLY_TILE_URL = 'https://tiles.mapillary.com/maps/vtp/mly_map_feature_traffic_sign/2/{z}/{x}/{y}?access_token=';
 const MLY_ICON_URL = 'https://cdn.jsdelivr.net/gh/mapillary/mapillary_sprite_source@master/package_signs/';
 const MLY_ZOOM = 14;
+// Mapillary "aligned_direction": vai tas ir virziens, uz kuru skatās zīmes priekšpuse
+// (true), vai virziens, kurā brauc vadītājs, kas zīmi redz (false). Pārbaudīts ar foto.
+const MLY_DIR_IS_FACE = true;
 
 // ---------- Protobuf lasītājs ----------
 function pbReader(buf) {
@@ -128,9 +131,23 @@ async function fetchMapillaryTile(x, y, token) {
   for (const f of layer.features) {
     for (const [px, py] of f.points) {
       const [lat, lng] = tileToLatLng(x + px / layer.extent, y + py / layer.extent, MLY_ZOOM);
-      out.push({ lat, lng, value: String(f.props.value || ''), id: f.props.id });
+      out.push({ lat, lng, value: String(f.props.value || ''), id: String(f.props.id) });
     }
   }
+  return out;
+}
+
+// Zīmju virzieni (flīzēs to nav), tāpēc tos ielādē atsevišķi no Mapillary API.
+// Atgriež Map: zīmes id -> grādi (aligned_direction).
+async function fetchMapillaryDirections(x, y, token) {
+  const [n, w] = tileToLatLng(x, y, MLY_ZOOM), [s, e] = tileToLatLng(x + 1, y + 1, MLY_ZOOM);
+  const url = 'https://graph.mapillary.com/map_features?fields=id,aligned_direction&limit=2000&bbox=' +
+    [w, s, e, n].map(v => v.toFixed(6)).join(',');
+  const res = await fetch(url, { headers: { Authorization: 'OAuth ' + token } });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const json = await res.json();
+  const out = new Map();
+  for (const f of json.data || []) if (f.aligned_direction != null) out.set(String(f.id), f.aligned_direction);
   return out;
 }
 

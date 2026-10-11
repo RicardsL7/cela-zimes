@@ -176,6 +176,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
   box-shadow: 0 0 0 8px color-mix(in srgb, var(--route) 25%, transparent), 0 2px 6px rgba(0,0,0,.35);
 }
 .route-line { stroke: var(--route); }
+.me-icon { position: relative; }
+.me-arrow {
+  position: absolute; left: 50%; top: 50%; width: 0; height: 0;
+  border-left: 9px solid transparent; border-right: 9px solid transparent; border-bottom: 16px solid var(--route);
+  transform: translate(-50%, -50%) rotate(var(--heading, 0deg)) translateY(-17px);
+  display: none;
+}
+.has-heading .me-arrow { display: block; }
 .leaflet-control-attribution { font-size: 10px; }
 /* Klasiskā karte tumšajā režīmā: aptumšo ar filtru (vektoru kartei ir savs tumšais stils). */
 .raster-dark .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9); }

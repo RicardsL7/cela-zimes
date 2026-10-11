@@ -13,6 +13,8 @@ const SignCanvasLayer = L.Layer.extend({
     this._drawn = [];         // pēdējā zīmējuma zīmes (pieskārienu noteikšanai)
     this._filter = () => true;
     this._frame = null;
+    this._heading = null;      // braukšanas virziens (grādi) vai null
+    this._hideOpposite = false;
   },
 
   onAdd(map) {
@@ -48,6 +50,18 @@ const SignCanvasLayer = L.Layer.extend({
   },
 
   setFilter(fn) { this._filter = fn; this.redraw(); },
+  setHeading(deg) { this._heading = deg; this.redraw(); },
+  setHideOpposite(v) { this._hideOpposite = v; this.redraw(); },
+
+  // Vai zīme attiecas uz mani? 'mine' | 'other' | 'unknown'
+  _relation(s) {
+    if (s.face == null || this._heading == null) return 'unknown';
+    // Zīmi lasa vadītājs, kurš brauc pretī tās priekšpusei: virziens = face + 180.
+    const reader = (s.face + 180) % 360;
+    let d = Math.abs(reader - this._heading) % 360;
+    if (d > 180) d = 360 - d;
+    return d <= 60 ? 'mine' : 'other';
+  },
 
   // Atrod zīmi zem pirksta / peles.
   hitTest(containerPoint) {
@@ -62,6 +76,23 @@ const SignCanvasLayer = L.Layer.extend({
   redraw() {
     if (!this._map || this._frame) return;
     this._frame = requestAnimationFrame(() => { this._frame = null; this._draw(); });
+  },
+
+  // Mazs "deguns" zīmes malā: rāda, uz kuru pusi zīme skatās
+  // (no turienes braucošajiem tā ir domāta).
+  _drawPointer(ctx, p, h, face, rel) {
+    const a = (face - 90) * Math.PI / 180; // 0° = ziemeļi = uz augšu ekrānā
+    const tip = h + 9, base = h - 2, spread = 0.42;
+    ctx.beginPath();
+    ctx.moveTo(p.x + Math.cos(a) * tip, p.y + Math.sin(a) * tip);
+    ctx.lineTo(p.x + Math.cos(a + spread) * base, p.y + Math.sin(a + spread) * base);
+    ctx.lineTo(p.x + Math.cos(a - spread) * base, p.y + Math.sin(a - spread) * base);
+    ctx.closePath();
+    ctx.fillStyle = rel === 'mine' ? '#1e9e4a' : '#2b3646';
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.fill();
+    ctx.stroke();
   },
 
   _resize() {
@@ -114,7 +145,12 @@ const SignCanvasLayer = L.Layer.extend({
         }
       }
     }
-    if (cell) visible.sort((a, c) => SIGN_PRIORITY[a.cat] - SIGN_PRIORITY[c.cat]);
+    // Manas zīmes pirmās, tad pēc svarīguma; pretējā virziena — pēdējās (vai paslēptas).
+    const rank = { mine: 0, unknown: 1, other: 2 };
+    for (const s of visible) s._rel = this._relation(s);
+    const shown = this._hideOpposite ? visible.filter(s => s._rel !== 'other') : visible;
+    visible.length = 0; visible.push(...shown);
+    visible.sort((a, c) => (rank[a._rel] - rank[c._rel]) || (SIGN_PRIORITY[a.cat] - SIGN_PRIORITY[c.cat]));
 
     const taken = new Set();
     const half = size / 2;
@@ -127,8 +163,14 @@ const SignCanvasLayer = L.Layer.extend({
       }
       const img = this._image(s.src, s.fallback);
       if (!img) continue; // vēl ielādējas: uzzīmēs, kad būs gatavs
-      try { ctx.drawImage(img, p.x - half, p.y - half, size, size); } catch { continue; }
-      this._drawn.push({ x: p.x, y: p.y, r: half, sign: s });
+      const other = s._rel === 'other';
+      const sz = s._rel === 'mine' ? size * 1.15 : other ? size * 0.75 : size;
+      const h = sz / 2;
+      ctx.globalAlpha = other ? 0.35 : 1;
+      if (s.face != null) this._drawPointer(ctx, p, h, s.face, s._rel);
+      try { ctx.drawImage(img, p.x - h, p.y - h, sz, sz); } catch { ctx.globalAlpha = 1; continue; }
+      ctx.globalAlpha = 1;
+      this._drawn.push({ x: p.x, y: p.y, r: h, sign: s });
     }
   },
 });

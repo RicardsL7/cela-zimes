@@ -42,6 +42,8 @@ const state = {
   mlyToken: store.get('mlyToken', ''),
   mlyTiles: new Set(),
   counts: { osm: 0, mly: 0 },
+  heading: null,       // braukšanas virziens grādos (0 = ziemeļi), ja zināms
+  hideOpposite: store.get('hideOpposite', false),
 };
 
 // ---------- Karte ----------
@@ -87,8 +89,9 @@ function isDuplicate(lat, lng, cat) {
 function addSignMarker(lat, lng, sign, src) {
   if (isDuplicate(lat, lng, sign.cat)) return false;
   const own = svgDataUrl(sign.kind ? sign : { kind: 'other' });
-  signLayer.add({ lat, lng, cat: sign.cat, title: sign.title, src: src || own, fallback: svgDataUrl({ kind: 'other' }) });
-  return true;
+  const s = { lat, lng, cat: sign.cat, title: sign.title, src: src || own, fallback: svgDataUrl({ kind: 'other' }), face: null };
+  signLayer.add(s);
+  return s;
 }
 
 // ---------- Datu ielāde no OpenStreetMap ----------
@@ -214,10 +217,13 @@ async function loadMapillaryForView() {
         return;
       }
       state.mlyTiles.add(tiles[i][0] + ':' + tiles[i][1]);
+      const byId = new Map();
       for (const s of r.value) {
         const sign = classifyMapillary(s.value);
-        if (addSignMarker(s.lat, s.lng, sign, MLY_ICON_URL + encodeURIComponent(s.value) + '.svg')) added++;
+        const obj = addSignMarker(s.lat, s.lng, sign, MLY_ICON_URL + encodeURIComponent(s.value) + '.svg');
+        if (obj) { added++; byId.set(s.id, obj); }
       }
+      loadDirections(tiles[i][0], tiles[i][1], byId);
     });
     state.counts.mly += added;
     signLayer.redraw();
@@ -226,6 +232,19 @@ async function loadMapillaryForView() {
     mlyLoading = false;
   }
   setTimeout(loadMapillaryForView, 100); // ja karte pa to laiku pārvietota
+}
+
+// Ielādē, uz kuru pusi zīmes ir pagrieztas (fonā, lai zīmes parādītos uzreiz).
+async function loadDirections(x, y, byId) {
+  if (!byId.size) return;
+  try {
+    const dirs = await fetchMapillaryDirections(x, y, state.mlyToken);
+    for (const [id, deg] of dirs) {
+      const obj = byId.get(id);
+      if (obj) obj.face = MLY_DIR_IS_FACE ? deg : (deg + 180) % 360;
+    }
+    signLayer.redraw();
+  } catch (err) { console.warn('Virzieni nav ielādēti', err); }
 }
 
 function showCounts() {
@@ -299,15 +318,37 @@ function nearestLimit(lat, lng) {
 }
 
 // ---------- Mana atrašanās vieta ----------
-const meIcon = L.divIcon({ className: 'me-icon', html: '<div class="me-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
+const meIcon = L.divIcon({ className: 'me-icon', html: '<div class="me-arrow"></div><div class="me-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
 let meMarker = null;
 
-function setMe(lat, lng, speedKmh) {
+// Braukšanas virziens: no GPS, vai aprēķināts no pārvietošanās.
+let lastFix = null;
+function updateHeading(lat, lng, gpsHeading, speedKmh) {
+  if (gpsHeading != null && !isNaN(gpsHeading) && (speedKmh == null || speedKmh > 4)) {
+    state.heading = gpsHeading;
+  } else if (lastFix && distM(lastFix[0], lastFix[1], lat, lng) > 8) {
+    state.heading = bearingDeg(lastFix[0], lastFix[1], lat, lng);
+  } else if (lastFix) {
+    return; // pārāk mazs pārvietojums, lai noteiktu virzienu
+  }
+  lastFix = [lat, lng];
+  signLayer.setHeading(state.heading);
+  if (meMarker) meMarker.getElement()?.style.setProperty('--heading', (state.heading ?? 0) + 'deg');
+  document.documentElement.classList.toggle('has-heading', state.heading != null);
+}
+function bearingDeg(lat1, lng1, lat2, lng2) {
+  const r = Math.PI / 180, y = Math.sin((lng2 - lng1) * r) * Math.cos(lat2 * r);
+  const x = Math.cos(lat1 * r) * Math.sin(lat2 * r) - Math.sin(lat1 * r) * Math.cos(lat2 * r) * Math.cos((lng2 - lng1) * r);
+  return (Math.atan2(y, x) / r + 360) % 360;
+}
+
+function setMe(lat, lng, speedKmh, gpsHeading) {
   state.me = { lat, lng, speedKmh };
   if (!meMarker) meMarker = L.marker([lat, lng], { icon: meIcon, zIndexOffset: 1000, interactive: false }).addTo(map);
   else meMarker.setLatLng([lat, lng]);
   if (state.follow) map.panTo([lat, lng], { animate: true });
   document.getElementById('speedValue').textContent = speedKmh == null ? '–' : Math.round(speedKmh);
+  updateHeading(lat, lng, gpsHeading, speedKmh);
   updateLimit();
 }
 
@@ -336,7 +377,7 @@ function onPosition(pos) {
   if (state.testMode) return;
   const sp = pos.coords.speed;
   const first = !state.me;
-  setMe(pos.coords.latitude, pos.coords.longitude, sp == null || sp < 0 ? null : sp * 3.6);
+  setMe(pos.coords.latitude, pos.coords.longitude, sp == null || sp < 0 ? null : sp * 3.6, pos.coords.heading);
   if (first) map.setView([pos.coords.latitude, pos.coords.longitude], Math.max(map.getZoom(), 16));
   gpsProblem = null;
   if (!state.routeActive) setStatus('GPS darbojas.');
@@ -510,6 +551,16 @@ map.on('click', e => {
 });
 let moveTimer;
 map.on('moveend', () => { clearTimeout(moveTimer); moveTimer = setTimeout(loadAllForView, 500); });
+
+// Pretējā virziena zīmes: blāvas vai paslēptas
+const oppSwitch = document.getElementById('oppSwitch');
+oppSwitch.checked = state.hideOpposite;
+signLayer.setHideOpposite(state.hideOpposite);
+oppSwitch.addEventListener('change', () => {
+  state.hideOpposite = oppSwitch.checked;
+  store.set('hideOpposite', state.hideOpposite);
+  signLayer.setHideOpposite(state.hideOpposite);
+});
 
 // Kartes stila izvēle
 const basemapSelect = document.getElementById('basemapSelect');
