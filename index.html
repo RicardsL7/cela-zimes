@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#16202e">
+  <title>Ceļa Zīmes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="map" aria-label="Karte"></div>
+
+  <!-- Meklēšana -->
+  <header class="topbar">
+    <form id="searchForm" class="search" autocomplete="off">
+      <label for="searchInput" class="sr-only">Kur brauksi?</label>
+      <input id="searchInput" type="search" placeholder="Kur brauksi?" enterkeyhint="search">
+      <button type="submit" class="search-btn" aria-label="Meklēt">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </button>
+    </form>
+    <ul id="results" class="results" hidden></ul>
+  </header>
+
+  <!-- Pašreizējais ātruma ierobežojums -->
+  <div id="limitBadge" class="limit-badge" hidden aria-live="polite">
+    <span id="limitValue">50</span>
+  </div>
+
+  <!-- Pogas labajā pusē -->
+  <nav class="fab-stack" aria-label="Kartes vadība">
+    <button id="toggleSigns" class="fab" aria-pressed="true" title="Ieslēgt / izslēgt ceļa zīmes">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5v6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16.6" r="1.3" fill="currentColor"/></svg>
+      <span class="fab-label" id="toggleSignsLabel">Zīmes</span>
+    </button>
+    <button id="centerBtn" class="fab" title="Centrēt uz manu atrašanās vietu">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 3 19 20l-7-4-7 4Z" fill="currentColor"/></svg>
+      <span class="fab-label">Es</span>
+    </button>
+    <button id="settingsBtn" class="fab" title="Iestatījumi" aria-expanded="false" aria-controls="settings">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="17" r="2.3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      <span class="fab-label">Iestat.</span>
+    </button>
+  </nav>
+
+  <!-- Apakšējā josla -->
+  <footer class="bottombar">
+    <div class="speed" id="speedBox">
+      <span class="speed-num" id="speedValue">–</span>
+      <span class="speed-unit">km/h</span>
+    </div>
+    <div class="status">
+      <div id="routeInfo" class="route-info" hidden>
+        <span id="routeText"></span>
+        <button id="clearRoute" class="link-btn">Atcelt</button>
+      </div>
+      <p id="statusText" class="status-text">Meklē GPS…</p>
+    </div>
+  </footer>
+
+  <!-- Iestatījumu panelis -->
+  <section id="settings" class="sheet" hidden aria-labelledby="settingsTitle">
+    <div class="sheet-head">
+      <h2 id="settingsTitle">Ko rādīt uz kartes</h2>
+      <button id="closeSettings" class="link-btn">Gatavs</button>
+    </div>
+    <label class="row master">
+      <span>Rādīt ceļa zīmes</span>
+      <input type="checkbox" id="masterSwitch" class="switch" checked>
+    </label>
+    <div id="catList" class="cat-list"></div>
+    <label class="row">
+      <span>Brīdināt, ja pārsniedz ātrumu</span>
+      <input type="checkbox" id="warnSwitch" class="switch" checked>
+    </label>
+    <label class="row">
+      <span>Testa režīms (klikšķis uz kartes = mana vieta)</span>
+      <input type="checkbox" id="testSwitch" class="switch">
+    </label>
+    <p class="fine">Dati: © OpenStreetMap līdzautori. Zīmes rāda tikai tad, ja karte ir pietuvināta.</p>
+  </section>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="signs.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
