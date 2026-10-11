@@ -26,7 +26,6 @@ class SignStore {
     this.count = 0;
     this.filter = () => true;
     this.heading = null;
-    this.hideOpposite = false;
     this.roads = null;       // roadIndex vai null
     this.enabled = true;
     this.iconUrl = new Map(); // attēla id -> adrese
@@ -72,7 +71,6 @@ class SignStore {
 
   setFilter(fn) { this.filter = fn; this.refresh(); }
   setHeading(deg) { this.heading = deg; this.refresh(); }
-  setHideOpposite(v) { this.hideOpposite = v; this.refresh(); }
   setEnabled(v) { this.enabled = v; this.refresh(); }
   facesChanged() { if (this.route) this._routeDirty = true; this.refresh(); }
   setRoads(idx) {
@@ -209,24 +207,7 @@ class SignStore {
     const map = this.map;
     if (map.getSource('signs')) return;
     map.addSource('signs', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    this._addArrowImages();
     const relCase = (mine, other, unknown) => ['match', ['get', 'rel'], 'mine', mine, 'other', other, unknown];
-    // "Deguns": rāda, uz kuru pusi zīme skatās. Griežas kopā ar karti.
-    map.addLayer({
-      id: 'sign-dirs', type: 'symbol', source: 'signs', minzoom: 15.3,
-      filter: ['has', 'face'],
-      layout: {
-        'icon-image': relCase('dir-mine', 'dir-other', 'dir-other'),
-        'icon-rotate': ['get', 'face'],
-        'icon-rotation-alignment': 'map',
-        'icon-pitch-alignment': 'map',
-        'icon-offset': [0, -17],
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-        'icon-size': ['interpolate', ['linear'], ['zoom'], 15.3, 0.75, 18, 1.05],
-      },
-      paint: { 'icon-opacity': relCase(1, 0.35, 0.9) },
-    }, beforeId);
     map.addLayer({
       id: 'signs', type: 'symbol', source: 'signs',
       layout: {
@@ -243,19 +224,6 @@ class SignStore {
       paint: { 'icon-opacity': relCase(1, 0.4, 1) },
     }, beforeId);
     this.refresh(true);
-  }
-
-  // Bultiņa zīmes virziena rādīšanai (zaļa = man, tumša = citiem).
-  _addArrowImages() {
-    for (const [id, color] of [['dir-mine', '#1e9e4a'], ['dir-other', '#2b3646']]) {
-      if (this.map.hasImage(id)) continue;
-      const c = document.createElement('canvas'); c.width = c.height = 32;
-      const g = c.getContext('2d');
-      g.beginPath(); g.moveTo(16, 3); g.lineTo(27, 26); g.lineTo(16, 20); g.lineTo(5, 26); g.closePath();
-      g.fillStyle = color; g.strokeStyle = '#fff'; g.lineWidth = 3; g.lineJoin = 'round';
-      g.stroke(); g.fill();
-      this.map.addImage(id, g.getImageData(0, 0, 32, 32), { pixelRatio: 2 });
-    }
   }
 
   // Karte prasa attēlu, kura vēl nav: ielādē to un uzzīmē 64×64.
@@ -335,7 +303,7 @@ class SignStore {
         const pos = this._place(s);
         if (!pos) return;
         const rel = this.relation(s);
-        if (rel === 'other' && this.hideOpposite) return;
+        if (rel === 'other') return; // pretējā virziena zīmes nerāda
         list.push({ s, pos, rel });
       });
     }
@@ -350,9 +318,7 @@ class SignStore {
       features: list.map(({ s, pos, rel }) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [pos.lng, pos.lat] },
-        properties: Object.assign(
-          { icon: s.icon, title: s.title, rel, prio: rank[rel] + SIGN_PRIORITY[s.cat] },
-          s.face != null ? { face: s.face } : {}),
+        properties: { icon: s.icon, title: s.title, rel, prio: rank[rel] + SIGN_PRIORITY[s.cat] },
       })),
     });
   }

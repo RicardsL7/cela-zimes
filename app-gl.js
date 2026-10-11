@@ -31,7 +31,6 @@ const state = {
     store.get('cats', {})
   ),
   warn: store.get('warn', true),
-  hideOpposite: store.get('hideOpposite', false),
   basemap: store.get('basemap', 'auto'),
   mlyToken: store.get('mlyToken', ''),
   testMode: false,
@@ -867,10 +866,6 @@ function wireUi() {
     if (!state.testMode) stopSimulation();
     else if (state.nav.active) startSimulation();
     setStatus(state.testMode ? 'Testa režīms: noklikšķini uz ceļa kartē vai sāc maršrutu — tas tiks nobraukts automātiski.' : 'Testa režīms izslēgts.');
-  });
-  $('oppSwitch').checked = state.hideOpposite;
-  $('oppSwitch').addEventListener('change', e => {
-    state.hideOpposite = e.target.checked; store.set('hideOpposite', state.hideOpposite); signs.setHideOpposite(state.hideOpposite);
   });
   $('centerBtn').addEventListener('click', () => {
     state.follow = true;
