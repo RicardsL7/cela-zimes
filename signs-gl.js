@@ -182,7 +182,7 @@ class SignStore {
     for (const it of this.routeList) {
       if (it.along < from) continue;
       if (it.along > from + ahead) break;
-      if (!this.filter(it.s.cat)) continue;
+      if (!this.filter(it.s)) continue;
       if (this.roads && it.s.value && it.s._snap === null) continue; // ūdenī u.c.
       if (!test || test(it.s)) out.push(it);
     }
@@ -292,14 +292,14 @@ class SignStore {
       for (const it of this.routeList) {
         if (it.along < from) continue;
         const s = it.s;
-        if (s.lat < S || s.lat > N || s.lng < W || s.lng > E || !this.filter(s.cat)) continue;
+        if (s.lat < S || s.lat > N || s.lng < W || s.lng > E || !this.filter(s)) continue;
         const pos = this._place(s, true);
         if (!pos) continue;
         list.push({ s, pos, rel: 'mine' });
       }
     } else {
       this.eachInBox(S, W, N, E, s => {
-        if (!this.filter(s.cat)) return;
+        if (!this.filter(s)) return;
         const pos = this._place(s);
         if (!pos) return;
         const rel = this.relation(s);

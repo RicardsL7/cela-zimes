@@ -279,6 +279,44 @@ function classifyMapillary(value) {
   return { cat: 'other', title: `Ceļa zīme: ${pretty}` };
 }
 
+// ---------- Kam zīme noder (pēc transportlīdzekļa) ----------
+const VEHICLE_PROFILES = {
+  car:   { label: 'Vieglais automobilis' },
+  truck: { label: 'Kravas automobilis' },
+  tram:  { label: 'Tramvajs' },
+  bike:  { label: 'Velosipēds' },
+};
+// Nekad nerāda: papildzīmes bez galvenās zīmes, virzienu rādītāji, tūrisma un teksta zīmes.
+const NEVER_SIGN = /^complementary--|^general--|^information--(general-directions|stairs|lodging|tourism-information|telephone|flight-port|interstate-route|hurricane-evacuation-route|rest-area|disabled-persons|safety-zone|gas-station|go-straight-or-(left|right)|traffic-merges-(left|right)|vehicles-on-rails|stop-line)|--texts?(-|$)|fine-for-littering|state-route|warning--(electricity|texts)/;
+// Gājējiem un velosipēdistiem domātās zīmes.
+const BIKE_PED_SIGN = /pedestrians-only|shared-path|dual-path|bicycles-only|no-pedestrians|no-bicycles|parking-bicycles|sidewalk-closed|bike-route|bicycles-both-ways|except-bicycles|equestrians|no-carts|disabled-persons-crossing/;
+// Tikai kravas automobiļiem (masa, augstums, garums, piekabes, bīstamas kravas).
+const TRUCK_SIGN = /no-heavy-goods|height-limit|height-restriction|weight-limit|length-limit|trucks-only|trucks-and-buses-only|truck-trailer|motor-vehicle-trailers|dangerous-water|axle/;
+// Motocikliem / autobusiem — vieglajam un kravas auto nav svarīgi.
+const OTHER_VEHICLE_SIGN = /no-motorcycles|no-bicycles-mopeds-or-motorcycles|no-buses/;
+// Velosipēdistam svarīgās vispārīgās zīmes.
+const BIKE_CORE_SIGN = /yield|--stop|no-entry|one-way|priority|roundabout|traffic-signals|pedestrians-crossing|bicycles-crossing|road-closed|roadworks|children|railroad|trams-crossing|living-street|dead-end|turn|go-straight|keep-(right|left)|pass-on|road-narrows|other-danger|steep|uneven|icy/;
+// Tramvaja vadītājam svarīgās zīmes.
+const TRAM_SIGN = /traffic-signals|--stop|yield|priority|pedestrians-crossing|railroad|trams|maximum-speed-limit|speed-limit-zone|roadworks|children|road-bump|uneven|other-danger|living-street|stop-signals|do-not-stop-on-tracks/;
+const PROFILE_OSM_CATS = {
+  car: null, truck: null,                      // visas
+  tram: new Set(['speed', 'priority', 'signals', 'crossing', 'rail']),
+  bike: new Set(['priority', 'signals', 'crossing', 'rail', 'calming']),
+};
+
+// Vai zīme noder šī transportlīdzekļa vadītājam?
+function signFitsProfile(sign, profile) {
+  if (!sign.value) { const c = PROFILE_OSM_CATS[profile]; return !c || c.has(sign.cat); }
+  const v = sign.value.replace(/--g\d+.*$/, '');
+  if (NEVER_SIGN.test(v)) return false;
+  switch (profile) {
+    case 'truck': return !BIKE_PED_SIGN.test(v) && !OTHER_VEHICLE_SIGN.test(v);
+    case 'tram':  return TRAM_SIGN.test(v);
+    case 'bike':  return BIKE_PED_SIGN.test(v) || (BIKE_CORE_SIGN.test(v) && !TRUCK_SIGN.test(v));
+    default:      return !BIKE_PED_SIGN.test(v) && !TRUCK_SIGN.test(v) && !OTHER_VEHICLE_SIGN.test(v);
+  }
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = { decodeTile, tileToLatLng, tilesForBounds, lngToTileX, latToTileY, classifyMapillary };
+  module.exports = { signFitsProfile, decodeTile, tileToLatLng, tilesForBounds, lngToTileX, latToTileY, classifyMapillary };
 }

@@ -31,6 +31,7 @@ const state = {
     store.get('cats', {})
   ),
   warn: store.get('warn', true),
+  profile: store.get('profile', 'car'),   // car | truck | tram | bike
   basemap: store.get('basemap', 'auto'),
   mlyToken: store.get('mlyToken', ''),
   testMode: false,
@@ -811,7 +812,7 @@ function stopSimulation() { clearInterval(simTimer); simTimer = null; }
 // ---------- Saskarne ----------
 function applySignVisibility() {
   signs.setEnabled(state.signsOn);
-  signs.setFilter(cat => state.cats[cat]);
+  signs.setFilter(s => state.cats[s.cat] && signFitsProfile(s, state.profile));
   const btn = $('toggleSigns');
   btn.setAttribute('aria-pressed', String(state.signsOn));
   btn.classList.toggle('off', !state.signsOn);
@@ -858,6 +859,14 @@ function wireUi() {
   });
   $('masterSwitch').addEventListener('change', e => {
     state.signsOn = e.target.checked; store.set('signsOn', state.signsOn); applySignVisibility();
+  });
+  // Transportlīdzeklis: rāda tikai tā vadītājam noderīgās zīmes.
+  const prof = $('profileSelect');
+  for (const [key, p] of Object.entries(VEHICLE_PROFILES)) prof.add(new Option(p.label, key));
+  prof.value = state.profile;
+  prof.addEventListener('change', () => {
+    state.profile = prof.value; store.set('profile', state.profile); applySignVisibility();
+    if (state.nav.route) updateRouteSummary();
   });
   $('warnSwitch').checked = state.warn;
   $('warnSwitch').addEventListener('change', e => { state.warn = e.target.checked; store.set('warn', state.warn); updateLimit(); });
