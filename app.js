@@ -52,15 +52,13 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
 }).addTo(map);
 
-// Katrai kategorijai savs slānis, lai tās var ieslēgt/izslēgt atsevišķi.
-const layers = Object.fromEntries(Object.keys(SIGN_CATEGORIES).map(k => [k, L.layerGroup()]));
+// Visas zīmes vienā ātrā canvas slānī (signlayer.js).
+const signLayer = new SignCanvasLayer();
 
 function applyLayerVisibility() {
-  for (const [cat, layer] of Object.entries(layers)) {
-    const show = state.signsOn && state.cats[cat];
-    if (show && !map.hasLayer(layer)) layer.addTo(map);
-    if (!show && map.hasLayer(layer)) map.removeLayer(layer);
-  }
+  if (state.signsOn && !map.hasLayer(signLayer)) signLayer.addTo(map);
+  if (!state.signsOn && map.hasLayer(signLayer)) map.removeLayer(signLayer);
+  signLayer.setFilter(cat => state.cats[cat]);
   const btn = document.getElementById('toggleSigns');
   btn.setAttribute('aria-pressed', String(state.signsOn));
   btn.classList.toggle('off', !state.signsOn);
@@ -84,17 +82,11 @@ function isDuplicate(lat, lng, cat) {
   return false;
 }
 
-function addSignMarker(lat, lng, sign, html) {
+// src: attēla adrese (Mapillary zīmei); citādi izmanto mūsu SVG ikonu.
+function addSignMarker(lat, lng, sign, src) {
   if (isDuplicate(lat, lng, sign.cat)) return false;
-  const icon = L.divIcon({
-    className: 'sign-icon',
-    html: html || signSvg(sign, 30),
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-  });
-  L.marker([lat, lng], { icon, keyboard: false, title: sign.title })
-    .bindTooltip(sign.title, { direction: 'top', offset: [0, -14] })
-    .addTo(layers[sign.cat]);
+  const own = svgDataUrl(sign.kind ? sign : { kind: 'other' });
+  signLayer.add({ lat, lng, cat: sign.cat, title: sign.title, src: src || own, fallback: svgDataUrl({ kind: 'other' }) });
   return true;
 }
 
@@ -165,10 +157,12 @@ async function loadSignsForView() {
         if (!limit) continue;
         const pts = el.geometry.map(p => [p.lat, p.lon]);
         state.ways.set(el.id, { limit, pts });
+        indexWay(limit, pts);
         added += addWaySpeedSigns(pts, limit);
       }
     }
     missing.forEach(c => state.loadedCells.add(c));
+    signLayer.redraw();
     state.osmRetryMs = 0;
     state.counts.osm += added;
     setTimeout(loadSignsForView, 100); // ja karte pa to laiku pārvietota
@@ -221,24 +215,17 @@ async function loadMapillaryForView() {
       state.mlyTiles.add(tiles[i][0] + ':' + tiles[i][1]);
       for (const s of r.value) {
         const sign = classifyMapillary(s.value);
-        const html = `<img class="mly-img" src="${MLY_ICON_URL}${encodeURIComponent(s.value)}.svg" width="30" height="30" alt="">`;
-        if (addSignMarker(s.lat, s.lng, sign, html)) added++;
+        if (addSignMarker(s.lat, s.lng, sign, MLY_ICON_URL + encodeURIComponent(s.value) + '.svg')) added++;
       }
     });
     state.counts.mly += added;
+    signLayer.redraw();
     showCounts();
   } finally {
     mlyLoading = false;
   }
   setTimeout(loadMapillaryForView, 100); // ja karte pa to laiku pārvietota
 }
-
-// Ja Mapillary nav attēla konkrētai zīmei, rāda vienkāršu ikonu.
-document.addEventListener('error', e => {
-  if (e.target && e.target.classList && e.target.classList.contains('mly-img')) {
-    e.target.outerHTML = signSvg({ kind: 'other' }, 30);
-  }
-}, true);
 
 function showCounts() {
   if (state.routeActive) return;
@@ -283,12 +270,28 @@ function distToSegment(p, a, b) {
   const t = len2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len2)) : 0;
   return Math.hypot(ax + t * dx, ay + t * dy);
 }
+// Ceļu posmi sadalīti nelielās šūnās, lai ātri atrastu tuvāko ceļu.
+const WAY_CELL = 0.002; // ~200 m
+const wayGrid = new Map();
+function indexWay(limit, pts) {
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const la0 = Math.floor(Math.min(a[0], b[0]) / WAY_CELL), la1 = Math.floor(Math.max(a[0], b[0]) / WAY_CELL);
+    const lo0 = Math.floor(Math.min(a[1], b[1]) / WAY_CELL), lo1 = Math.floor(Math.max(a[1], b[1]) / WAY_CELL);
+    for (let la = la0; la <= la1; la++) for (let lo = lo0; lo <= lo1; lo++) {
+      const k = la + ':' + lo;
+      if (!wayGrid.has(k)) wayGrid.set(k, []);
+      wayGrid.get(k).push([a, b, limit]);
+    }
+  }
+}
 function nearestLimit(lat, lng) {
   let best = null, bestD = 30; // tikai ceļi 30 m attālumā
-  for (const w of state.ways.values()) {
-    for (let i = 1; i < w.pts.length; i++) {
-      const d = distToSegment([lat, lng], w.pts[i - 1], w.pts[i]);
-      if (d < bestD) { bestD = d; best = w.limit; }
+  const la = Math.floor(lat / WAY_CELL), lo = Math.floor(lng / WAY_CELL);
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+    for (const [a, b, limit] of wayGrid.get((la + i) + ':' + (lo + j)) || []) {
+      const d = distToSegment([lat, lng], a, b);
+      if (d < bestD) { bestD = d; best = limit; }
     }
   }
   return best;
@@ -492,8 +495,16 @@ document.getElementById('searchInput').addEventListener('input', e => {
 });
 
 map.on('dragstart', () => { state.follow = false; });
+let signTip = null;
 map.on('click', e => {
   document.getElementById('results').hidden = true;
+  const hit = state.signsOn && map.hasLayer(signLayer) ? signLayer.hitTest(e.containerPoint) : null;
+  if (hit) {
+    if (signTip) map.removeLayer(signTip);
+    signTip = L.tooltip({ direction: 'top', offset: [0, -16] }).setLatLng([hit.lat, hit.lng]).setContent(hit.title).addTo(map);
+    return;
+  }
+  if (signTip) { map.removeLayer(signTip); signTip = null; }
   if (state.testMode) { state.follow = false; setMe(e.latlng.lat, e.latlng.lng, 55); }
 });
 let moveTimer;
