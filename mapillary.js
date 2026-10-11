@@ -137,18 +137,56 @@ async function fetchMapillaryTile(x, y, token) {
   return out;
 }
 
-// Zīmju virzieni (flīzēs to nav), tāpēc tos ielādē atsevišķi no Mapillary API.
-// Atgriež Map: zīmes id -> grādi (aligned_direction).
-async function fetchMapillaryDirections(x, y, token) {
-  const [n, w] = tileToLatLng(x, y, MLY_ZOOM), [s, e] = tileToLatLng(x + 1, y + 1, MLY_ZOOM);
-  const url = 'https://graph.mapillary.com/map_features?fields=id,aligned_direction&limit=2000&bbox=' +
-    [w, s, e, n].map(v => v.toFixed(6)).join(',');
-  const res = await fetch(url, { headers: { Authorization: 'OAuth ' + token } });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const json = await res.json();
-  const out = new Map();
-  for (const f of json.data || []) if (f.aligned_direction != null) out.set(String(f.id), f.aligned_direction);
+// Zīmju virzieni (flīzēs to nav) nāk no Mapillary API, kas ir lēnāks.
+// Tāpēc tos ielādē tikai nelielā apgabalā ap braucēju. Ja API atbilde ir
+// "pilna" (dati nogriezti), apgabalu sadala 4 daļās (līdz 2 reizēm).
+const MLY_API_FULL = 1400;
+let mlyApiActive = 0;
+const mlyApiQueue = [];
+function mlyApiSlot() {           // ne vairāk kā 4 pieprasījumi vienlaikus
+  return new Promise(res => { if (mlyApiActive < 4) { mlyApiActive++; res(); } else mlyApiQueue.push(res); });
+}
+function mlyApiDone() { const next = mlyApiQueue.shift(); if (next) next(); else mlyApiActive--; }
+
+async function fetchDirectionsBox(w, s, e, n, values, token, depth) {
+  await mlyApiSlot();
+  let data;
+  try {
+    const url = 'https://graph.mapillary.com/map_features?fields=aligned_direction,object_value,geometry&limit=2000' +
+      '&object_values=' + values.map(encodeURIComponent).join(',') +
+      '&bbox=' + [w, s, e, n].map(v => v.toFixed(6)).join(',');
+    const res = await fetch(url, { headers: { Authorization: 'OAuth ' + token } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    data = (await res.json()).data || [];
+  } finally { mlyApiDone(); }
+  const out = [];
+  for (const f of data) {
+    if (f.aligned_direction == null || !f.geometry) continue;
+    out.push({ lng: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], value: f.object_value, dir: f.aligned_direction });
+  }
+  if (data.length >= MLY_API_FULL && depth < 2) { // nogriezts: sadala laukumu
+    const mx = (w + e) / 2, my = (s + n) / 2;
+    const parts = await Promise.all([[w, s, mx, my], [mx, s, e, my], [w, my, mx, n], [mx, my, e, n]]
+      .map(bb => fetchDirectionsBox(bb[0], bb[1], bb[2], bb[3], values, token, depth + 1)));
+    for (const p of parts) out.push(...p);
+  }
   return out;
+}
+
+// Atgriež [{ lat, lng, value, dir }] zīmēm apgabalā.
+// valueCounts: Map(zīmes veids -> cik tādu ir apgabalā). Pieprasa tikai šos
+// veidus (citādi API atbildi aizpilda laternas u.c. objekti) un grupē tos tā,
+// lai vienā pieprasījumā būtu ~500 zīmes.
+async function fetchMapillaryDirectionsArea(w, s, e, n, token, valueCounts) {
+  const groups = [];
+  let cur = [], count = 0;
+  for (const [v, c] of [...valueCounts].sort((a, b) => b[1] - a[1])) {
+    if (cur.length && (count + c > 500 || cur.length >= 40)) { groups.push(cur); cur = []; count = 0; }
+    cur.push(v); count += c;
+  }
+  if (cur.length) groups.push(cur);
+  const parts = await Promise.all(groups.map(g => fetchDirectionsBox(w, s, e, n, g, token, 0)));
+  return parts.flat();
 }
 
 // Mapillary zīmes kods → mūsu kategorija.

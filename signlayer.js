@@ -50,6 +50,28 @@ const SignCanvasLayer = L.Layer.extend({
   },
 
   setFilter(fn) { this._filter = fn; this.redraw(); },
+
+  // Izsauc fn katrai zīmei taisnstūrī.
+  eachInBox(s, w, n, e, fn) {
+    for (let la = Math.floor(s / GRID); la <= Math.floor(n / GRID); la++)
+      for (let lo = Math.floor(w / GRID); lo <= Math.floor(e / GRID); lo++)
+        for (const x of this._grid.get(la + ':' + lo) || [])
+          if (x.lat >= s && x.lat <= n && x.lng >= w && x.lng <= e) fn(x);
+  },
+
+  // Tuvākā zīme (līdz maxM metriem), kas atbilst nosacījumam.
+  findNear(lat, lng, maxM, test) {
+    let best = null, bestD = maxM;
+    const la = Math.floor(lat / GRID), lo = Math.floor(lng / GRID);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      for (const s of this._grid.get((la + i) + ':' + (lo + j)) || []) {
+        if (test && !test(s)) continue;
+        const d = Math.hypot((s.lat - lat) * 111320, (s.lng - lng) * 111320 * Math.cos(lat * Math.PI / 180));
+        if (d < bestD) { bestD = d; best = s; }
+      }
+    }
+    return best;
+  },
   setHeading(deg) { this._heading = deg; this.redraw(); },
   setHideOpposite(v) { this._hideOpposite = v; this.redraw(); },
 

@@ -217,34 +217,52 @@ async function loadMapillaryForView() {
         return;
       }
       state.mlyTiles.add(tiles[i][0] + ':' + tiles[i][1]);
-      const byId = new Map();
       for (const s of r.value) {
         const sign = classifyMapillary(s.value);
         const obj = addSignMarker(s.lat, s.lng, sign, MLY_ICON_URL + encodeURIComponent(s.value) + '.svg');
-        if (obj) { added++; byId.set(s.id, obj); }
+        if (obj) { added++; obj.value = s.value; }
       }
-      loadDirections(tiles[i][0], tiles[i][1], byId);
     });
     state.counts.mly += added;
     signLayer.redraw();
     showCounts();
+    if (added) { dirCenter = null; loadDirectionsNearMe(); }
   } finally {
     mlyLoading = false;
   }
   setTimeout(loadMapillaryForView, 100); // ja karte pa to laiku pārvietota
 }
 
-// Ielādē, uz kuru pusi zīmes ir pagrieztas (fonā, lai zīmes parādītos uzreiz).
-async function loadDirections(x, y, byId) {
-  if (!byId.size) return;
+// Zīmju virzienus ielādē ~300 m apgabalā ap braucēju (API ir lēns, tāpēc ne visai kartei).
+// Kad pabrauc ~150 m tālāk, ielādē jaunu apgabalu.
+let dirCenter = null, dirLoading = false;
+async function loadDirectionsNearMe() {
+  if (!state.mlyToken || !state.me || dirLoading) return;
+  const { lat, lng } = state.me;
+  if (dirCenter && distM(dirCenter[0], dirCenter[1], lat, lng) < 150) return;
+  dirLoading = true;
+  dirCenter = [lat, lng];
   try {
-    const dirs = await fetchMapillaryDirections(x, y, state.mlyToken);
-    for (const [id, deg] of dirs) {
-      const obj = byId.get(id);
-      if (obj) obj.face = MLY_DIR_IS_FACE ? deg : (deg + 180) % 360;
+    const dLat = 0.003, dLng = 0.003 / Math.cos(lat * Math.PI / 180);
+    // Kuri Mapillary zīmju veidi ir šajā apgabalā un cik to ir.
+    const counts = new Map();
+    signLayer.eachInBox(lat - dLat, lng - dLng, lat + dLat, lng + dLng, s => {
+      if (s.value && s.face == null) counts.set(s.value, (counts.get(s.value) || 0) + 1);
+    });
+    if (!counts.size) return;
+    const found = await fetchMapillaryDirectionsArea(lng - dLng, lat - dLat, lng + dLng, lat + dLat, state.mlyToken, counts);
+    let matched = 0;
+    for (const f of found) {
+      const s = signLayer.findNear(f.lat, f.lng, 5, x => x.value === f.value);
+      if (s) { s.face = MLY_DIR_IS_FACE ? f.dir : (f.dir + 180) % 360; matched++; }
     }
-    signLayer.redraw();
-  } catch (err) { console.warn('Virzieni nav ielādēti', err); }
+    if (matched) signLayer.redraw();
+  } catch (err) {
+    console.warn('Virzieni nav ielādēti', err);
+    dirCenter = null; // mēģinās vēlreiz nākamajā GPS atjauninājumā
+  } finally {
+    dirLoading = false;
+  }
 }
 
 function showCounts() {
@@ -371,6 +389,7 @@ function setMe(lat, lng, speedKmh, gpsHeading) {
   document.getElementById('speedValue').textContent = speedKmh == null ? '–' : Math.round(speedKmh);
   updateHeading(lat, lng, gpsHeading, speedKmh);
   updateLimit();
+  loadDirectionsNearMe();
 }
 
 function updateLimit() {
