@@ -238,25 +238,42 @@ function updateLimit() {
   badge.classList.toggle('pulse', over);
 }
 
+// Iemesls, kāpēc atrašanās vieta nav zināma (rāda, nospiežot "Es").
+let gpsProblem = 'Meklē GPS signālu… Ārā tas notiek ātrāk nekā telpās.';
+let watchId = null;
+
+function gpsErrorText(err) {
+  if (err.code === 1) return 'Atrašanās vieta ir bloķēta. Telefona iestatījumos atļauj atrašanās vietu pārlūkam un šai lapai, tad pārlādē lapu.';
+  if (err.code === 3) return 'GPS vēl meklē signālu. Pagaidi brīdi vai izej ārā.';
+  return 'GPS nav pieejams. Pārbaudi, vai telefonā ir ieslēgta atrašanās vieta.';
+}
+
+function onPosition(pos) {
+  if (state.testMode) return;
+  const sp = pos.coords.speed;
+  const first = !state.me;
+  setMe(pos.coords.latitude, pos.coords.longitude, sp == null || sp < 0 ? null : sp * 3.6);
+  if (first) map.setView([pos.coords.latitude, pos.coords.longitude], Math.max(map.getZoom(), 16));
+  gpsProblem = null;
+  if (!state.routeActive) setStatus('GPS darbojas.');
+}
+
+function onGpsError(err) {
+  gpsProblem = gpsErrorText(err);
+  if (!state.me) setStatus(gpsProblem);
+}
+
 function startGps() {
-  if (!('geolocation' in navigator)) {
-    setStatus('Šī ierīce nerāda atrašanās vietu. Ieslēdz testa režīmu iestatījumos.');
+  if (!('geolocation' in navigator) || !window.isSecureContext) {
+    gpsProblem = 'Šis pārlūks nedod atrašanās vietu. Atver lapu Chrome vai Safari (nevis Messenger, Telegram u.c. iebūvētajā pārlūkā).';
+    setStatus(gpsProblem);
     return;
   }
-  navigator.geolocation.watchPosition(
-    pos => {
-      if (state.testMode) return;
-      const sp = pos.coords.speed;
-      setMe(pos.coords.latitude, pos.coords.longitude, sp == null || sp < 0 ? null : sp * 3.6);
-      if (!state.routeActive) setStatus('GPS darbojas.');
-    },
-    err => {
-      setStatus(err.code === 1
-        ? 'Atrašanās vieta nav atļauta. Atļauj to pārlūkā vai ieslēdz testa režīmu.'
-        : 'GPS signāls nav pieejams. Vari ieslēgt testa režīmu iestatījumos.');
-    },
-    { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
-  );
+  // Ātra, aptuvena vieta (no WiFi/tīkla), kamēr GPS vēl meklē precīzu.
+  navigator.geolocation.getCurrentPosition(onPosition, () => {}, { enableHighAccuracy: false, maximumAge: 60000, timeout: 10000 });
+  if (watchId != null) navigator.geolocation.clearWatch(watchId);
+  watchId = navigator.geolocation.watchPosition(onPosition, onGpsError,
+    { enableHighAccuracy: true, maximumAge: 2000, timeout: 30000 });
 }
 
 // ---------- Meklēšana un maršruts ----------
@@ -374,8 +391,10 @@ document.getElementById('testSwitch').addEventListener('change', e => {
 });
 document.getElementById('centerBtn').addEventListener('click', () => {
   state.follow = true;
-  if (state.me) map.setView([state.me.lat, state.me.lng], Math.max(map.getZoom(), 16));
-  else setStatus('Atrašanās vieta vēl nav zināma.');
+  if (state.me) { map.setView([state.me.lat, state.me.lng], Math.max(map.getZoom(), 16)); return; }
+  // Vēlreiz paprasa atļauju (iPhone to prasa tikai pēc pogas nospiešanas).
+  setStatus(gpsProblem || 'Meklē atrašanās vietu…');
+  startGps();
 });
 document.getElementById('settingsBtn').addEventListener('click', () => toggleSettings(document.getElementById('settings').hidden));
 document.getElementById('closeSettings').addEventListener('click', () => toggleSettings(false));
