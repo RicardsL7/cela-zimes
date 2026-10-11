@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -81,6 +82,10 @@
       <span>Testa režīms (klikšķis uz kartes = mana vieta)</span>
       <input type="checkbox" id="testSwitch" class="switch">
     </label>
+    <label class="row" for="basemapSelect">
+      <span>Kartes stils</span>
+      <select id="basemapSelect" class="select"></select>
+    </label>
     <div class="token-box">
       <label for="mlyToken">Mapillary atslēga (Client Token)</label>
       <div class="token-row">
@@ -93,6 +98,9 @@
   </section>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
+  <script src="basemap.js"></script>
   <script src="signs.js"></script>
   <script src="mapillary.js"></script>
   <script src="signlayer.js"></script>

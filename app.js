@@ -45,12 +45,13 @@ const state = {
 };
 
 // ---------- Karte ----------
-// OpenStreetMap karte. Tumšajā režīmā to aptumšo ar CSS (style.css).
-const map = L.map('map', { zoomControl: false, attributionControl: true }).setView(START, 16);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19,
-  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-}).addTo(map);
+// Pamatne (krāsaina vektoru karte vai klasiskā) nāk no basemap.js.
+const map = L.map('map', { zoomControl: false, attributionControl: true, maxZoom: 19 }).setView(START, 16);
+state.basemap = store.get('basemap', 'auto');
+setBasemap(map, state.basemap);
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
+  if (state.basemap === 'auto') setBasemap(map, 'auto');
+});
 
 // Visas zīmes vienā ātrā canvas slānī (signlayer.js).
 const signLayer = new SignCanvasLayer();
@@ -509,6 +510,16 @@ map.on('click', e => {
 });
 let moveTimer;
 map.on('moveend', () => { clearTimeout(moveTimer); moveTimer = setTimeout(loadAllForView, 500); });
+
+// Kartes stila izvēle
+const basemapSelect = document.getElementById('basemapSelect');
+for (const [key, b] of Object.entries(BASEMAP_STYLES)) basemapSelect.add(new Option(b.label, key));
+basemapSelect.value = state.basemap;
+basemapSelect.addEventListener('change', () => {
+  state.basemap = basemapSelect.value;
+  store.set('basemap', state.basemap);
+  setBasemap(map, state.basemap);
+});
 
 // Mapillary atslēga (glabājas tikai šajā telefonā/pārlūkā)
 const tokenInput = document.getElementById('mlyToken');

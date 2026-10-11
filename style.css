@@ -177,8 +177,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .route-line { stroke: var(--route); }
 .leaflet-control-attribution { font-size: 10px; }
-@media (prefers-color-scheme: dark) {
-  .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9); }
+/* Klasiskā karte tumšajā režīmā: aptumšo ar filtru (vektoru kartei ir savs tumšais stils). */
+.raster-dark .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9); }
+.select {
+  flex: none; max-width: 55%; font: inherit; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px;
 }
 .leaflet-bottom.leaflet-right { margin-bottom: env(safe-area-inset-bottom, 0px); }
 
