@@ -12,7 +12,9 @@ const SIGN_GRID = 0.01;      // telpiskā indeksa šūna grādos
 const SIGN_IMG_PX = 64;      // zīmju attēlu izmērs (pikseļi), rāda kā 32 px
 const ROUTE_CELL = 0.002;    // maršruta posmu indeksa šūna (~200 m)
 const ROUTE_NEAR_M = 28;     // cik tālu no maršruta ass zīme vēl ir "uz maršruta"
-const ROUTE_ANGLE = 50;      // cik grādu zīmes virziens drīkst atšķirties no maršruta
+const ROUTE_ANGLE = 50;
+const ZONE_SIGN = /no-stopping|no-parking/;  // zīmes, kurām rāda darbības zonu gar ceļu
+const ZONE_MIN_ZOOM = 15;      // cik grādu zīmes virziens drīkst atšķirties no maršruta
 
 function angleDiff(a, b) {
   const d = Math.abs(a - b) % 360;
@@ -76,7 +78,7 @@ class SignStore {
   facesChanged() { if (this.route) this._routeDirty = true; this.refresh(); }
   setRoads(idx) {
     this.roads = idx;
-    for (const list of this.grid.values()) for (const s of list) s._snap = undefined;
+    for (const list of this.grid.values()) for (const s of list) { s._snap = undefined; s._zone = undefined; }
     this.refresh();
   }
 
@@ -208,6 +210,22 @@ class SignStore {
     const map = this.map;
     if (map.getSource('signs')) return;
     map.addSource('signs', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    // Apstāties/stāvēt aizliegts zona: sarkana līnija gar ceļa malu.
+    map.addSource('sign-zones', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    const zoneOffset = ['interpolate', ['exponential', 2], ['zoom'], 15, ['*', ['get', 'side'], 3], 18, ['*', ['get', 'side'], 22]];
+    for (const [id, kind, dash] of [['zone-stop', 'stop', [2, 1.2]], ['zone-park', 'park', [0.6, 1.4]]]) {
+      map.addLayer({
+        id, type: 'line', source: 'sign-zones', minzoom: ZONE_MIN_ZOOM, filter: ['==', ['get', 'kind'], kind],
+        layout: { 'line-cap': 'butt', 'line-join': 'round' },
+        paint: {
+          'line-color': '#e0262f',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 15, 2.5, 18, 6],
+          'line-offset': zoneOffset,
+          'line-dasharray': dash,
+          'line-opacity': ['case', ['boolean', ['get', 'off'], false], 0.3, 0.85],
+        },
+      }, beforeId);
+    }
     const relCase = (mine, other, unknown) => ['match', ['get', 'rel'], 'mine', mine, 'other', other, unknown];
     map.addLayer({
       id: 'signs', type: 'symbol', source: 'signs',
@@ -328,17 +346,43 @@ class SignStore {
       list.length = 5000;
     }
     const rank = { mine: 0, unknown: 10, other: 20 };
+    this._updateZones(list, map.getZoom());
     src.setData({
       type: 'FeatureCollection',
       features: list.map(({ s, pos, rel }) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [pos.lng, pos.lat] },
         properties: Object.assign({ icon: s.icon, title: s.title, rel, prio: rank[rel] + SIGN_PRIORITY[s.cat] },
+          s.mid ? { mid: s.mid } : null,
           this.decorate ? this.decorate(s) : null),
       })),
     });
   }
 }
+
+// Zonas līnijas redzamajām "apstāties/stāvēt aizliegts" zīmēm.
+SignStore.prototype._updateZones = function (list, zoom) {
+  const zsrc = this.map.getSource('sign-zones');
+  if (!zsrc) return;
+  const feats = [];
+  if (this.roads && this.roads.ready && zoom >= ZONE_MIN_ZOOM - 0.5) {
+    for (const { s, pos } of list) {
+      if (!s.value || !ZONE_SIGN.test(s.value)) continue;
+      if (s._zone === undefined) {
+        if (!this.roads.covers(pos.lat, pos.lng)) continue;
+        s._zone = this.roads.zone(pos.lat, pos.lng, s.face, !!s.zoneBoth) || null;
+      }
+      if (!s._zone) continue;
+      const extra = this.decorate ? this.decorate(s) : null;
+      feats.push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: s._zone.coords },
+        properties: { kind: /no-stopping/.test(s.value) ? 'stop' : 'park', side: s._zone.side, off: !!(extra && extra.off) },
+      });
+    }
+  }
+  zsrc.setData({ type: 'FeatureCollection', features: feats });
+};
 
 // Pārvērš mūsu SVG ikonu par attēla adresi (vienreiz katram veidam).
 const svgUrlCache = new Map();

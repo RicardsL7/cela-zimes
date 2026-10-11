@@ -23,7 +23,7 @@ function pbReader(buf) {
     skip(wire) {
       if (wire === 0) r.varint();
       else if (wire === 1) pos += 8;
-      else if (wire === 2) pos += r.varint();
+      else if (wire === 2) { const n = r.varint(); pos += n; }
       else if (wire === 5) pos += 4;
       else throw new Error('wire ' + wire);
     },
@@ -84,7 +84,15 @@ function decodeTile(buf) {
       }
       const props = {};
       for (let i = 0; i + 1 < tags.length; i += 2) props[keys[tags[i]]] = values[tags[i + 1]];
-      const points = [];
+      const points = [], coords = [];
+      { // visas virsotnes (arī laukumiem) — vajag zīmes rāmim foto
+        let x = 0, y = 0, i = 0;
+        while (i < geom.length) {
+          const cmd = geom[i] & 7, count = geom[i] >> 3; i++;
+          if (cmd === 7) continue;
+          for (let c = 0; c < count; c++) { x += zigzag(geom[i++]); y += zigzag(geom[i++]); coords.push([x, y]); }
+        }
+      }
       if (type === 1) { // punkti
         let x = 0, y = 0, i = 0;
         while (i < geom.length) {
@@ -94,7 +102,7 @@ function decodeTile(buf) {
           }
         }
       }
-      return { props, points };
+      return { props, points, coords };
     });
     layers[name] = { extent, features };
   }
@@ -208,6 +216,40 @@ async function fetchMapillaryDirectionsArea(w, s, e, n, token, valueCounts) {
   if (cur.length) groups.push(cur);
   const parts = await Promise.all(groups.map(g => fetchDirectionsBox(w, s, e, n, g, token, 0)));
   return parts.flat();
+}
+
+// ---------- Zīmes foto ----------
+// Mapillary zina, kurā foto un kurā vietā tajā zīme redzama. Izgriež zīmi kopā ar
+// plāksnītēm zem tās (laiks, bultas, attālums) — tā vadītājs var izlasīt laiku.
+function detectionBBox(b64) {
+  const layers = decodeTile(Uint8Array.from(atob(b64), c => c.charCodeAt(0)));
+  const L = Object.values(layers)[0];
+  if (!L || !L.features.length) return null;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const f of L.features) for (const [x, y] of f.coords) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  return x0 < x1 ? [x0 / L.extent, y0 / L.extent, x1 / L.extent, y1 / L.extent] : null;
+}
+const signPhotoCache = new Map();
+async function fetchSignPhoto(featureId, token) {
+  if (signPhotoCache.has(featureId)) return signPhotoCache.get(featureId);
+  const job = (async () => {
+    const H = { headers: { Authorization: 'OAuth ' + token } };
+    const dets = (await (await fetch(`https://graph.mapillary.com/${featureId}/detections?fields=image,geometry`, H)).json()).data || [];
+    // Labākais foto: kur zīme ir vislielākā (tuvākā, skaidrākā).
+    let best = null;
+    for (const d of dets.slice(0, 8)) {
+      const bb = d.geometry && detectionBBox(d.geometry);
+      if (!bb || !d.image) continue;
+      const area = (bb[2] - bb[0]) * (bb[3] - bb[1]);
+      if (!best || area > best.area) best = { area, bb, image: d.image.id };
+    }
+    if (!best) return null;
+    const im = await (await fetch(`https://graph.mapillary.com/${best.image}?fields=thumb_2048_url,thumb_1024_url`, H)).json();
+    const url = im.thumb_2048_url || im.thumb_1024_url;
+    return url ? { url, bb: best.bb, image: best.image } : null;
+  })().catch(() => null);
+  signPhotoCache.set(featureId, job);
+  return job;
 }
 
 // Mapillary zīmes atpazīst automātiski no foto un dažreiz kļūdās, piem.

@@ -125,7 +125,7 @@ function isDuplicate(lat, lng, cat, value) {
 }
 
 // sign: { cat, kind?, value?, title }; mlyValue: Mapillary zīmes kods (ja no Mapillary)
-function addSign(lat, lng, sign, mlyValue) {
+function addSign(lat, lng, sign, mlyValue, mlyId) {
   if (isDuplicate(lat, lng, sign.cat, mlyValue)) return null;
   const own = sign.kind ? sign : { kind: 'other' };
   const s = mlyValue
@@ -135,6 +135,8 @@ function addSign(lat, lng, sign, mlyValue) {
   if (sign.cat === 'speed') s.limit = Number(sign.value || (String(mlyValue).match(/limit-(\d+)/) || [])[1]) || null;
   if (mlyValue) { const f = faceCache.get(faceKey(mlyValue, lat, lng)); if (f != null) s.face = f; }
   if (mlyValue && /time-restrictions/.test(mlyValue)) timePlates.push({ lat, lng, done: false });
+  if (mlyValue && /two-way-traffic|both-directions/.test(mlyValue)) zonePlates.push({ lat, lng, done: false });
+  if (mlyId) s.mid = mlyId;
   signs.add(s);
   return s;
 }
@@ -317,6 +319,7 @@ function updateLimit() {
 // zīmēm kartē; ja pagrieziena zīmes Mapillary nav, to uzliek pati lietotne.
 const timeRules = [];
 const timePlates = [];          // Mapillary atrastās laika plāksnītes zem zīmēm
+const zonePlates = [];          // ↕ plāksnītes: zona abos virzienos no zīmes
 const seenTimeEls = new Set();
 const TURN_SIGN = {
   no_left_turn: [/no-left-turn/, 'regulatory--no-left-turn--g1'],
@@ -412,6 +415,11 @@ function attachTimes() {
     const s = signs.findNear(p.lat, p.lng, 4, x => x.value && /^(regulatory|warning)--/.test(x.value));
     if (s) { s.timePlate = true; p.done = true; changed = true; }
   }
+  for (const p of zonePlates) {
+    if (p.done) continue;
+    const s = signs.findNear(p.lat, p.lng, 4, x => x.value && /no-stopping|no-parking/.test(x.value));
+    if (s) { s.zoneBoth = true; s._zone = undefined; p.done = true; changed = true; }
+  }
   for (const r of timeRules) {
     if (r.done) continue;
     let found = 0;
@@ -469,6 +477,42 @@ function signTimeInfo(s) {
   return null;
 }
 
+// Zīmes foto no Mapillary: izgriež zīmi ar plāksnītēm zem tās.
+async function showSignPhoto(el, mid, popup) {
+  const box = document.createElement('div');
+  box.className = 'sign-photo loading';
+  box.textContent = 'Ielādē zīmes foto…';
+  el.appendChild(box);
+  const ph = await fetchSignPhoto(mid, state.mlyToken);
+  if (!ph) { box.textContent = 'Foto nav pieejams.'; box.classList.remove('loading'); return; }
+  const img = new Image();
+  img.onload = () => {
+    const W = img.naturalWidth, H = img.naturalHeight;
+    const [x0, y0, x1, y1] = ph.bb, w = x1 - x0, h = y1 - y0;
+    // Zīme + vieta zem tās plāksnītēm (laiks, bultas), nedaudz arī sānos.
+    const cx0 = Math.max(0, x0 - 0.7 * w), cx1 = Math.min(1, x1 + 0.7 * w);
+    const cy0 = Math.max(0, y0 - 0.35 * h), cy1 = Math.min(1, y1 + 2.6 * h);
+    const rw = (cx1 - cx0) * W, rh = (cy1 - cy0) * H;
+    const scale = Math.min(240 / rw, 280 / rh);
+    box.textContent = '';
+    box.classList.remove('loading');
+    box.style.width = Math.round(rw * scale) + 'px';
+    box.style.height = Math.round(rh * scale) + 'px';
+    img.style.width = Math.round(W * scale) + 'px';
+    img.style.left = Math.round(-cx0 * W * scale) + 'px';
+    img.style.top = Math.round(-cy0 * H * scale) + 'px';
+    box.appendChild(img);
+    const cap = document.createElement('div');
+    cap.className = 'sign-photo-cap';
+    cap.textContent = 'Foto: Mapillary — plāksnītes zem zīmes rāda laiku un zonu';
+    el.appendChild(cap);
+    popup && popup._update && popup._update();
+  };
+  img.onerror = () => { box.textContent = 'Foto neizdevās ielādēt.'; box.classList.remove('loading'); };
+  img.alt = 'Zīmes foto';
+  img.src = ph.url;
+}
+
 // ---------- Mapillary zīmes ----------
 const mlyIds = new Set();       // katru Mapillary zīmi pievieno tikai vienreiz
 const mlyTilesLoading = new Set();
@@ -492,7 +536,7 @@ async function loadMlyTiles(tiles) {
       if (mlyIds.has(z.id)) continue;
       mlyIds.add(z.id);
       if (!isPlausibleSign(z.value, z.lat, z.lng)) continue; // acīmredzamas atpazīšanas kļūdas
-      if (addSign(z.lat, z.lng, classifyMapillary(z.value), z.value)) added++;
+      if (addSign(z.lat, z.lng, classifyMapillary(z.value), z.value, z.id)) added++;
     }
   });
   if (added) {
@@ -1192,8 +1236,9 @@ async function init() {
     if (f.properties.info) {
       const i = document.createElement('div'); i.className = 'popup-time'; i.textContent = f.properties.info; el.appendChild(i);
     }
-    new maplibregl.Popup({ closeButton: false, offset: 18, maxWidth: '260px' })
+    const popup = new maplibregl.Popup({ closeButton: false, offset: 18, maxWidth: '270px' })
       .setLngLat(f.geometry.coordinates).setDOMContent(el).addTo(map);
+    if (f.properties.mid && state.mlyToken) showSignPhoto(el, f.properties.mid, popup);
   });
   map.on('mouseenter', 'signs', () => { map.getCanvas().style.cursor = 'pointer'; });
   map.on('mouseleave', 'signs', () => { map.getCanvas().style.cursor = ''; });
