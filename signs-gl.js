@@ -12,9 +12,9 @@ const SIGN_GRID = 0.01;      // telpiskā indeksa šūna grādos
 const SIGN_IMG_PX = 64;      // zīmju attēlu izmērs (pikseļi), rāda kā 32 px
 const ROUTE_CELL = 0.002;    // maršruta posmu indeksa šūna (~200 m)
 const ROUTE_NEAR_M = 28;     // cik tālu no maršruta ass zīme vēl ir "uz maršruta"
-const ROUTE_ANGLE = 50;
+const ROUTE_ANGLE = 50;      // cik grādu zīmes virziens drīkst atšķirties no maršruta
 const ZONE_SIGN = /no-stopping|no-parking/;  // zīmes, kurām rāda darbības zonu gar ceļu
-const ZONE_MIN_ZOOM = 15;      // cik grādu zīmes virziens drīkst atšķirties no maršruta
+const ZONE_MIN_ZOOM = 15;
 
 function angleDiff(a, b) {
   const d = Math.abs(a - b) % 360;

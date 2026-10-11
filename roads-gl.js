@@ -80,6 +80,9 @@ const roadIndex = {
     const line = this._walk(P, ahead, maxM, k, cos);
     if (both) line.unshift(...this._walk(P, behind, maxM, k, cos).reverse().slice(0, -1));
     if (line.length < 2) return null;
+    let len = 0;
+    for (let i = 1; i < line.length; i++) len += Math.hypot((line[i][0] - line[i - 1][0]) * k * cos, (line[i][1] - line[i - 1][1]) * k);
+    if (len < 8) return null;            // zīme tieši pie krustojuma — zonas līnija neko nepasaka
     // Zīmes puse attiecībā pret brauciena virzienu.
     const side = (near.right === fwd) ? 1 : -1;
     return { coords: line, side };
