@@ -7,7 +7,6 @@
 const OVERPASS_URLS = [
   'https://overpass-api.de/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
 ];
 const MIN_SIGN_ZOOM = 15;       // zīmes ielādē tikai pietuvinot
 const CELL = 0.01;              // ielādes režģa šūna grādos (~1 km)
@@ -39,6 +38,10 @@ const state = {
   seenNodes: new Set(),
   loadedCells: new Set(),
   loading: false,
+  osmRetryMs: 0,       // pauze pirms nākamā mēģinājuma, ja serveri neatbild
+  mlyToken: store.get('mlyToken', ''),
+  mlyTiles: new Set(),
+  counts: { osm: 0, mly: 0 },
 };
 
 // ---------- Karte ----------
@@ -66,16 +69,33 @@ function applyLayerVisibility() {
   document.getElementById('catList').classList.toggle('disabled', !state.signsOn);
 }
 
-function addSignMarker(lat, lng, sign) {
+// Vienas un tās pašas zīmes neliek divreiz (piem. no OSM un Mapillary).
+const placedGrid = new Map();
+function isDuplicate(lat, lng, cat) {
+  const gx = Math.round(lat / 0.0003), gy = Math.round(lng / 0.0005);
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+    for (const p of placedGrid.get((gx + i) + ':' + (gy + j)) || []) {
+      if (p.cat === cat && distM(p.lat, p.lng, lat, lng) < 20) return true;
+    }
+  }
+  const k = gx + ':' + gy;
+  if (!placedGrid.has(k)) placedGrid.set(k, []);
+  placedGrid.get(k).push({ lat, lng, cat });
+  return false;
+}
+
+function addSignMarker(lat, lng, sign, html) {
+  if (isDuplicate(lat, lng, sign.cat)) return false;
   const icon = L.divIcon({
     className: 'sign-icon',
-    html: signSvg(sign, 30),
+    html: html || signSvg(sign, 30),
     iconSize: [30, 30],
     iconAnchor: [15, 15],
   });
   L.marker([lat, lng], { icon, keyboard: false, title: sign.title })
     .bindTooltip(sign.title, { direction: 'top', offset: [0, -14] })
     .addTo(layers[sign.cat]);
+  return true;
 }
 
 // ---------- Datu ielāde no OpenStreetMap ----------
@@ -130,7 +150,7 @@ async function loadSignsForView() {
   const w = Math.min(...los) * CELL, e = (Math.max(...los) + 1) * CELL;
 
   state.loading = true;
-  setStatus('Ielādē ceļa zīmes… (var aizņemt līdz 20 s)');
+  if (!state.counts.osm) setStatus('Ielādē ceļa zīmes…');
   try {
     const data = await fetchOverpass(buildQuery(s.toFixed(4), w.toFixed(4), n.toFixed(4), e.toFixed(4)));
     let added = 0;
@@ -139,7 +159,7 @@ async function loadSignsForView() {
         if (state.seenNodes.has(el.id)) continue;
         state.seenNodes.add(el.id);
         const sign = classifyNode(el.tags);
-        if (sign) { addSignMarker(el.lat, el.lon, sign); added++; }
+        if (sign && addSignMarker(el.lat, el.lon, sign)) added++;
       } else if (el.type === 'way' && el.geometry && !state.ways.has(el.id)) {
         const limit = parseMaxspeed(el.tags.maxspeed);
         if (!limit) continue;
@@ -149,12 +169,18 @@ async function loadSignsForView() {
       }
     }
     missing.forEach(c => state.loadedCells.add(c));
+    state.osmRetryMs = 0;
+    state.counts.osm += added;
     setTimeout(loadSignsForView, 100); // ja karte pa to laiku pārvietota
-    setStatus(added ? `Atrastas ${added} jaunas zīmes.` : 'Šajā apkārtnē jaunu zīmju nav.');
+    showCounts();
     updateLimit();
   } catch (err) {
     console.error(err);
-    setStatus('Neizdevās ielādēt zīmes. Pārbaudi internetu un pakusties pa karti, lai mēģinātu vēlreiz.');
+    // Serveri pārslogoti: mēģina vēlreiz pēc 10, 20, 40… sekundēm (maks. 2 min).
+    state.osmRetryMs = Math.min(120000, (state.osmRetryMs || 5000) * 2);
+    setStatus(`OpenStreetMap serveri ir pārslogoti. Mēģināšu vēlreiz pēc ${Math.round(state.osmRetryMs / 1000)} s.` +
+      (state.mlyToken ? '' : ' Pievieno Mapillary atslēgu iestatījumos, lai zīmes ielādētos droši.'));
+    setTimeout(loadSignsForView, state.osmRetryMs);
   } finally {
     state.loading = false;
   }
@@ -169,8 +195,62 @@ function addWaySpeedSigns(pts, limit) {
   const tooClose = placedSpeed.some(p => p.limit === limit && distM(p.lat, p.lng, at[0], at[1]) < 250);
   if (tooClose) return 0;
   placedSpeed.push({ lat: at[0], lng: at[1], limit });
-  addSignMarker(at[0], at[1], { cat: 'speed', kind: 'speed', value: limit, title: `Ātruma ierobežojums ${limit} km/h` });
-  return 1;
+  return addSignMarker(at[0], at[1], { cat: 'speed', kind: 'speed', value: limit, title: `Ātruma ierobežojums ${limit} km/h` }) ? 1 : 0;
+}
+
+// ---------- Mapillary zīmes ----------
+let mlyLoading = false;
+async function loadMapillaryForView() {
+  if (!state.mlyToken || mlyLoading || map.getZoom() < MIN_SIGN_ZOOM) return;
+  const b = map.getBounds().pad(0.2);
+  const tiles = tilesForBounds(b.getSouth(), b.getWest(), b.getNorth(), b.getEast())
+    .filter(([x, y]) => !state.mlyTiles.has(x + ':' + y));
+  if (!tiles.length || tiles.length > 16) return;
+  mlyLoading = true;
+  try {
+    const results = await Promise.allSettled(tiles.map(([x, y]) => fetchMapillaryTile(x, y, state.mlyToken)));
+    let added = 0;
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        if (r.reason && r.reason.badToken) {
+          setStatus('Mapillary atslēga nav derīga. Pārbaudi to iestatījumos.');
+          state.mlyToken = '';
+        }
+        return;
+      }
+      state.mlyTiles.add(tiles[i][0] + ':' + tiles[i][1]);
+      for (const s of r.value) {
+        const sign = classifyMapillary(s.value);
+        const html = `<img class="mly-img" src="${MLY_ICON_URL}${encodeURIComponent(s.value)}.svg" width="30" height="30" alt="">`;
+        if (addSignMarker(s.lat, s.lng, sign, html)) added++;
+      }
+    });
+    state.counts.mly += added;
+    showCounts();
+  } finally {
+    mlyLoading = false;
+  }
+  setTimeout(loadMapillaryForView, 100); // ja karte pa to laiku pārvietota
+}
+
+// Ja Mapillary nav attēla konkrētai zīmei, rāda vienkāršu ikonu.
+document.addEventListener('error', e => {
+  if (e.target && e.target.classList && e.target.classList.contains('mly-img')) {
+    e.target.outerHTML = signSvg({ kind: 'other' }, 30);
+  }
+}, true);
+
+function showCounts() {
+  if (state.routeActive) return;
+  const parts = [];
+  if (state.counts.mly) parts.push(`${state.counts.mly} no Mapillary`);
+  if (state.counts.osm) parts.push(`${state.counts.osm} no OpenStreetMap`);
+  if (parts.length) setStatus('Zīmes: ' + parts.join(', ') + '.');
+}
+
+function loadAllForView() {
+  loadSignsForView();
+  loadMapillaryForView();
 }
 
 // ---------- Ģeometrija (metri) ----------
@@ -417,10 +497,32 @@ map.on('click', e => {
   if (state.testMode) { state.follow = false; setMe(e.latlng.lat, e.latlng.lng, 55); }
 });
 let moveTimer;
-map.on('moveend', () => { clearTimeout(moveTimer); moveTimer = setTimeout(loadSignsForView, 500); });
+map.on('moveend', () => { clearTimeout(moveTimer); moveTimer = setTimeout(loadAllForView, 500); });
+
+// Mapillary atslēga (glabājas tikai šajā telefonā/pārlūkā)
+const tokenInput = document.getElementById('mlyToken');
+tokenInput.value = state.mlyToken;
+function updateTokenNote() {
+  document.getElementById('mlyNote').textContent = state.mlyToken
+    ? 'Atslēga saglabāta šajā ierīcē. Mapillary zīmes ir ieslēgtas.'
+    : 'Bez atslēgas rāda tikai OpenStreetMap zīmes.';
+}
+document.getElementById('mlySave').addEventListener('click', () => {
+  const v = tokenInput.value.trim();
+  if (v && !v.startsWith('MLY|')) {
+    document.getElementById('mlyNote').textContent = 'Atslēgai jāsākas ar MLY| — nokopē "Client Token" no Mapillary.';
+    return;
+  }
+  state.mlyToken = v;
+  store.set('mlyToken', v);
+  state.mlyTiles.clear();
+  updateTokenNote();
+  loadMapillaryForView();
+});
+updateTokenNote();
 
 // ---------- Starts ----------
 buildCategoryList();
 applyLayerVisibility();
 startGps();
-loadSignsForView();
+loadAllForView();

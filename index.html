@@ -81,11 +81,20 @@
       <span>Testa režīms (klikšķis uz kartes = mana vieta)</span>
       <input type="checkbox" id="testSwitch" class="switch">
     </label>
-    <p class="fine">Dati: © OpenStreetMap līdzautori. Zīmes rāda tikai tad, ja karte ir pietuvināta.</p>
+    <div class="token-box">
+      <label for="mlyToken">Mapillary atslēga (Client Token)</label>
+      <div class="token-row">
+        <input id="mlyToken" type="password" placeholder="MLY|…" autocomplete="off" spellcheck="false">
+        <button id="mlySave" type="button" class="save-btn">Saglabāt</button>
+      </div>
+      <p id="mlyNote" class="fine"></p>
+    </div>
+    <p class="fine">Dati: © OpenStreetMap līdzautori, © Mapillary. Zīmes rāda tikai tad, ja karte ir pietuvināta.</p>
   </section>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="signs.js"></script>
+  <script src="mapillary.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
