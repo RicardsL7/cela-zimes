@@ -2,9 +2,12 @@
 // Karte: Leaflet + CARTO. Zīmes: OpenStreetMap caur Overpass API.
 // Meklēšana: Nominatim. Maršruts: OSRM.
 
+// Vairāki bezmaksas serveri: jautājam visiem reizē un ņemam ātrāko atbildi,
+// jo kāds no tiem bieži ir pārslogots.
 const OVERPASS_URLS = [
   'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
 ];
 const MIN_SIGN_ZOOM = 15;       // zīmes ielādē tikai pietuvinot
 const CELL = 0.01;              // ielādes režģa šūna grādos (~1 km)
@@ -39,19 +42,12 @@ const state = {
 };
 
 // ---------- Karte ----------
-const dark = window.matchMedia('(prefers-color-scheme: dark)');
+// OpenStreetMap karte. Tumšajā režīmā to aptumšo ar CSS (style.css).
 const map = L.map('map', { zoomControl: false, attributionControl: true }).setView(START, 16);
-let baseLayer;
-function setBase() {
-  if (baseLayer) map.removeLayer(baseLayer);
-  const style = dark.matches ? 'dark_all' : 'rastertiles/voyager';
-  baseLayer = L.tileLayer(`https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png`, {
-    maxZoom: 19, subdomains: 'abcd',
-    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · © <a href="https://carto.com/attributions">CARTO</a>',
-  }).addTo(map);
-}
-setBase();
-dark.addEventListener?.('change', setBase);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+}).addTo(map);
 
 // Katrai kategorijai savs slānis, lai tās var ieslēgt/izslēgt atsevišķi.
 const layers = Object.fromEntries(Object.keys(SIGN_CATEGORIES).map(k => [k, L.layerGroup()]));
@@ -107,15 +103,15 @@ out tags geom;`;
 }
 
 async function fetchOverpass(query) {
-  let lastErr;
-  for (const url of OVERPASS_URLS) {
-    try {
-      const res = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(query) });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      return await res.json();
-    } catch (err) { lastErr = err; }
-  }
-  throw lastErr;
+  const controllers = OVERPASS_URLS.map(() => new AbortController());
+  const attempts = OVERPASS_URLS.map(async (url, i) => {
+    const res = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(query), signal: controllers[i].signal });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    controllers.forEach((c, j) => { if (j !== i) c.abort(); }); // pārējos vairs nevajag
+    return json;
+  });
+  return Promise.any(attempts);
 }
 
 async function loadSignsForView() {
@@ -134,7 +130,7 @@ async function loadSignsForView() {
   const w = Math.min(...los) * CELL, e = (Math.max(...los) + 1) * CELL;
 
   state.loading = true;
-  setStatus('Ielādē ceļa zīmes…');
+  setStatus('Ielādē ceļa zīmes… (var aizņemt līdz 20 s)');
   try {
     const data = await fetchOverpass(buildQuery(s.toFixed(4), w.toFixed(4), n.toFixed(4), e.toFixed(4)));
     let added = 0;
@@ -153,6 +149,7 @@ async function loadSignsForView() {
       }
     }
     missing.forEach(c => state.loadedCells.add(c));
+    setTimeout(loadSignsForView, 100); // ja karte pa to laiku pārvietota
     setStatus(added ? `Atrastas ${added} jaunas zīmes.` : 'Šajā apkārtnē jaunu zīmju nav.');
     updateLimit();
   } catch (err) {

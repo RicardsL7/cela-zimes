@@ -29,6 +29,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg);
@@ -166,6 +167,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .route-line { stroke: var(--route); }
 .leaflet-control-attribution { font-size: 10px; }
+@media (prefers-color-scheme: dark) {
+  .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9); }
+}
 .leaflet-bottom.leaflet-right { margin-bottom: env(safe-area-inset-bottom, 0px); }
 
 @media (prefers-reduced-motion: reduce) {

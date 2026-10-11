@@ -20,7 +20,7 @@ Lai apturētu serveri: terminālī nospied `Ctrl + C`.
 
 | Daļa | No kurienes |
 |---|---|
-| Karte | CARTO karšu flīzes (bezmaksas) |
+| Karte | OpenStreetMap |
 | Ceļa zīmes un ātruma ierobežojumi | OpenStreetMap, caur Overpass API |
 | Adrešu meklēšana | Nominatim (OpenStreetMap) |
 | Maršruts | OSRM |
@@ -35,6 +35,6 @@ Faili:
 
 - Zīmes rāda tikai tās, kas ir ievadītas OpenStreetMap. Rīgā to ir daudz,
   laukos mazāk. Ātruma ierobežojumi nāk no ceļu datiem.
-- Bezmaksas serveri (Overpass, OSRM, Nominatim) domāti nelielai lietošanai.
+- Bezmaksas serveri (OpenStreetMap karte, Overpass, OSRM, Nominatim) domāti nelielai lietošanai.
   Ja lietotni lietos daudz cilvēku, vajadzēs savu serveri vai maksas pakalpojumu.
 - Telefonā GPS strādā tikai caur `https://`. Vienkāršākais veids: GitHub Pages.
