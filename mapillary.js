@@ -189,11 +189,30 @@ async function fetchMapillaryDirectionsArea(w, s, e, n, token, valueCounts) {
   return parts.flat();
 }
 
+// Mapillary zīmes atpazīst automātiski no foto un dažreiz kļūdās, piem.
+// svara zīmi "3,5 t" nolasa kā ātrumu 35. Ārpus ASV ātruma ierobežojumi
+// beidzas ar 0 (izņemot 5 km/h), tāpēc 15, 25, 35… šeit ir gandrīz droši kļūdas.
+function inUSA(lat, lng) {
+  return (lat > 24 && lat < 50 && lng > -125 && lng < -66) ||   // kontinentālā daļa
+    (lat > 51 && lat < 72 && lng > -170 && lng < -129) ||        // Aļaska
+    (lat > 18 && lat < 23 && lng > -161 && lng < -154);          // Havaju salas
+}
+function isPlausibleSign(value, lat, lng) {
+  const m = value.match(/maximum-speed-limit-(\d+)/);
+  if (!m || inUSA(lat, lng)) return true;
+  const n = parseInt(m[1], 10);
+  if (value.startsWith('complementary')) return false; // papildzīmes ar "ātrumu" — parasti kļūdas
+  return n === 5 || n % 10 === 0;
+}
+
 // Mapillary zīmes kods → mūsu kategorija.
 function classifyMapillary(value) {
   const v = value.toLowerCase();
   const speed = v.match(/maximum-speed-limit-(\d{1,3})(?!\d)/);
   const pretty = v.replace(/--g\d+$/, '').replace(/^(regulatory|warning|information|complementary)--/, '').replace(/-/g, ' ');
+  // 5 km/h ir reta zīme (iebrauktuves, pagalmi, stāvvietas): rāda kā mazāk svarīgu,
+  // lai tā neaizsegtu galvenās zīmes un to var paslēpt ar "Citas zīmes".
+  if (speed && v.startsWith('regulatory') && speed[1] === '5') return { cat: 'other', title: 'Ātruma ierobežojums 5 km/h (parasti iebrauktuvē vai pagalmā)' };
   if (speed && v.startsWith('regulatory')) return { cat: 'speed', title: `Ātruma ierobežojums ${speed[1]} km/h` };
   if (/--stop--|stop-here/.test(v)) return { cat: 'priority', title: 'STOP — apstāties obligāti' };
   if (/--yield--|give-way/.test(v)) return { cat: 'priority', title: 'Dodiet ceļu' };

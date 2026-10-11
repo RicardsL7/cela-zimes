@@ -218,6 +218,7 @@ async function loadMapillaryForView() {
       }
       state.mlyTiles.add(tiles[i][0] + ':' + tiles[i][1]);
       for (const s of r.value) {
+        if (!isPlausibleSign(s.value, s.lat, s.lng)) continue; // acīmredzamas atpazīšanas kļūdas
         const sign = classifyMapillary(s.value);
         const obj = addSignMarker(s.lat, s.lng, sign, MLY_ICON_URL + encodeURIComponent(s.value) + '.svg');
         if (obj) { added++; obj.value = s.value; }
