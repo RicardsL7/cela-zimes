@@ -7,25 +7,34 @@
   <title>Ceļa Zīmes</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style-gl.css">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
 
-  <!-- Meklēšana -->
-  <header class="topbar">
+  <!-- Galamērķa meklēšana -->
+  <header class="topbar" id="topbar">
     <form id="searchForm" class="search" autocomplete="off">
-      <label for="searchInput" class="sr-only">Kur brauksi?</label>
-      <input id="searchInput" type="search" placeholder="Kur brauksi?" enterkeyhint="search">
-      <button type="submit" class="search-btn" aria-label="Meklēt">
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      <svg class="search-pin" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 2.5c-3.9 0-7 3-7 6.8C5 14.5 12 21.5 12 21.5s7-7 7-12.2c0-3.8-3.1-6.8-7-6.8Z" fill="currentColor"/><circle cx="12" cy="9.4" r="2.6" fill="#fff"/></svg>
+      <label for="searchInput" class="sr-only">Galamērķis</label>
+      <input id="searchInput" type="search" placeholder="Kur brauksi? Ievadi galamērķi" enterkeyhint="search">
+      <button type="button" id="clearSearch" class="icon-btn" aria-label="Notīrīt" hidden>
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
       </button>
     </form>
     <ul id="results" class="results" hidden></ul>
   </header>
+
+  <!-- Nākamais pagrieziens (navigācijas laikā) -->
+  <section id="navBanner" class="nav-banner" hidden aria-live="polite">
+    <div class="nav-icon" id="navIcon"></div>
+    <div class="nav-text">
+      <div class="nav-dist" id="navDist">300 m</div>
+      <div class="nav-instr" id="navInstr">Pagriezies pa labi</div>
+    </div>
+  </section>
 
   <!-- Ielādes indikators -->
   <div id="loader" class="loader" role="status" aria-live="polite">
@@ -44,7 +53,7 @@
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5v6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16.6" r="1.3" fill="currentColor"/></svg>
       <span class="fab-label" id="toggleSignsLabel">Zīmes</span>
     </button>
-    <button id="centerBtn" class="fab" title="Centrēt uz manu atrašanās vietu">
+    <button id="centerBtn" class="fab" title="Sekot man">
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 3 19 20l-7-4-7 4Z" fill="currentColor"/></svg>
       <span class="fab-label">Es</span>
     </button>
@@ -54,19 +63,39 @@
     </button>
   </nav>
 
+  <!-- Maršruta priekšskatījums -->
+  <section id="routeCard" class="route-card" hidden>
+    <div class="route-head">
+      <div class="route-dest" id="routeDest">Galamērķis</div>
+      <div class="route-sub" id="routeSub">Adrese</div>
+    </div>
+    <div class="route-stats">
+      <span class="route-time" id="routeTime">12 min</span>
+      <span class="route-meta" id="routeMeta">5,3 km · ieradīsies 17:42</span>
+    </div>
+    <div class="route-actions">
+      <button id="cancelRoute" class="btn ghost" type="button">Atcelt</button>
+      <button id="startNav" class="btn primary" type="button">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3 19 20l-7-4-7 4Z" fill="currentColor"/></svg>
+        Sākt
+      </button>
+    </div>
+  </section>
+
   <!-- Apakšējā josla -->
-  <footer class="bottombar">
+  <footer class="bottombar" id="bottombar">
     <div class="speed" id="speedBox">
       <span class="speed-num" id="speedValue">–</span>
       <span class="speed-unit">km/h</span>
     </div>
-    <div class="status">
-      <div id="routeInfo" class="route-info" hidden>
-        <span id="routeText"></span>
-        <button id="clearRoute" class="link-btn">Atcelt</button>
-      </div>
+    <div class="status" id="statusBox">
       <p id="statusText" class="status-text">Meklē GPS…</p>
     </div>
+    <div class="eta" id="etaBox" hidden>
+      <div class="eta-time" id="etaTime">17:42</div>
+      <div class="eta-meta" id="etaMeta">12 min · 5,3 km</div>
+    </div>
+    <button id="endNav" class="btn danger small" type="button" hidden>Beigt</button>
   </footer>
 
   <!-- Iestatījumu panelis -->
@@ -85,7 +114,7 @@
       <input type="checkbox" id="warnSwitch" class="switch" checked>
     </label>
     <label class="row">
-      <span>Testa režīms (klikšķis uz kartes = mana vieta)</span>
+      <span>Testa režīms (klikšķis uz kartes = mana vieta; ar maršrutu — simulēts brauciens)</span>
       <input type="checkbox" id="testSwitch" class="switch">
     </label>
     <label class="row">
@@ -104,17 +133,16 @@
       </div>
       <p id="mlyNote" class="fine"></p>
     </div>
-    <p class="fine">Dati: © OpenStreetMap līdzautori, © Mapillary. Zīmes rāda tikai tad, ja karte ir pietuvināta.</p>
+    <p class="fine">Dati: © OpenStreetMap līdzautori, © Mapillary, © OpenFreeMap. Maršruti: OSRM. Meklēšana: Photon, Nominatim.</p>
   </section>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
-  <script src="basemap.js"></script>
   <script src="signs.js"></script>
   <script src="mapillary.js"></script>
-  <script src="roads.js"></script>
-  <script src="signlayer.js"></script>
-  <script src="app.js"></script>
+  <script src="roads-gl.js"></script>
+  <script src="basemap-gl.js"></script>
+  <script src="signs-gl.js"></script>
+  <script src="nav.js"></script>
+  <script src="app-gl.js"></script>
 </body>
 </html>

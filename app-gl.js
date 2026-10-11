@@ -317,7 +317,7 @@ async function loadDirectionsNearMe() {
       if (s.value && s.face == null) counts.set(s.value, (counts.get(s.value) || 0) + 1);
     });
     if (!counts.size) return;
-    setBusy('dir', 'Nosaka zīmju virzienus…');
+    if (!state.nav.active) setBusy('dir', 'Nosaka zīmju virzienus…'); // braucot — klusi fonā
     const found = await fetchMapillaryDirectionsArea(lng - dLng, lat - dLat, lng + dLng, lat + dLat, state.mlyToken, counts);
     let matched = 0;
     for (const f of found) {
@@ -575,12 +575,14 @@ function startNav() {
   $('etaBox').hidden = false;
   $('endNav').hidden = false;
   state.follow = true;
+  signs.setDriveMode(true);
   if (state.testMode) startSimulation();
   else if (state.me) { updateNav(); followCamera(1200); }
 }
 
 function endNav() {
   stopSimulation();
+  signs.setDriveMode(false);
   state.nav = { dest: null, route: null, active: false, offCount: 0, lastReroute: 0 };
   drawRoute(null);
   if (destMarker) { destMarker.remove(); destMarker = null; }

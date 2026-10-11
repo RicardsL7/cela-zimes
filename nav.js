@@ -3,7 +3,7 @@
 const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving/';
 
 function navDist(m) {
-  if (m >= 1000) return (m / 1000).toLocaleString('lv-LV', { maximumFractionDigits: m >= 10000 ? 0 : 1 }) + ' km';
+  if (m >= 975) return (m / 1000).toLocaleString('lv-LV', { maximumFractionDigits: m >= 10000 ? 0 : 1 }) + ' km';
   if (m >= 100) return Math.round(m / 50) * 50 + ' m';
   return Math.max(10, Math.round(m / 10) * 10) + ' m';
 }

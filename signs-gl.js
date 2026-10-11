@@ -6,6 +6,7 @@
 const SIGN_PRIORITY = { speed: 0, priority: 1, camera: 2, rail: 3, signals: 4, calming: 5, crossing: 6, other: 7 };
 const SIGN_GRID = 0.01;      // telpiskā indeksa šūna grādos
 const SIGN_IMG_PX = 64;      // zīmju attēlu izmērs (pikseļi), rāda kā 32 px
+const DRIVE_HIDE = /parking|stopping|standing|bus-stop|taxi|information--/;
 
 class SignStore {
   constructor(map) {
@@ -17,6 +18,7 @@ class SignStore {
     this.hideOpposite = false;
     this.roads = null;       // roadIndex vai null
     this.enabled = true;
+    this.driveMode = false;  // navigācijas laikā: tikai braucējam svarīgās zīmes
     this.iconUrl = new Map(); // attēla id -> adrese
     this.loading = new Set();
     this._timer = null;
@@ -55,6 +57,7 @@ class SignStore {
   setHeading(deg) { this.heading = deg; this.refresh(); }
   setHideOpposite(v) { this.hideOpposite = v; this.refresh(); }
   setEnabled(v) { this.enabled = v; this.refresh(); }
+  setDriveMode(v) { this.driveMode = v; this.refresh(); }
   setRoads(idx) {
     this.roads = idx;
     for (const list of this.grid.values()) for (const s of list) s._snap = undefined;
@@ -183,7 +186,9 @@ class SignStore {
         pos = s._snap;
       }
       const rel = this.relation(s);
-      if (rel === 'other' && this.hideOpposite) return;
+      if (rel === 'other' && (this.hideOpposite || this.driveMode)) return;
+      // Braucot stāvēšanas/apstāšanās zīmes tikai traucē — tās paslēpj.
+      if (this.driveMode && s.value && DRIVE_HIDE.test(s.value)) return;
       list.push({ s, pos, rel });
     });
     // Ja zīmju ir ļoti daudz, ņem tās, kas tuvāk centram.
