@@ -27,6 +27,12 @@
     <ul id="results" class="results" hidden></ul>
   </header>
 
+  <!-- Ielādes indikators -->
+  <div id="loader" class="loader" role="status" aria-live="polite">
+    <span class="loader-spin" aria-hidden="true"></span>
+    <span id="loaderText">Ielādē zīmes…</span>
+  </div>
+
   <!-- Pašreizējais ātruma ierobežojums -->
   <div id="limitBadge" class="limit-badge" hidden aria-live="polite">
     <span id="limitValue">50</span>
@@ -107,6 +113,7 @@
   <script src="basemap.js"></script>
   <script src="signs.js"></script>
   <script src="mapillary.js"></script>
+  <script src="roads.js"></script>
   <script src="signlayer.js"></script>
   <script src="app.js"></script>
 </body>

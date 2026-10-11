@@ -15,6 +15,14 @@ const SignCanvasLayer = L.Layer.extend({
     this._frame = null;
     this._heading = null;      // braukšanas virziens (grādi) vai null
     this._hideOpposite = false;
+    this._roads = null;        // ceļu indekss (roads.js) vai null, ja to nelieto
+  },
+
+  // Ieslēdz zīmju piesaisti ceļiem (tikai vektoru kartei).
+  setRoads(idx) {
+    this._roads = idx;
+    if (!idx) for (const list of this._grid.values()) for (const s of list) s._snap = undefined;
+    this.redraw();
   },
 
   onAdd(map) {
@@ -24,12 +32,13 @@ const SignCanvasLayer = L.Layer.extend({
       pane.style.zIndex = 450;          // virs ceļiem un maršruta, zem manas atrašanās vietas
       pane.style.pointerEvents = 'none';
     }
-    this._canvas = L.DomUtil.create('canvas', 'sign-canvas');
+    this._canvas = L.DomUtil.create('canvas', 'sign-canvas leaflet-zoom-animated');
     map.getPane('signs').appendChild(this._canvas);
     this._ctx = this._canvas.getContext('2d');
     map.on('move', this.redraw, this);
     map.on('resize', this._resize, this);
     map.on('zoom zoomend viewreset', this.redraw, this);
+    map.on('zoomanim', this._onZoomAnim, this);
     this._resize();
   },
 
@@ -37,6 +46,7 @@ const SignCanvasLayer = L.Layer.extend({
     map.off('move', this.redraw, this);
     map.off('resize', this._resize, this);
     map.off('zoom zoomend viewreset', this.redraw, this);
+    map.off('zoomanim', this._onZoomAnim, this);
     this._canvas.remove();
     this._drawn = [];
   },
@@ -117,6 +127,17 @@ const SignCanvasLayer = L.Layer.extend({
     ctx.stroke();
   },
 
+  // Tālummaiņas animācijas laikā zīmes palielinās/samazinās kopā ar karti
+  // (tāpat kā Leaflet savos slāņos), nevis lec pēc animācijas beigām.
+  _onZoomAnim(e) {
+    if (!this._center) return;
+    const map = this._map, scale = map.getZoomScale(e.zoom, this._zoom);
+    const offset = map.getSize().multiplyBy(0.5).multiplyBy(-scale)
+      .add(map.project(this._center, e.zoom))
+      .subtract(map._getNewPixelOrigin(e.center, e.zoom));
+    L.DomUtil.setTransform(this._canvas, offset, scale);
+  },
+
   _resize() {
     const size = this._map.getSize(), dpr = window.devicePixelRatio || 1;
     this._canvas.width = size.x * dpr;
@@ -146,6 +167,9 @@ const SignCanvasLayer = L.Layer.extend({
     if (!map) return;
     const ctx = this._ctx, dpr = this._dpr || 1;
     L.DomUtil.setPosition(this._canvas, map.containerPointToLayerPoint([0, 0]));
+    this._center = map.getCenter(); this._zoom = map.getZoom();
+    const now = performance.now();
+    let fading = false;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, this._canvas.width, this._canvas.height);
     this._drawn = [];
@@ -176,7 +200,17 @@ const SignCanvasLayer = L.Layer.extend({
     const taken = new Set();
     const half = size / 2;
     for (const s of shown) {
-      const p = map.latLngToContainerPoint([s.lat, s.lng]);
+      // Mapillary zīmes piesien ceļam; kamēr ceļi vēl nav zināmi, zīmi nerāda.
+      let pos = s;
+      if (this._roads && s.value) {
+        if (s._snap === undefined) {
+          if (!this._roads.ready || !this._roads.covers(s.lat, s.lng)) continue;
+          s._snap = this._roads.snap(s.lat, s.lng) || null;
+        }
+        if (!s._snap) continue; // tālu no ceļa (ūdenī, parkā u.c.)
+        pos = s._snap;
+      }
+      const p = map.latLngToContainerPoint([pos.lat, pos.lng]);
       if (cell) {
         const key = Math.floor(p.x / cell) + ':' + Math.floor(p.y / cell);
         if (taken.has(key)) continue;
@@ -187,12 +221,17 @@ const SignCanvasLayer = L.Layer.extend({
       const other = s._rel === 'other';
       const sz = s._rel === 'mine' ? size * 1.15 : other ? size * 0.75 : size;
       const h = sz / 2;
-      ctx.globalAlpha = other ? 0.35 : 1;
+      // Maiga parādīšanās (0,35 s), kad zīme parādās pirmo reizi.
+      if (s._born === undefined) s._born = now;
+      const appear = Math.min(1, (now - s._born) / 350);
+      if (appear < 1) fading = true;
+      ctx.globalAlpha = (other ? 0.35 : 1) * appear;
       if (s.face != null) this._drawPointer(ctx, p, h, s.face, s._rel);
       try { ctx.drawImage(img, p.x - h, p.y - h, sz, sz); } catch { ctx.globalAlpha = 1; continue; }
       ctx.globalAlpha = 1;
       this._drawn.push({ x: p.x, y: p.y, r: h, sign: s });
     }
+    if (fading) this.redraw(); // turpina, kamēr parādīšanās animācija beidzas
   },
 });
 

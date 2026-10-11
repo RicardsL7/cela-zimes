@@ -67,6 +67,7 @@ async function setBasemap(map, choice) {
   if (theme === 'classic') {
     baseLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: OSM_ATTRIBUTION });
     baseLayer.addTo(map);
+    window.dispatchEvent(new CustomEvent('basemap-change', { detail: { vector: false } }));
     return theme;
   }
 
@@ -91,5 +92,9 @@ async function setBasemap(map, choice) {
     refreshExpiredTiles: false,
   });
   baseLayer.addTo(map);
+  // Paziņo lietotnei, kad kartes dati (arī ceļi) ir ielādēti.
+  const gl = baseLayer.getMaplibreMap();
+  window.dispatchEvent(new CustomEvent('basemap-change', { detail: { vector: true } }));
+  gl.on('idle', () => window.dispatchEvent(new CustomEvent('basemap-idle', { detail: gl })));
   return theme;
 }

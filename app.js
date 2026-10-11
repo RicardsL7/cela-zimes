@@ -48,7 +48,10 @@ const state = {
 
 // ---------- Karte ----------
 // Pamatne (krāsaina vektoru karte vai klasiskā) nāk no basemap.js.
-const map = L.map('map', { zoomControl: false, attributionControl: true, maxZoom: 19 }).setView(START, 16);
+const map = L.map('map', {
+  zoomControl: false, attributionControl: true, maxZoom: 19,
+  zoomSnap: 0.5, wheelPxPerZoomLevel: 90, // gludāka tālummaiņa ar peli/pirkstiem
+}).setView(START, 16);
 state.basemap = store.get('basemap', 'auto');
 setBasemap(map, state.basemap);
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
@@ -57,6 +60,22 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', (
 
 // Visas zīmes vienā ātrā canvas slānī (signlayer.js).
 const signLayer = new SignCanvasLayer();
+
+// Zīmju piesaiste ceļiem: ceļus ņem no vektoru kartes, kad tā ir ielādēta.
+window.addEventListener('basemap-change', e => {
+  roadIndex.ready = false; roadIndex.coverage = null;
+  signLayer.setRoads(e.detail.vector ? roadIndex : null);
+});
+window.addEventListener('basemap-idle', e => { if (roadIndex.rebuild(e.detail)) signLayer.redraw(); });
+
+// ---------- Ielādes indikators ----------
+const busy = new Map(); // darbs -> teksts
+function setBusy(key, text) {
+  if (text) busy.set(key, text); else busy.delete(key);
+  const el = document.getElementById('loader');
+  el.classList.toggle('show', busy.size > 0);
+  if (busy.size) document.getElementById('loaderText').textContent = [...busy.values()].pop();
+}
 
 function applyLayerVisibility() {
   if (state.signsOn && !map.hasLayer(signLayer)) signLayer.addTo(map);
@@ -146,7 +165,7 @@ async function loadSignsForView() {
   const w = Math.min(...los) * CELL, e = (Math.max(...los) + 1) * CELL;
 
   state.loading = true;
-  if (!state.counts.osm) setStatus('Ielādē ceļa zīmes…');
+  setBusy('osm', 'Ielādē ceļa zīmes…');
   try {
     const data = await fetchOverpass(buildQuery(s.toFixed(4), w.toFixed(4), n.toFixed(4), e.toFixed(4)));
     let added = 0;
@@ -181,6 +200,7 @@ async function loadSignsForView() {
     setTimeout(loadSignsForView, state.osmRetryMs);
   } finally {
     state.loading = false;
+    setBusy('osm', null);
   }
 }
 
@@ -205,6 +225,7 @@ async function loadMapillaryForView() {
     .filter(([x, y]) => !state.mlyTiles.has(x + ':' + y));
   if (!tiles.length || tiles.length > 16) return;
   mlyLoading = true;
+  setBusy('mly', 'Ielādē zīmes…');
   try {
     const results = await Promise.allSettled(tiles.map(([x, y]) => fetchMapillaryTile(x, y, state.mlyToken)));
     let added = 0;
@@ -230,6 +251,7 @@ async function loadMapillaryForView() {
     if (added) { dirCenter = null; loadDirectionsNearMe(); }
   } finally {
     mlyLoading = false;
+    setBusy('mly', null);
   }
   setTimeout(loadMapillaryForView, 100); // ja karte pa to laiku pārvietota
 }
@@ -243,6 +265,7 @@ async function loadDirectionsNearMe() {
   if (dirCenter && distM(dirCenter[0], dirCenter[1], lat, lng) < 150) return;
   dirLoading = true;
   dirCenter = [lat, lng];
+  setBusy('dir', 'Nosaka zīmju virzienus…');
   try {
     const dLat = 0.003, dLng = 0.003 / Math.cos(lat * Math.PI / 180);
     // Kuri Mapillary zīmju veidi ir šajā apgabalā un cik to ir.
@@ -263,6 +286,7 @@ async function loadDirectionsNearMe() {
     dirCenter = null; // mēģinās vēlreiz nākamajā GPS atjauninājumā
   } finally {
     dirLoading = false;
+    setBusy('dir', null);
   }
 }
 
@@ -584,7 +608,8 @@ map.on('click', e => {
   const hit = state.signsOn && map.hasLayer(signLayer) ? signLayer.hitTest(e.containerPoint) : null;
   if (hit) {
     if (signTip) map.removeLayer(signTip);
-    signTip = L.tooltip({ direction: 'top', offset: [0, -16] }).setLatLng([hit.lat, hit.lng]).setContent(hit.title).addTo(map);
+    const at = hit._snap || hit;
+    signTip = L.tooltip({ direction: 'top', offset: [0, -16] }).setLatLng([at.lat, at.lng]).setContent(hit.title).addTo(map);
     return;
   }
   if (signTip) { map.removeLayer(signTip); signTip = null; }
