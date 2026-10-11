@@ -646,7 +646,7 @@ function fitRoute() {
   const lngs = pts.map(c => c[0]), lats = pts.map(c => c[1]);
   const card = $('routeCard').hidden ? 0 : $('routeCard').offsetHeight;
   const h = map.getContainer().clientHeight;
-  const top = 90, bottom = Math.min(card + 50, h - top - 120);
+  const top = 150, bottom = Math.min(card + 50, h - top - 100); // augšā vieta meklēšanai un galamērķa adatai
   document.documentElement.style.setProperty('--card-h', card + 'px');
   map.easeTo({ padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 0 });
   map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
