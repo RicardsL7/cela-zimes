@@ -170,20 +170,24 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* ---- Kartes elementi ---- */
 .sign-icon { filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
 .sign-icon svg { display: block; }
-.me-dot {
-  width: 22px; height: 22px; border-radius: 50%;
-  background: var(--route); border: 4px solid #fff;
-  box-shadow: 0 0 0 8px color-mix(in srgb, var(--route) 25%, transparent), 0 2px 6px rgba(0,0,0,.35);
-}
-.route-line { stroke: var(--route); }
+/* "Tu esi šeit" */
 .me-icon { position: relative; }
-.me-arrow {
-  position: absolute; left: 50%; top: 50%; width: 0; height: 0;
-  border-left: 9px solid transparent; border-right: 9px solid transparent; border-bottom: 16px solid var(--route);
-  transform: translate(-50%, -50%) rotate(var(--heading, 0deg)) translateY(-17px);
-  display: none;
+.me-puck {
+  position: absolute; inset: 0; width: 48px; height: 48px;
+  filter: drop-shadow(0 3px 6px rgba(10, 30, 70, .35));
+  transform: rotate(var(--heading, 0deg));
+  transition: transform .35s ease-out;
 }
-.has-heading .me-arrow { display: block; }
+.me-halo {
+  position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; margin: -38px 0 0 -38px;
+  border-radius: 50%; background: rgba(47, 124, 246, .18); border: 1px solid rgba(47, 124, 246, .35);
+  animation: me-pulse 2.4s ease-out infinite;
+}
+@keyframes me-pulse { 0% { transform: scale(.55); opacity: .9; } 100% { transform: scale(1.15); opacity: 0; } }
+.me-chevron { display: none; }
+.has-heading .me-chevron { display: inline; }
+.has-heading .me-center { display: none; }
+.route-line { stroke: var(--route); }
 .leaflet-control-attribution { font-size: 10px; }
 /* Klasiskā karte tumšajā režīmā: aptumšo ar filtru (vektoru kartei ir savs tumšais stils). */
 .raster-dark .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9); }

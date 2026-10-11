@@ -148,13 +148,12 @@ const SignCanvasLayer = L.Layer.extend({
     // Manas zīmes pirmās, tad pēc svarīguma; pretējā virziena — pēdējās (vai paslēptas).
     const rank = { mine: 0, unknown: 1, other: 2 };
     for (const s of visible) s._rel = this._relation(s);
-    const shown = this._hideOpposite ? visible.filter(s => s._rel !== 'other') : visible;
-    visible.length = 0; visible.push(...shown);
-    visible.sort((a, c) => (rank[a._rel] - rank[c._rel]) || (SIGN_PRIORITY[a.cat] - SIGN_PRIORITY[c.cat]));
+    const shown = this._hideOpposite ? visible.filter(s => s._rel !== 'other') : visible.slice();
+    shown.sort((a, c) => (rank[a._rel] - rank[c._rel]) || (SIGN_PRIORITY[a.cat] - SIGN_PRIORITY[c.cat]));
 
     const taken = new Set();
     const half = size / 2;
-    for (const s of visible) {
+    for (const s of shown) {
       const p = map.latLngToContainerPoint([s.lat, s.lng]);
       if (cell) {
         const key = Math.floor(p.x / cell) + ':' + Math.floor(p.y / cell);

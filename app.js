@@ -318,11 +318,27 @@ function nearestLimit(lat, lng) {
 }
 
 // ---------- Mana atrašanās vieta ----------
-const meIcon = L.divIcon({ className: 'me-icon', html: '<div class="me-arrow"></div><div class="me-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
+// "Tu esi šeit": zils aplis ar baltu bultu, kas griežas braukšanas virzienā.
+const meIcon = L.divIcon({
+  className: 'me-icon',
+  html: `<div class="me-halo"></div>
+    <svg class="me-puck" viewBox="0 0 48 48" aria-hidden="true">
+      <defs><linearGradient id="meGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#5aa0ff"/><stop offset="1" stop-color="#1a5ad8"/>
+      </linearGradient></defs>
+      <circle cx="24" cy="24" r="20" fill="#fff"/>
+      <circle cx="24" cy="24" r="16.5" fill="url(#meGrad)"/>
+      <path class="me-chevron" d="M24 11.5 33 33 24 28.2 15 33Z" fill="#fff" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>
+      <circle class="me-center" cx="24" cy="24" r="5.5" fill="#fff"/>
+    </svg>`,
+  iconSize: [48, 48],
+  iconAnchor: [24, 24],
+});
 let meMarker = null;
 
 // Braukšanas virziens: no GPS, vai aprēķināts no pārvietošanās.
 let lastFix = null;
+let shownHeading = null;
 function updateHeading(lat, lng, gpsHeading, speedKmh) {
   if (gpsHeading != null && !isNaN(gpsHeading) && (speedKmh == null || speedKmh > 4)) {
     state.heading = gpsHeading;
@@ -333,7 +349,12 @@ function updateHeading(lat, lng, gpsHeading, speedKmh) {
   }
   lastFix = [lat, lng];
   signLayer.setHeading(state.heading);
-  if (meMarker) meMarker.getElement()?.style.setProperty('--heading', (state.heading ?? 0) + 'deg');
+  if (state.heading != null) {
+    // Griež bultu pa īsāko ceļu (piem. 350° → 10° = +20°, nevis −340°).
+    shownHeading = shownHeading == null ? state.heading
+      : shownHeading + ((((state.heading - shownHeading) % 360) + 540) % 360 - 180);
+  }
+  if (meMarker) meMarker.getElement()?.style.setProperty('--heading', (shownHeading ?? 0) + 'deg');
   document.documentElement.classList.toggle('has-heading', state.heading != null);
 }
 function bearingDeg(lat1, lng1, lat2, lng2) {
