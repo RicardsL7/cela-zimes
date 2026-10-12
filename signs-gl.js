@@ -28,6 +28,7 @@ const PATH_TOL_M = 1.5;      // kartes posms "iet pa" manu ceļu (dublikāti fl�
 const ROUTE_SEG_TOL_M = 4;   // maršruta (OSRM) līnija pret kartes ceļa asi — vienkāršošanas kļūda
 const OWN_SIGN_TOL_M = 4;    // OSM zīme (mezgls uz ceļa) pret trajektoriju
 const TURN_APPROACH_M = 80;  // pagrieziena zīme — ne tālāk par šo pirms krustojuma
+const BOTH_WAYS_CATS = new Set(['signals', 'crossing', 'rail', 'calming']);   // OSM objekti, kas attiecas uz abiem virzieniem
 const ENTRY_SIGN = /--no-entry--/;   // iebraukt aizliegts — attiecas uz iebrauktuvi krustojumā
 const ENTRY_JUNCTION_M = 40;         // ... tāpēc krustojumam jābūt ne tālāk par šo
 // Ceļi, kuros var būt vairākas joslas vienā virzienā. Joslu dati nav pieejami, tāpēc
@@ -341,7 +342,8 @@ class SignStore {
       if (!sure) { res.status = 'unconfirmed'; res.reason = 'dir-unknown'; }
       else if (!j || j.along - at.along > ENTRY_JUNCTION_M) { res.status = 'unconfirmed'; res.reason = 'no-junction'; }
     } else if (!rule) {
-      if (!d) { res.status = 'probable'; res.reason = 'dir-unknown'; }
+      if (!d && m.own && BOTH_WAYS_CATS.has(x.cat)) { /* OSM mezgls uz paša ceļa: luksofors, pāreja u.c. — abos virzienos */ }
+      else if (!d) { res.status = 'probable'; res.reason = 'dir-unknown'; }
       else if (!sure) { res.status = 'probable'; res.reason = 'dir-side'; }
     } else {
       // Pagriezienu zīmes: virzienam jābūt apstiprinātam un krustojumam priekšā.
