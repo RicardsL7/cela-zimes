@@ -104,41 +104,59 @@ function rememberFace(s) {
 }
 
 // ---------- Zīmes ----------
-// Vienas un tās pašas zīmes neliek divreiz (piem. no OSM un Mapillary).
-// Mapillary zīmes vienmēr ir atsevišķas (arī vienādas zīmes abās ceļa pusēs);
-// OSM zīmi neliek, ja tuvumā jau ir tāda paša veida zīme.
-const placedGrid = new Map();
-// Mapillary bieži vienu un to pašu zīmi saglabā vairākas reizes: tādu pašu zīmi
-// tuvāk par 5 m neliek otrreiz.
-function isDuplicate(lat, lng, cat, value) {
-  const gx = Math.round(lat / 0.0003), gy = Math.round(lng / 0.0005);
-  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
-    for (const p of placedGrid.get((gx + i) + ':' + (gy + j)) || []) {
-      if (value ? (p.value === value && distM(p.lat, p.lng, lat, lng) < 5)
-                : (p.cat === cat && distM(p.lat, p.lng, lat, lng) < 20)) return true;
-    }
-  }
-  const k = gx + ':' + gy;
-  if (!placedGrid.has(k)) placedGrid.set(k, []);
-  placedGrid.get(k).push({ lat, lng, cat, value });
-  return false;
-}
+// Dublikāti un pretrunas (model.js → SignDeduper):
+//   • tāda pati Mapillary zīme ≤ 5 m — dublikāts (Mapillary to bieži saglabā vairākkārt);
+//   • OSM zīme, ja tuvumā jau ir tāda paša veida zīme — dublikāts;
+//   • pārbaudīta zīme vienmēr ir noteicošā;
+//   • dažādi ātruma ierobežojumi ≤ 8 m — abas zīmes atzīmē kā PRETRUNĪGAS (neizdomā, kura pareiza).
+const dedupe = new SignDeduper();
+let signSeq = 0;
 
-// sign: { cat, kind?, value?, title }; mlyValue: Mapillary zīmes kods (ja no Mapillary)
-function addSign(lat, lng, sign, mlyValue, mlyId) {
-  if (isDuplicate(lat, lng, sign.cat, mlyValue)) return null;
+// sign: { cat, kind?, value?, title }; mlyValue: zīmes kods; mlyId: Mapillary objekta ID
+// opts: { source, uid, verifiedDir, verifiedAt, restriction }
+function addSign(lat, lng, sign, mlyValue, mlyId, opts = {}) {
+  const limit = sign.cat === 'speed' ? (Number(sign.value || (String(mlyValue).match(/limit-(\d+)/) || [])[1]) || null) : null;
+  const chk = dedupe.check(lat, lng, sign.cat, mlyValue, limit);
+  if (chk.status !== 'ok' && chk.status !== 'conflict') return null;
   const own = sign.kind ? sign : { kind: 'other' };
   const s = mlyValue
     ? { icon: 'mly:' + mlyValue, src: MLY_ICON_URL + encodeURIComponent(mlyValue) + '.svg', value: mlyValue }
     : { icon: 'own:' + own.kind + ':' + (own.value || ''), src: svgDataUrl(own) };
-  Object.assign(s, { lat, lng, cat: sign.cat, title: sign.title, face: null });
-  if (sign.cat === 'speed') s.limit = Number(sign.value || (String(mlyValue).match(/limit-(\d+)/) || [])[1]) || null;
-  if (mlyValue) { const f = faceCache.get(faceKey(mlyValue, lat, lng)); if (f != null) s.face = f; }
+  Object.assign(s, { lat, lng, cat: sign.cat, title: sign.title, face: null, limit });
+  s.source = opts.source || (mlyValue ? 'mapillary' : 'osm');
+  s.uid = opts.uid || (mlyId ? 'mly:' + mlyId : 'gen:' + (++signSeq));
+  if (opts.verifiedDir != null) { s.verifiedDir = opts.verifiedDir; s.face = (opts.verifiedDir + 180) % 360; }
+  if (opts.verifiedAt) s.verifiedAt = opts.verifiedAt;
+  if (opts.restriction) s.restriction = opts.restriction;
+  if (mlyValue && s.face == null) { const f = faceCache.get(faceKey(mlyValue, lat, lng)); if (f != null) s.face = f; }
   if (mlyValue && /time-restrictions/.test(mlyValue)) timePlates.push({ lat, lng, done: false });
-  if (mlyValue && /two-way-traffic|both-directions/.test(mlyValue)) zonePlates.push({ lat, lng, done: false });
   if (mlyId) s.mid = mlyId;
+  if (chk.status === 'conflict') {
+    s.conflict = true;
+    if (chk.other.ref) chk.other.ref.conflict = true;
+  }
+  dedupe.add(lat, lng, sign.cat, mlyValue, limit, s, s.source === 'verified');
   signs.add(s);
   return s;
+}
+
+// ---------- Pārbaudītās zīmes (data/verified-signs.geojson) ----------
+// Formāts: GeoJSON punkti ar properties { id, type, direction, opening_hours, plate_text, verified_at }.
+async function loadVerifiedSigns() {
+  let json;
+  try {
+    const r = await fetch('data/verified-signs.geojson', { cache: 'no-cache' });
+    if (!r.ok) return;
+    json = await r.json();
+  } catch { return; }
+  const { records, errors } = parseVerifiedGeoJSON(json, parseCondition);
+  if (errors.length) console.warn('Pārbaudītās zīmes: nederīgi ieraksti', errors);
+  for (const rec of records) {
+    const sign = Object.assign(classifyMapillary(rec.type), rec.title ? { title: rec.title } : {});
+    addSign(rec.lat, rec.lng, sign, rec.type, null,
+      { source: 'verified', uid: rec.id, verifiedDir: rec.direction, verifiedAt: rec.verifiedAt, restriction: rec.restriction });
+  }
+  if (records.length) signs.refresh();
 }
 
 function showCounts() {
@@ -319,7 +337,6 @@ function updateLimit() {
 // zīmēm kartē; ja pagrieziena zīmes Mapillary nav, to uzliek pati lietotne.
 const timeRules = [];
 const timePlates = [];          // Mapillary atrastās laika plāksnītes zem zīmēm
-const zonePlates = [];          // ↕ plāksnītes: zona abos virzienos no zīmes
 const seenTimeEls = new Set();
 const TURN_SIGN = {
   no_left_turn: [/no-left-turn/, 'regulatory--no-left-turn--g1'],
@@ -413,12 +430,10 @@ function attachTimes() {
   for (const p of timePlates) {
     if (p.done) continue;
     const s = signs.findNear(p.lat, p.lng, 4, x => x.value && /^(regulatory|warning)--/.test(x.value));
-    if (s) { s.timePlate = true; p.done = true; changed = true; }
-  }
-  for (const p of zonePlates) {
-    if (p.done) continue;
-    const s = signs.findNear(p.lat, p.lng, 4, x => x.value && /no-stopping|no-parking/.test(x.value));
-    if (s) { s.zoneBoth = true; s._zone = undefined; p.done = true; changed = true; }
+    if (s) {
+      s.timePlate = true; p.done = true; changed = true;
+      if (!s.restriction) s.restriction = makeRestriction(null, 'mapillary-plate', 'low');  // laiks nav zināms
+    }
   }
   for (const r of timeRules) {
     if (r.done) continue;
@@ -433,14 +448,19 @@ function attachTimes() {
         cand.push([d, s]);
       });
       // Tikai 2 tuvākās krustojumam (citas parasti ir citām joslām / dublikāti).
-      cand.sort((a, b) => a[0] - b[0]).slice(0, 2).forEach(([, s]) => { s.timeRule = r; found++; });
+      cand.sort((a, b) => a[0] - b[0]).slice(0, 2).forEach(([, s]) => {
+        s.timeRule = r; s.restriction = s.restriction || makeRestriction(r.cond, 'osm', 'medium'); found++;
+      });
       if (!found && mlyReadyAt(la, lo)) {
         // Mapillary šo zīmi nav atradis — uzliek to ceļa labajā pusē pirms krustojuma.
         const b = (r.heading + 90) * Math.PI / 180, off = 5;
         const lat = r.back[0] + Math.cos(b) * off / 111320;
         const lng = r.back[1] + Math.sin(b) * off / (111320 * Math.cos(r.back[0] * Math.PI / 180));
         const s = addSign(lat, lng, classifyMapillary(r.value), r.value);
-        if (s) { s.face = (r.heading + 180) % 360; s.timeRule = r; found++; }
+        if (s) {
+          s.face = (r.heading + 180) % 360; signs.faceChanged(s);
+          s.timeRule = r; s.restriction = makeRestriction(r.cond, 'osm', 'medium'); s.source = 'osm-turn'; found++;
+        }
         r.done = true;
       }
     } else {
@@ -452,7 +472,7 @@ function attachTimes() {
           const a = r.pts[0], z = r.pts.at(-1);
           if (Math.min(distM(s.lat, s.lng, a[0], a[1]), distM(s.lat, s.lng, z[0], z[1])) > 40) return;
         }
-        s.timeRule = r; found++;
+        s.timeRule = r; s.restriction = s.restriction || makeRestriction(r.cond, 'osm', 'medium'); found++;
       });
       const c = r.pts[Math.floor(r.pts.length / 2)];
       if (mlyReadyAt(c[0], c[1])) r.done = true;
@@ -464,17 +484,26 @@ function attachTimes() {
 let attachTimer = null;
 function attachTimesSoon() { clearTimeout(attachTimer); attachTimer = setTimeout(attachTimes, 300); }
 
-// Ko rādīt pie zīmes: laiks zem tās, blāva, ja aizliegums tagad nav spēkā.
+// Ko rādīt pie zīmes: laiks zem tās (īsi), pilns apraksts uznirstošajā logā,
+// blāva, ja aizliegums šobrīd nav spēkā. Nezināmu laiku NEIZDOMĀ.
 function signTimeInfo(s) {
-  if (s.timeRule) {
-    const c = s.timeRule.cond, on = c.test(new Date());
+  const r = s.restriction;
+  const notes = [];
+  if (s._m && s._m.quality === 'uncertain') notes.push('Piesaiste ceļam nav droša (' + (s._m.reason || 'neskaidrs') + ').');
+  if (s.conflict) notes.push('Pretrunīgi dati: tuvumā ir cits ātruma ierobežojums.');
+  if (s.verifiedAt) notes.push('Pārbaudīta zīme (' + String(s.verifiedAt).slice(0, 10) + ').');
+  const note = notes.length ? ' ' + notes.join(' ') : '';
+  if (r && r.known) {
+    const cond = s.timeRule ? s.timeRule.cond : null;
+    const on = cond ? cond.test(new Date()) : null;
     return {
-      time: c.short, off: on === false,
-      info: `Spēkā: ${c.long}` + (on === true ? ' · tagad ir spēkā' : on === false ? ' · tagad NAV spēkā' : ''),
+      time: cond ? cond.short : r.text, off: on === false,
+      info: describeRestriction(s.title, r) + (on === true ? ' — tagad ir spēkā' : on === false ? ' — tagad NAV spēkā' : '') +
+        (r.extra ? ` (nosacījums: ${r.extra})` : '') + ` · avots: ${r.source}` + note,
     };
   }
-  if (s.timePlate) return { time: 'laiks?', unk: true, info: 'Zem zīmes ir plāksnīte ar laiku. Precīzs laiks nav zināms — paskaties uz zīmes.' };
-  return null;
+  if (r) return { time: 'laiks?', unk: true, info: describeRestriction(s.title, r) + '. Zem zīmes ir plāksnīte — paskaties foto.' + note };
+  return note ? { info: note.trim() } : null;
 }
 
 // Zīmes foto no Mapillary: izgriež zīmi ar plāksnītēm zem tās.
@@ -577,7 +606,7 @@ async function loadDirectionsBox(s, w, n, e) {
   let matched = 0;
   for (const f of found) {
     const x = signs.findNear(f.lat, f.lng, 5, z => z.value === f.value && z.face == null);
-    if (x) { x.face = MLY_DIR_IS_FACE ? f.dir : (f.dir + 180) % 360; rememberFace(x); matched++; }
+    if (x) { x.face = MLY_DIR_IS_FACE ? f.dir : (f.dir + 180) % 360; signs.faceChanged(x); rememberFace(x); matched++; }
   }
   if (matched) signs.facesChanged();
   return matched;
@@ -721,14 +750,18 @@ function followCamera(dur = 900) {
 }
 
 // Viens jauns atrašanās vietas mērījums (no GPS, testa klikšķa vai simulācijas).
-function onFix(lat, lng, speedKmh, gpsHeading, dur = 900) {
-  state.me = { lat, lng, speedKmh };
+function onFix(lat, lng, speedKmh, gpsHeading, dur = 900, accuracy = null) {
+  state.me = { lat, lng, speedKmh, accuracy };
+  state.gpsQuality = gpsFixQuality(accuracy);
   moveMeMarker(lng, lat, state.follow ? dur : 300);
   $('speedValue').textContent = speedKmh == null ? '–' : Math.round(speedKmh);
-  updateHeading(lat, lng, gpsHeading, speedKmh);
+  // Vājš signāls: neatjauno braukšanas virzienu (tas lēkātu) un brīdina.
+  setBusy('gps', state.gpsQuality === 'poor' ? `Vājš GPS signāls (±${Math.round(accuracy)} m) — zīmes var būt neprecīzas` : null);
+  if (state.gpsQuality !== 'poor') updateHeading(lat, lng, gpsHeading, speedKmh);
   updateLimit();
   loadDirectionsNearMe();
   if (state.nav.active) updateNav();
+  else updateNextSign();
   followCamera(dur);
 }
 
@@ -744,7 +777,7 @@ function onPosition(pos) {
   if (state.testMode) return;
   const sp = pos.coords.speed;
   const first = !state.me;
-  onFix(pos.coords.latitude, pos.coords.longitude, sp == null || sp < 0 ? null : sp * 3.6, pos.coords.heading, first ? 0 : 900);
+  onFix(pos.coords.latitude, pos.coords.longitude, sp == null || sp < 0 ? null : sp * 3.6, pos.coords.heading, first ? 0 : 900, pos.coords.accuracy);
   if (first && state.nav.dest && !state.nav.active) previewRoute(); // maršruts no manas īstās vietas
   else if (first) { map.jumpTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: Math.max(map.getZoom(), 15.5) }); loadAllForView(); }
   gpsProblem = null;
@@ -957,13 +990,14 @@ function updateNav() {
   $('navInstr').textContent = maneuverText(p.next);
   $('etaTime').textContent = clockIn(p.timeLeft);
   $('etaMeta').textContent = `${navTime(p.timeLeft)} · ${navDist(p.remaining)}`;
-  if (p.loc.off < 50) {
+  const goodFix = state.gpsQuality !== 'poor';    // vājš GPS — progresu un nobraukšanu nevērtē
+  if (goodFix && p.loc.off < 50) {
     state.nav.along = p.loc.along;
     signs.setRouteProgress(p.loc.along);
   }
   updateNextSign();
   // Nobrauci no maršruta: pēc diviem mērījumiem pārrēķina (ne biežāk kā reizi 15 s).
-  if (p.loc.off > 50) state.nav.offCount++; else state.nav.offCount = 0;
+  if (goodFix) { if (p.loc.off > 50) state.nav.offCount++; else state.nav.offCount = 0; }
   if (state.nav.offCount >= 2 && Date.now() - state.nav.lastReroute > 15000) reroute();
 }
 
@@ -974,18 +1008,26 @@ function isNoticeSign(x) {
   if (!x.value) return false;
   return /no-entry|no-(left|right|u)-turn|no-overtaking|road-closed|no-motor|no-heavy|maximum-(weight|height|width)|one-way|roundabout|children|school|roadworks|road-works|dangerous|curve|narrow/.test(x.value);
 }
+// Nākamā zīme priekšā: ar maršrutu — pa maršrutu; bez maršruta — pa ceļu, pa kuru
+// braucu (līdz krustojumam), nevis vienkārši tuvākā zīme apkārt.
 function updateNextSign() {
   const card = $('nextSign');
-  const along = state.nav.along;
-  if (!state.nav.active || along == null || !state.signsOn) { card.hidden = true; return; }
-  const next = signs.routeSignsAhead(along + 3, 700, isNoticeSign)[0];
+  let next = null, d = 0;
+  if (state.signsOn && state.nav.active && state.nav.along != null) {
+    next = signs.routeSignsAhead(state.nav.along + 3, 700, isNoticeSign)[0];
+    if (next) d = next.along - state.nav.along;
+  } else if (state.signsOn && !state.nav.route && state.me && state.heading != null &&
+             (state.me.speedKmh ?? 0) > 8 && state.gpsQuality !== 'poor') {
+    next = signs.signsAheadOnRoad(state.me.lat, state.me.lng, state.heading, state.me.accuracy || 10, 400, isNoticeSign)[0];
+    if (next) d = next.along;
+  }
   if (!next) { card.hidden = true; return; }
-  const d = next.along - along;
   if ($('nextSignImg').dataset.src !== next.s.src) { $('nextSignImg').src = next.s.src; $('nextSignImg').dataset.src = next.s.src; }
   $('nextSignDist').textContent = d < 30 ? 'Tagad' : 'Pēc ' + navDist(d);
   const ti = signTimeInfo(next.s);
-  $('nextSignTitle').textContent = next.s.title.replace(/^Ceļa zīme: /, '') +
-    (ti && !ti.unk ? ` · ${ti.time}${ti.off ? ' (tagad nav spēkā)' : ''}` : ti ? ' · ar laika plāksnīti' : '');
+  const r = next.s.restriction;
+  $('nextSignTitle').textContent = describeRestriction(next.s.title, r) +
+    (ti && ti.off ? ' (tagad nav spēkā)' : '') + (next.s.conflict ? ' (pretrunīgi dati)' : '');
   card.hidden = false;
 }
 // Maršruta kartītē: cik un kādas zīmes būs pa ceļam.
@@ -1216,7 +1258,7 @@ async function init() {
       if (key === lastRoadKey) return;
       lastRoadKey = key;
       lastRoadAt = performance.now();
-      if (roadIndex.rebuild(map)) signs.refresh();
+      if (roadIndex.rebuild(map)) signs.roadsChanged();
     }, Math.max(150, 900 - (performance.now() - lastRoadAt)));
   };
   map.on('idle', scheduleRoads);
@@ -1250,6 +1292,7 @@ async function init() {
 
   wireUi();
   buildCategoryList();
+  loadVerifiedSigns();
   startGps();
   map.once('load', loadAllForView);
 }
