@@ -346,7 +346,7 @@ test('F. Nogriežoties citā ielā zīmes pārslēdzas uz jauno ielu (arī maino
   const crossAhead = sign(106, 80, 'regulatory--maximum-speed-limit-40--g1', 180, 'speed');
   st.add(mainAfter); st.add(crossAhead);
   drive(st, 40, 0, 90);
-  eq(statusOf(st, mainAfter), 'confirmed'); eq(statusOf(st, crossAhead), 'nav');
+  eq(statusOf(st, mainAfter), 'probable', 'aiz krustojuma — tikai "ja brauksi taisni"'); eq(statusOf(st, crossAhead), 'nav');
   drive(st, 100, 8, 0);                                     // nogriezos pa kreisi (uz ziemeļiem)
   eq(st.pos.roadId, 'CROSS', 'uzreiz pēc pagrieziena (savienots ceļš)');
   eq(statusOf(st, crossAhead), 'confirmed'); eq(statusOf(st, mainAfter), 'nav');
