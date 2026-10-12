@@ -28,6 +28,8 @@ const PATH_TOL_M = 1.5;      // kartes posms "iet pa" manu ceļu (dublikāti fl�
 const ROUTE_SEG_TOL_M = 4;   // maršruta (OSRM) līnija pret kartes ceļa asi — vienkāršošanas kļūda
 const OWN_SIGN_TOL_M = 4;    // OSM zīme (mezgls uz ceļa) pret trajektoriju
 const TURN_APPROACH_M = 80;  // pagrieziena zīme — ne tālāk par šo pirms krustojuma
+const ENTRY_SIGN = /--no-entry--/;   // iebraukt aizliegts — attiecas uz iebrauktuvi krustojumā
+const ENTRY_JUNCTION_M = 40;         // ... tāpēc krustojumam jābūt ne tālāk par šo
 // Ceļi, kuros var būt vairākas joslas vienā virzienā. Joslu dati nav pieejami, tāpēc
 // obligātā virziena zīmes tajos NEattiecina uz visām joslām.
 const MULTI_LANE_CLASSES = new Set(['motorway', 'trunk', 'primary', 'secondary', 'tertiary']);
@@ -332,7 +334,13 @@ class SignStore {
     const sure = !!(d && d.sure) || x.verifiedDir != null;
     const rule = turnRule(x.value);
     const res = { along: at.along, status: 'confirmed', reason: '', provisional };
-    if (!rule) {
+    if (!rule && ENTRY_SIGN.test(x.value || '')) {
+      // "Iebraukt aizliegts" stāv pie IEBRAUKTUVES (krustojumā). Ja uz mana ceļa priekšā tuvu nav
+      // krustojuma, zīme attiecas uz citu iebrauktuvi (piebrauktuvi, sliedēm u.c.), nevis manu ceļu.
+      const j = path.junctions.find(q => q.along >= at.along - 5);
+      if (!sure) { res.status = 'unconfirmed'; res.reason = 'dir-unknown'; }
+      else if (!j || j.along - at.along > ENTRY_JUNCTION_M) { res.status = 'unconfirmed'; res.reason = 'no-junction'; }
+    } else if (!rule) {
       if (!d) { res.status = 'probable'; res.reason = 'dir-unknown'; }
       else if (!sure) { res.status = 'probable'; res.reason = 'dir-side'; }
     } else {

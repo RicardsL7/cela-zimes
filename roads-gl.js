@@ -14,6 +14,8 @@ const ROAD_CLASSES = {
 const ROAD_CELL = 0.0015;        // ~150 m
 const SNAP_AMBIGUOUS = 0.18;     // ja 2. labākais ceļš ir tik tuvu vērtējumā — neskaidrs
 const FACE_AXIS_OK = 35;         // zīme skatās gar ceļu (± grādi)
+const NON_CAR_CLASSES = new Set(['path', 'transit']);   // veloceliņi/ietves, tramvaja sliedes
+const NON_CAR_NEAR_M = 3;        // zīme ≤ 3 m no tāda ceļa ass (un tuvāk nekā brauktuvei) — neskaidra
 
 function roadAngleDiff(a, b) {
   const d = Math.abs(a - b) % 360;
@@ -37,9 +39,15 @@ const roadIndex = {
     let feats;
     try { feats = gl.querySourceFeatures('openmaptiles', { sourceLayer: 'transportation' }); }
     catch { return false; }
-    const segs = [];
+    const segs = [], nonCar = [];
     for (const f of feats) {
       const cls = String(f.properties.class || '').replace('_construction', '');
+      if (NON_CAR_CLASSES.has(cls)) {          // veloceliņi, ietves, tramvaja sliedes — tikai zīmju piesaistei
+        const g = f.geometry;
+        for (const line of g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : [])
+          for (let i = 1; i < line.length; i++) nonCar.push({ a: line[i - 1], b: line[i], cls });
+        continue;
+      }
       if (!ROAD_CLASSES[cls]) continue;
       const g = f.geometry;
       const lines = g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : [];
@@ -57,12 +65,20 @@ const roadIndex = {
       const c = gl.getCenter(), dLat = 0.0045, dLng = 0.0045 / Math.cos(c.lat * Math.PI / 180);
       cov = [Math.max(cov[0], c.lat - dLat), Math.max(cov[1], c.lng - dLng), Math.min(cov[2], c.lat + dLat), Math.min(cov[3], c.lng + dLng)];
     }
-    this.setSegments(segs, cov);
+    this.setSegments(segs, cov, nonCar);
     return true;
   },
 
   // Ievieto posmus indeksā (izmanto arī testos). seg: { a, b, cls, roadId, oneway }
-  setSegments(segs, coverage) {
+  // nonCar: [{ a, b, cls }] — ceļi, pa kuriem auto nebrauc (zīmju piesaistes pārbaudei).
+  setSegments(segs, coverage, nonCar = []) {
+    const ncGrid = new Map();
+    for (const s of nonCar) {
+      const k = Math.floor((s.a[1] + s.b[1]) / 2 / ROAD_CELL) + ':' + Math.floor((s.a[0] + s.b[0]) / 2 / ROAD_CELL);
+      if (!ncGrid.has(k)) ncGrid.set(k, []);
+      ncGrid.get(k).push(s);
+    }
+    this.nonCar = ncGrid;
     const grid = new Map();
     let n = 0;
     for (const s of segs) {
@@ -142,6 +158,10 @@ const roadIndex = {
     let quality = 'ok', reason = '';
     if (rival && rival.score - best.score < SNAP_AMBIGUOUS) { quality = 'uncertain'; reason = 'tuvumā ir vairāki ceļi'; }
     if (hasFace && best.axis > FACE_AXIS_OK) { quality = 'uncertain'; reason = 'zīme nav vērsta gar nevienu tuvāko ceļu'; }
+    // Zīme stāv tieši pie veloceliņa / ietves / tramvaja sliedēm un tālu no brauktuves ass —
+    // visticamāk tā ir šim ceļam, nevis auto ceļam.
+    const nc = this._nearestNonCar(lat, lng);
+    if (nc && nc.d < NON_CAR_NEAR_M && nc.d < best.d - 2) { quality = 'uncertain'; reason = nc.cls === 'transit' ? 'zīme pie tramvaja sliedēm' : 'zīme pie veloceliņa vai ietves'; }
 
     // Braukšanas virziens, uz kuru zīme attiecas.
     const ab = best.bearing, ba = (ab + 180) % 360;
@@ -172,6 +192,24 @@ const roadIndex = {
       roadBearing: ab, oneway: best.seg.oneway, travelDir, dirSource,
       side: rightOfTravel ? 1 : -1, dist: Math.round(best.d * 10) / 10, quality, reason,
     };
+  },
+
+  _nearestNonCar(lat, lng) {
+    if (!this.nonCar || !this.nonCar.size) return null;
+    const k = 111320, cos = Math.cos(lat * Math.PI / 180);
+    const la = Math.floor(lat / ROAD_CELL), lo = Math.floor(lng / ROAD_CELL);
+    let best = null;
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      for (const s of this.nonCar.get((la + i) + ':' + (lo + j)) || []) {
+        const ax = (s.a[0] - lng) * k * cos, ay = (s.a[1] - lat) * k;
+        const dx = (s.b[0] - s.a[0]) * k * cos, dy = (s.b[1] - s.a[1]) * k, l2 = dx * dx + dy * dy;
+        if (!l2) continue;
+        const t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2));
+        const d = Math.hypot(ax + t * dx, ay + t * dy);
+        if (!best || d < best.d) best = { d, cls: s.cls };
+      }
+    }
+    return best;
   },
 
   // Saderības dēļ: tikai jaunā vieta.
