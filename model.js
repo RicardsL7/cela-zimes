@@ -27,7 +27,7 @@ const CONFLICT_M = 8;        // dažādi ātrumi tuvāk par šo vienā virzienā
 // Strukturēts ierobežojums no parseCondition() rezultāta.
 function makeRestriction(cond, source, confidence) {
   if (!cond || !cond.known) {
-    return { known: false, days: null, times: [], months: null, ph: false, text: 'laiks nav zināms',
+    return { known: false, days: null, times: [], months: null, ph: false, text: 'darbības laiks nav zināms',
       raw: cond ? cond.raw : '', extra: cond ? cond.extra : '', timezone: MODEL_TZ, source, confidence: 'low' };
   }
   const on = cond.rules.filter(r => !r.off);
@@ -42,11 +42,11 @@ function makeRestriction(cond, source, confidence) {
   };
 }
 
-// "Stāvēt aizliegts · P–Pk · 06:00–22:00" vai "Stāvēt aizliegts · laiks nav zināms".
+// "Stāvēt aizliegts · P–Pk · 06:00–22:00" vai "Stāvēt aizliegts · darbības laiks nav zināms".
 function describeRestriction(title, restriction) {
   const t = String(title || '').replace(/^Ceļa zīme: /, '');
   if (!restriction) return t;
-  return t + ' · ' + (restriction.known ? restriction.text : 'laiks nav zināms');
+  return t + ' · ' + (restriction.known ? restriction.text : 'darbības laiks nav zināms');
 }
 
 // Lietotnes zīmes objekts → SignRecord (piem. eksportam vai pārbaudei).

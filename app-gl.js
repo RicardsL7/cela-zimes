@@ -332,11 +332,18 @@ function distToSegment(p, a, b) {
   const t = len2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len2)) : 0;
   return Math.hypot(ax + t * dx, ay + t * dy);
 }
-function nearestLimit(lat, lng) {
-  let best = null, bestD = 30;
+// Ātrums no OSM ceļa. Ņem ceļu, uz kura ESMU (kartes piesaistes punkts, ceļa virziens sakrīt
+// ar kursu), nevis vienkārši tuvāko — citādi pie paralēlas ielas rādītu tās ātrumu.
+function nearestLimit(lat, lng, heading = null, matched = null) {
+  if (matched) { lat = matched.P[1]; lng = matched.P[0]; }
+  let best = null, bestD = matched ? 8 : 30;
   const la = Math.floor(lat / WAY_CELL), lo = Math.floor(lng / WAY_CELL);
   for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
     for (const [a, b, limit, cond] of wayGrid.get((la + i) + ':' + (lo + j)) || []) {
+      if (heading != null) {
+        const ax = angleDiff(bearingDeg(a[0], a[1], b[0], b[1]), heading);
+        if (Math.min(ax, 180 - ax) > 35) continue;                 // šķērsiela
+      }
       const d = distToSegment([lat, lng], a, b);
       // Mainīgs ātrums (piem. 30 darbdienās 7–22): tagad spēkā esošais.
       if (d < bestD) { bestD = d; best = cond && cond.test(new Date()) ? cond.limit : limit; }
@@ -347,7 +354,8 @@ function nearestLimit(lat, lng) {
 function updateLimit() {
   const badge = $('limitBadge');
   if (!state.me) { badge.hidden = true; return; }
-  let limit = nearestLimit(state.me.lat, state.me.lng);
+  const pos = signs.pos && !signs.pos.uncertain ? signs.pos : null;
+  let limit = nearestLimit(state.me.lat, state.me.lng, state.heading, pos);
   // Ja OSM ceļam ātrums nav norādīts: pēdējā garām pabrauktā ātruma zīme maršrutā.
   if (limit == null && state.nav.active && state.nav.along != null) {
     const last = signs.lastRouteSignBefore(state.nav.along + 10, 2000, x => x.cat === 'speed' && x.limit);
@@ -521,6 +529,21 @@ function signTimeInfo(s) {
   if (s._m && s._m.quality === 'uncertain') notes.push('Piesaiste ceļam nav droša (' + (s._m.reason || 'neskaidrs') + ').');
   if (s.conflict) notes.push('Pretrunīgi dati: tuvumā ir cits ātruma ierobežojums.');
   if (s.verifiedAt) notes.push('Pārbaudīta zīme (' + String(s.verifiedAt).slice(0, 10) + ').');
+  const app = s._app;
+  if (app) {
+    const why = {
+      'lane-unknown': 'Obligātā virziena zīme — var attiekties tikai uz noteiktu joslu (joslu dati nav pieejami), tāpēc nav parādīta kā saistoša.',
+      'contradicts-route': 'Neatbilst maršruta manevram — visticamāk attiecas uz citu joslu vai atzaru.',
+      'dir-unknown': 'Zīmes virziens nav zināms — nav apstiprināts, ka tā attiecas uz tavu braukšanas virzienu.',
+      'no-junction': 'Pagrieziena zīme nav pie krustojuma uz tava ceļa — attiecināmība nav apstiprināta.',
+      'dir-side': 'Virziens noteikts tikai pēc ceļa puses (nav apstiprināts).',
+      'gps-uncertain': 'GPS nevar droši atšķirt tuvos ceļus.',
+      'lane-maybe': 'Var attiekties tikai uz noteiktu joslu.',
+      'roads-not-loaded': 'Ceļa dati šai vietai vēl nav ielādēti.',
+    }[app.reason];
+    if (why) notes.push(why);
+    if (app.mapRule) notes.push('Kartes (OSM) pagrieziena ierobežojums — fiziska zīme nav pārbaudīta.');
+  } else if (s.source === 'osm-turn') notes.push('Kartes (OSM) pagrieziena ierobežojums — fiziska zīme nav pārbaudīta.');
   if (s.plateRead && s.plateRead.plateText) notes.push(`Plāksnīte: „${s.plateRead.plateText}” (nolasīts no foto${s.plateRead.readAt ? ' ' + s.plateRead.readAt : ''}; ⚒ — darba dienas).`);
   const note = notes.length ? ' ' + notes.join(' ') : '';
   if (r && r.known) {
@@ -788,6 +811,8 @@ function onFix(lat, lng, speedKmh, gpsHeading, dur = 900, accuracy = null) {
   // Vājš signāls: neatjauno braukšanas virzienu (tas lēkātu) un brīdina.
   setBusy('gps', state.gpsQuality === 'poor' ? `Vājš GPS signāls (±${Math.round(accuracy)} m) — zīmes var būt neprecīzas` : null);
   if (state.gpsQuality !== 'poor') updateHeading(lat, lng, gpsHeading, speedKmh);
+  // Kartes piesaiste ar vēsturi: uz kura ceļa posma esmu (zīmju atlasei un ātrumam).
+  signs.setPosition(lat, lng, state.heading, accuracy == null ? 10 : accuracy);
   updateLimit();
   loadDirectionsNearMe();
   if (state.nav.active) updateNav();
@@ -1057,7 +1082,9 @@ function updateNextSign() {
   const ti = signTimeInfo(next.s);
   const r = next.s.restriction;
   $('nextSignTitle').textContent = describeRestriction(next.s.title, r) +
-    (ti && ti.off ? ' (tagad nav spēkā)' : '') + (next.s.conflict ? ' (pretrunīgi dati)' : '');
+    (ti && ti.off ? ' (tagad nav spēkā)' : '') + (next.s.conflict ? ' (pretrunīgi dati)' : '') +
+    (next.status === 'probable' ? ' (virziens nav apstiprināts)' : '') +
+    (next.reason === 'lane-maybe' ? ' (var attiekties uz joslu)' : '');
   card.hidden = false;
 }
 // Maršruta kartītē: cik un kādas zīmes būs pa ceļam.

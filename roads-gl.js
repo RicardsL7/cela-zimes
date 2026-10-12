@@ -69,7 +69,10 @@ const roadIndex = {
       const conf = ROAD_CLASSES[s.cls] || ROAD_CLASSES.minor;
       const seg = Object.assign({ max: conf[0], edge: conf[1] }, s);
       if (!seg.roadId) seg.roadId = 'r' + n;
-      seg.id = seg.roadId + '#' + (n++);
+      n++;
+      // Stabils ID (nemainās, kad karti pārbūvē): ceļš + posma galu koordinātas.
+      // Vienu un to pašu posmu flīžu malās kartē glabā vairākkārt — tiem ir viens ID.
+      seg.id = seg.roadId + ':' + seg.a[0].toFixed(6) + ',' + seg.a[1].toFixed(6) + '>' + seg.b[0].toFixed(6) + ',' + seg.b[1].toFixed(6);
       const la0 = Math.floor(Math.min(seg.a[1], seg.b[1]) / ROAD_CELL), la1 = Math.floor(Math.max(seg.a[1], seg.b[1]) / ROAD_CELL);
       const lo0 = Math.floor(Math.min(seg.a[0], seg.b[0]) / ROAD_CELL), lo1 = Math.floor(Math.max(seg.a[0], seg.b[0]) / ROAD_CELL);
       for (let la = la0; la <= la1; la++) for (let lo = lo0; lo <= lo1; lo++) {
@@ -165,7 +168,7 @@ const roadIndex = {
       pos = { lat: lat + (best.py * f) / k, lng: lng + (best.px * f) / (k * cos) };
     }
     return {
-      lat: pos.lat, lng: pos.lng, segId: best.seg.id, roadId: best.seg.roadId, roadPoint: best.P,
+      lat: pos.lat, lng: pos.lng, segId: best.seg.id, roadId: best.seg.roadId, cls: best.seg.cls, roadPoint: best.P,
       roadBearing: ab, oneway: best.seg.oneway, travelDir, dirSource,
       side: rightOfTravel ? 1 : -1, dist: Math.round(best.d * 10) / 10, quality, reason,
     };
@@ -209,18 +212,51 @@ const roadIndex = {
     return { roadId: c.seg.roadId, segId: c.seg.id, P: c.P, dir, dist: c.d, next };
   },
 
+  // Visi posmi taisnstūrī (katrs vienreiz).
+  eachSegInBox(s, w, n, e, fn) {
+    const seen = new Set();
+    for (let la = Math.floor(s / ROAD_CELL); la <= Math.floor(n / ROAD_CELL); la++)
+      for (let lo = Math.floor(w / ROAD_CELL); lo <= Math.floor(e / ROAD_CELL); lo++)
+        for (const seg of this.grid.get(la + ':' + lo) || []) {
+          if (seen.has(seg)) continue;
+          seen.add(seg);
+          fn(seg);
+        }
+  },
+
+  // Ceļa posmi, kas IET PA līniju (abi gali ≤ tol m no tās un virziens sakrīt).
+  // Tā tiek iegūts ceļa tīkla posmu kopums braukšanas trajektorijai — nevis "viss, kas tuvumā".
+  // project(lng, lat) → { d, along, bearing } (līnijas projekcija). Atgriež Map segId → { along, forward }.
+  segmentsAlong(bbox, project, tol) {
+    const out = new Map();
+    this.eachSegInBox(bbox[0], bbox[1], bbox[2], bbox[3], seg => {
+      const pa = project(seg.a[0], seg.a[1]), pb = project(seg.b[0], seg.b[1]);
+      if (!pa || !pb || pa.d > tol || pb.d > tol) return;
+      if (Math.abs(pb.along - pa.along) < 0.5) return;                       // šķērsām (krustojumā)
+      const k = 111320, cos = Math.cos(seg.a[1] * Math.PI / 180);
+      const sb = (Math.atan2((seg.b[0] - seg.a[0]) * k * cos, (seg.b[1] - seg.a[1]) * k) * 180 / Math.PI + 360) % 360;
+      if (roadAxisDiff(sb, pa.bearing) > 25) return;
+      out.set(seg.id, { along: Math.min(pa.along, pb.along), forward: pb.along > pa.along, seg });
+    });
+    return out;
+  },
+
   // Iet pa ceļu no P caur "next", līdz krustojumam, strupceļam vai maxM metriem.
-  // Atgriež līniju [[lng, lat], ...].
-  walk(P, next, maxM) {
+  // Atgriež līniju [[lng, lat], ...]; line.end = 'junction' | 'dead-end' | 'turn' | 'max'.
+  // through: krustojumos turpina taisni (ja ir tieši viens taisns turpinājums), krustojumu
+  // vietas (metri no sākuma) — line.junctions. Kurp vadītājs nogriezīsies, nav zināms.
+  walk(P, next, maxM, through = false) {
     const k = 111320, cos = Math.cos(P[1] * Math.PI / 180);
     const dist = (p, q) => Math.hypot((q[0] - p[0]) * k * cos, (q[1] - p[1]) * k);
     const brg = (p, q) => (Math.atan2((q[0] - p[0]) * cos, q[1] - p[1]) * 180 / Math.PI + 360) % 360;
     const line = [P];
+    line.end = 'max';
+    line.junctions = [];
     let prev = P, cur = next, total = 0;
     for (let step = 0; step < 80; step++) {
       const d = dist(prev, cur);
       if (!d) break;
-      if (total + d >= maxM) { const f = (maxM - total) / d; line.push([prev[0] + (cur[0] - prev[0]) * f, prev[1] + (cur[1] - prev[1]) * f]); break; }
+      if (total + d >= maxM) { const f = (maxM - total) / d; line.push([prev[0] + (cur[0] - prev[0]) * f, prev[1] + (cur[1] - prev[1]) * f]); line.end = 'max'; break; }
       total += d;
       line.push(cur);
       // Kurp no šejienes var braukt tālāk (bez iebrauktuvēm)? Līdzīgus virzienus apvieno
@@ -248,12 +284,114 @@ const roadIndex = {
           }
         }
       }
-      if (dirs.length !== 1) break;                                // krustojums vai strupceļš
-      if (roadAngleDiff(dirs[0].b, brg(prev, cur)) > 70) break;    // ass pagrieziens
+      if (dirs.length > 1 && through) {
+        const here = brg(prev, cur), straight = dirs.filter(x => roadAngleDiff(x.b, here) < 20);
+        if (straight.length === 1) { line.junctions.push(total); prev = cur; cur = straight[0].q; continue; }
+      }
+      if (dirs.length !== 1) { line.end = dirs.length ? 'junction' : 'dead-end'; if (dirs.length) line.junctions.push(total); break; }   // krustojums vai strupceļš
+      if (roadAngleDiff(dirs[0].b, brg(prev, cur)) > 70) { line.end = 'turn'; break; }      // ass pagrieziens
       prev = cur; cur = dirs[0].q;
     }
     return line;
   },
 };
 
-if (typeof module !== 'undefined') module.exports = { roadIndex, roadAngleDiff, roadAxisDiff, ROAD_CLASSES };
+// ---------- Kartes piesaiste (map matching) ar vēsturi ----------
+// Nosaka, pa kuru ceļa posmu braucu, ņemot vērā ne tikai attālumu, bet arī:
+//   • GPS precizitāti un kursu (šķērsām ceļam nepiesaista),
+//   • vienvirziena kustību,
+//   • iepriekšējo stāvokli: turpinājums pa to pašu ceļu vai ceļu tīklā savienotu posmu
+//     (krustojumā nogriežoties) ir ticamāks;
+//   • pāreju uz NEsavienotu ceļu (piem. GPS "pārlec" uz blakus ielu) pieņem tikai pēc
+//     TRACK_CONFIRM pēc kārtas sekojošiem mērījumiem;
+//   • ja divi nesavienoti ceļi ir gandrīz vienlīdz ticami — stāvoklis "uncertain".
+const TRACK_CONFIRM = 2;
+const TRACK_TIE = 0.12;
+class RoadTracker {
+  constructor(index) { this.index = index; this.reset(); }
+  reset() { this.cur = null; this.pending = null; this._ahead = null; this._last = null; }
+
+  // Vai kandidāts ir ceļu tīklā savienots ar pašreizējo stāvokli (tas pats ceļš, ceļš
+  // priekšā vai atzars kādā no krustojumiem priekšā)?
+  _connected(c) {
+    const cur = this.cur;
+    if (!cur) return false;
+    if (c.seg.roadId === cur.roadId) return true;
+    const line = this._ahead;
+    if (!line || line.length < 2) return false;
+    const k = 111320, cos = Math.cos(line[0][1] * Math.PI / 180);
+    const near = (p, q) => Math.hypot((q[0] - p[0]) * k * cos, (q[1] - p[1]) * k) < 3;
+    for (const p of line) if (near(c.seg.a, p) || near(c.seg.b, p)) return true;
+    for (let i = 1; i < line.length; i++) {                         // punkts uz līnijas priekšā
+      const ax = (line[i - 1][0] - c.P[0]) * k * cos, ay = (line[i - 1][1] - c.P[1]) * k;
+      const dx = (line[i][0] - line[i - 1][0]) * k * cos, dy = (line[i][1] - line[i - 1][1]) * k, l2 = dx * dx + dy * dy;
+      if (!l2) continue;
+      const t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2));
+      if (Math.hypot(ax + t * dx, ay + t * dy) < 3) return true;
+    }
+    return false;
+  }
+
+  _state(c, dir, uncertain) {
+    let next = roadAngleDiff(dir, c.bearing) <= 90 ? c.seg.b : c.seg.a;
+    const k = 111320, cos = Math.cos(c.P[1] * Math.PI / 180);
+    const close = (p, q) => Math.hypot((q[0] - p[0]) * k * cos, (q[1] - p[1]) * k) < 1;
+    if (close(c.P, next)) {
+      for (const o of this._last || []) {
+        if (o.seg === c.seg) continue;
+        if (close(o.seg.a, next) && roadAngleDiff(o.bearing, dir) < 45) { next = o.seg.b; break; }
+        if (close(o.seg.b, next) && roadAngleDiff((o.bearing + 180) % 360, dir) < 45) { next = o.seg.a; break; }
+      }
+    }
+    return { roadId: c.seg.roadId, segId: c.seg.id, cls: c.seg.cls, P: c.P, dir, next, dist: c.d, uncertain: !!uncertain };
+  }
+
+  // Jauns GPS mērījums. Atgriež stāvokli { roadId, segId, cls, P, dir, next, uncertain } vai null.
+  update(lat, lng, heading, accuracy = 10) {
+    const idx = this.index;
+    if (accuracy == null || isNaN(accuracy)) accuracy = 10;
+    if (!idx.ready || !idx.covers(lat, lng)) return this.cur;
+    if (accuracy > 40 && this.cur) return this.cur;                  // vājš signāls — ceļu nemaina
+    // Pašreizējo ceļu meklē plašāk (lai GPS lēciena brīdī to varētu paturēt).
+    const extra = Math.min(30, Math.max(0, accuracy - 10));
+    const cands = idx._candidates(lat, lng, Math.max(extra, 20)).filter(c =>
+      c.d <= c.seg.max + extra || (this.cur && c.seg.roadId === this.cur.roadId));
+    this._last = cands;
+    const scored = [];
+    for (const c of cands) {
+      let score = c.d / (c.seg.max + accuracy), dir = c.bearing;
+      if (heading != null) {
+        const ax = roadAxisDiff(heading, c.bearing);
+        if (ax > 50) continue;                                       // braucu šķērsām šim ceļam
+        score += ax / 90;
+        dir = roadAngleDiff(heading, c.bearing) <= 90 ? c.bearing : (c.bearing + 180) % 360;
+      }
+      if (c.seg.oneway && roadAngleDiff(dir, c.bearing) > 90) score += 0.5;   // pret vienvirziena kustību
+      const conn = this._connected(c);
+      if (conn) score -= this.cur && c.seg.roadId === this.cur.roadId ? 0.35 : 0.2;
+      scored.push({ c, dir, score, conn });
+    }
+    if (!scored.length) { this.reset(); return null; }
+    scored.sort((a, b) => a.score - b.score);
+    let pick = scored[0];
+    if (this.cur && !pick.conn) {
+      // Pāreja uz NEsavienotu ceļu — tikai, ja tā atkārtojas (GPS lēciens uz blakus ielu nav pāreja).
+      const keep = scored.find(x => x.conn);
+      if (this.pending && this.pending.roadId === pick.c.seg.roadId) this.pending.n++;
+      else this.pending = { roadId: pick.c.seg.roadId, n: 1 };
+      if (keep && this.pending.n < TRACK_CONFIRM) pick = keep;
+      else this.pending = null;
+    } else {
+      this.pending = null;
+    }
+    // Neskaidrs: cits nesavienots ceļš gandrīz tikpat ticams.
+    const rival = scored.find(x => x !== pick && x.c.seg.roadId !== pick.c.seg.roadId && !x.conn &&
+      !(roadAxisDiff(x.c.bearing, pick.c.bearing) < 15 && Math.hypot(x.c.px - pick.c.px, x.c.py - pick.c.py) < 3));
+    const uncertain = !pick.conn && !!rival && rival.score - pick.score < TRACK_TIE;
+    this.cur = this._state(pick.c, pick.dir, uncertain);
+    this._ahead = idx.walk(this.cur.P, this.cur.next, 150, true);
+    return this.cur;
+  }
+}
+
+if (typeof module !== 'undefined') module.exports = { roadIndex, RoadTracker, roadAngleDiff, roadAxisDiff, ROAD_CLASSES };

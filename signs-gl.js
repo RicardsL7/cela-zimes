@@ -5,17 +5,58 @@
 //
 // Katra zīme tiek piesaistīta konkrētam ceļa posmam (roads-gl.js → snapSign):
 // zināms posms, braukšanas virziens, uz kuru tā attiecas, puse un piesaistes
-// kvalitāte. Ja ir maršruts, rāda TIKAI zīmes, kuru ceļa posms sakrīt ar maršrutu
-// un kuru virziens sakrīt ar maršruta virzienu; braucot paslēpj garām pabrauktās.
+// kvalitāte.
+//
+// Kuras zīmes attiecas uz MANI, nosaka viena funkcija — getApplicableSigns():
+//   1. mans ceļa posms (RoadTracker — kartes piesaiste ar vēsturi),
+//   2. braukšanas virziens,
+//   3. trajektorija: maršruta posmi vai (bez maršruta) mans ceļš uz priekšu,
+//   4. krustojumi un manevri uz tās,
+//   5. zīmes, kuru CEĻA POSMS ir šajā trajektorijā (nevis "tuvumā"),
+//   6. zīmes virziens; pagriezienu zīmēm — krustojums priekšā, joslu neskaidrība, manevrs,
+//   7. statuss: 'confirmed' (attiecas), 'probable' (virziens tikai minēts pēc ceļa puses),
+//      'unconfirmed' / 'lane-unknown' / 'contradicts-route' (NErāda kā saistošu).
+// Attālums ir tikai papildu kritērijs, nevis pierādījums.
 
 const SIGN_PRIORITY = { speed: 0, priority: 1, camera: 2, rail: 3, signals: 4, calming: 5, crossing: 6, other: 7 };
 const SIGN_GRID = 0.01;      // telpiskā indeksa šūna grādos
 const SIGN_IMG_PX = 64;      // zīmju attēlu izmērs (pikseļi), rāda kā 32 px
 const ROUTE_CELL = 0.002;    // maršruta posmu indeksa šūna (~200 m)
 const ROUTE_NEAR_M = 28;     // ātrā atlase: zīme ne tālāk par šo no maršruta ass
-const ROUTE_AXIS_M = 8;      // zīmes ceļa ass punkts ne tālāk par šo no maršruta
-const ROUTE_AXIS_DEG = 25;   // zīmes ceļa virziens ≈ maršruta virziens
 const ROUTE_ANGLE = 50;      // cik grādu zīmes virziens drīkst atšķirties no maršruta
+const PATH_TOL_M = 1.5;      // kartes posms "iet pa" manu ceļu (dublikāti flīžu malās ir tajā pašā vietā)
+const ROUTE_SEG_TOL_M = 4;   // maršruta (OSRM) līnija pret kartes ceļa asi — vienkāršošanas kļūda
+const OWN_SIGN_TOL_M = 4;    // OSM zīme (mezgls uz ceļa) pret trajektoriju
+const TURN_APPROACH_M = 80;  // pagrieziena zīme — ne tālāk par šo pirms krustojuma
+// Ceļi, kuros var būt vairākas joslas vienā virzienā. Joslu dati nav pieejami, tāpēc
+// obligātā virziena zīmes tajos NEattiecina uz visām joslām.
+const MULTI_LANE_CLASSES = new Set(['motorway', 'trunk', 'primary', 'secondary', 'tertiary']);
+
+// Pagriezienu zīmes: { kind: 'only' | 'no', dirs: ['left'|'right'|'straight'|'uturn'] } vai null.
+function turnRule(value) {
+  const v = String(value || '');
+  if (!/^regulatory--/.test(v)) return null;
+  if (/no-left-turn/.test(v)) return { kind: 'no', dirs: ['left'] };
+  if (/no-right-turn/.test(v)) return { kind: 'no', dirs: ['right'] };
+  if (/no-u-turn/.test(v)) return { kind: 'no', dirs: ['uturn'] };
+  if (/no-straight-through/.test(v)) return { kind: 'no', dirs: ['straight'] };
+  if (/go-straight-or-turn-right/.test(v)) return { kind: 'only', dirs: ['straight', 'right'] };
+  if (/go-straight-or-turn-left/.test(v)) return { kind: 'only', dirs: ['straight', 'left'] };
+  if (/turn-left-or-(turn-)?right/.test(v)) return { kind: 'only', dirs: ['left', 'right'] };
+  if (/--go-straight--/.test(v)) return { kind: 'only', dirs: ['straight'] };
+  if (/--turn-right(-ahead)?--/.test(v)) return { kind: 'only', dirs: ['right'] };
+  if (/--turn-left(-ahead)?--/.test(v)) return { kind: 'only', dirs: ['left'] };
+  return null;
+}
+// OSRM manevra virziens: 'left' | 'right' | 'straight' | 'uturn'.
+function maneuverDir(modifier) {
+  const m = String(modifier || 'straight');
+  if (/uturn/.test(m)) return 'uturn';
+  if (/left/.test(m)) return 'left';
+  if (/right/.test(m)) return 'right';
+  return 'straight';
+}
+const REL_BY_STATUS = { confirmed: 'mine', probable: 'unknown', unconfirmed: 'other', 'lane-unknown': 'other', 'contradicts-route': 'other' };
 
 function angleDiff(a, b) {
   const d = Math.abs(a - b) % 360;
@@ -39,8 +80,14 @@ class SignStore {
     this.route = null;
     this.routeGrid = null;
     this.routeAlong = null;  // cik metru no maršruta jau nobraukts (navigācijā)
-    this.routeList = [];     // [{ s, along }] maršruta zīmes pēc kārtas
+    this.routeList = [];     // [{ s, along, status, reason }] maršruta zīmes pēc kārtas
     this._routeDirty = false;
+    this._routePath = null;
+    // Brīvā braukšana: kur esmu (RoadTracker) un kuras zīmes uz mana ceļa priekšā
+    this.tracker = null;
+    this.pos = null;
+    this._free = null;       // { list, status: Map s → it, opposite: Set }
+    this._freeDirty = true;
   }
 
   // ---------- Dati ----------
@@ -74,18 +121,28 @@ class SignStore {
   }
 
   setFilter(fn) { this.filter = fn; this.refresh(); }
-  setHeading(deg) { this.heading = deg; this.refresh(); }
+  setHeading(deg) { this.heading = deg; this._freeDirty = true; this.refresh(); }
+  // Jauns GPS mērījums: kartes piesaiste ar vēsturi (vienreiz katram mērījumam).
+  setPosition(lat, lng, heading, accuracy) {
+    if (!this.tracker && this.roads && typeof RoadTracker !== 'undefined') this.tracker = new RoadTracker(this.roads);
+    this.pos = this.tracker ? this.tracker.update(lat, lng, heading, accuracy) : null;
+    this._freeDirty = true;
+    this.refresh();
+    return this.pos;
+  }
   setEnabled(v) { this.enabled = v; this.refresh(); }
   // Zīmes virziens mainījies (ielādēts no Mapillary) — piesaisti jārēķina no jauna.
   faceChanged(s) { s._m = undefined; }
-  facesChanged() { if (this.route) this._routeDirty = true; this.refresh(); }
+  facesChanged() { if (this.route) this._routeDirty = true; this._freeDirty = true; this.refresh(); }
   setRoads(idx) {
     this.roads = idx;
+    this.tracker = typeof RoadTracker !== 'undefined' ? new RoadTracker(idx) : null;
+    this.pos = null;
     for (const list of this.grid.values()) for (const s of list) s._m = undefined;
     this.refresh();
   }
   // Kartē ielādēti jauni ceļi: maršruta zīmes jāpārvērtē (provizoriskās var kļūt precīzas).
-  roadsChanged() { if (this.route) this._routeDirty = true; this.refresh(); }
+  roadsChanged() { if (this.route) this._routeDirty = true; this._freeDirty = true; this.refresh(); }
 
   // Zīmes piesaiste ceļam (kešota). undefined — ceļi šai vietai vēl nav zināmi;
   // null — tuvumā nav braucama ceļa (ūdenī, parkā u.c.).
@@ -107,18 +164,17 @@ class SignStore {
     return null;
   }
 
-  // Vai zīme attiecas uz mani (brīvā braukšanā, pēc kursa)?
-  // 'mine' — mans virziens; 'other' — šķērsiela / neskaidrs (rāda blāvu); 'opposite' — pretējais (nerāda).
+  // Kā zīmi rādīt brīvā braukšanā: 'mine' — attiecas uz mani (uz mana ceļa, manā virzienā);
+  // 'unknown' — virziens nav apstiprināts vai nav zināms, kur esmu; 'other' — cits ceļš /
+  // neskaidrs (blāva); 'opposite' — mana ceļa pretējais virziens (nerāda).
+  // NEnosaka pēc kompasa vien: zīmes ceļa posmam jābūt uz mana ceļa priekšā.
   relation(s) {
-    const m = s._m;
-    if (m && m.quality === 'uncertain') return 'other';
-    if (this.heading == null) return 'unknown';
-    const d = this._dir(s);
-    if (!d) return 'unknown';
-    const diff = angleDiff(d.dir, this.heading);
-    if (!d.sure) return diff > 135 ? 'unknown' : 'mine';   // puse tikai minēta — neslēpj
-    if (diff <= 60) return 'mine';
-    return diff >= 120 ? 'opposite' : 'other';
+    if (!this.pos || this.heading == null) return 'unknown';
+    const f = this._freeApplicable();
+    if (!f) return 'unknown';
+    if (f.opposite.has(s)) return 'opposite';
+    const it = f.status.get(s);
+    return it ? REL_BY_STATUS[it.status] : 'other';
   }
 
   // ---------- Maršruts ----------
@@ -127,6 +183,8 @@ class SignStore {
     this.routeAlong = null;
     this.routeGrid = null;
     this.routeList = [];
+    this._routePath = null;
+    this._routeSegs = null;
     if (route) {
       const g = new Map(), c = route.coords;
       for (let i = 0; i + 1 < c.length; i++) {
@@ -179,70 +237,192 @@ class SignStore {
     return best;
   }
 
-  // Vai zīme pieder maršrutam? Atgriež { along, provisional } vai null.
-  //  • Ja ceļi zināmi: zīmes ceļa posmam jāsakrīt ar maršrutu (ass ≤ 8 m, virziens ±25°)
-  //    un zīmes braukšanas virzienam — ar maršruta virzienu. Tā neiekļūst paralēlu
-  //    ielu, šķērsielu un pretējās brauktuves zīmes.
-  //  • Ja ceļi vēl nav ielādēti: pagaidu vērtējums pēc maršruta ģeometrijas (stingrāks
-  //    attālums); kad ceļi ielādējas, zīmi pārvērtē.
-  _routeMember(x) {
-    const raw = this._matchRoute(x.lat, x.lng);
-    if (!raw) return null;
-    const m = this.match(x);
-    if (m === null) return null;                                  // nav uz ceļa
-    if (m && !m.own) {
-      if (m.quality === 'uncertain' && m.dirSource !== 'face') return null;
-      const r = this._matchRoute(m.roadPoint[1], m.roadPoint[0]);
-      if (!r || r.d > ROUTE_AXIS_M) return null;
-      const axis = angleDiff(m.roadBearing, r.bearing);
-      if (Math.min(axis, 180 - axis) > ROUTE_AXIS_DEG) return null;  // cits ceļš (šķērsiela)
-      if (angleDiff(m.travelDir, r.bearing) > ROUTE_ANGLE) return null; // pretējais virziens
-      return { along: r.along, provisional: false };
+  // ---------- Trajektorija un zīmju atlase ----------
+  // Maršruta trajektorija: kartes posmi, kas iet pa maršrutu, un krustojumi ar manevriem.
+  _routePathObj() {
+    const roadsGen = this.roads ? this.roads.gen : -1;
+    if (this._routePath && this._routePath.gen === roadsGen) return this._routePath;
+    const c = this.route.coords;
+    let S = 90, W = 180, N = -90, E = -180;
+    for (const p of c) { if (p[1] < S) S = p[1]; if (p[1] > N) N = p[1]; if (p[0] < W) W = p[0]; if (p[0] > E) E = p[0]; }
+    const project = (lng, lat) => this._matchRoute(lat, lng);
+    // Kartē vienlaikus ir tikai redzamās apkārtnes ceļi — maršruta posmus uzkrāj (ID ir stabili).
+    const segs = this._routeSegs || (this._routeSegs = new Map());
+    if (this.roads && this.roads.ready) for (const [id, v] of this.roads.segmentsAlong([S, W, N, E], project, ROUTE_SEG_TOL_M)) segs.set(id, v);
+    // Krustojumi no OSRM (intersections) un manevru virzieni tajos.
+    const junctions = [];
+    for (const st of this.route.steps || []) {
+      (st.intersections || []).forEach((ix, i) => {
+        if (!ix.location || (ix.bearings && ix.bearings.length < 3 && i > 0)) return;
+        const r = this._matchRoute(ix.location[1], ix.location[0]);
+        if (!r) return;
+        const dir = i === 0 ? (st.maneuver && st.maneuver.type === 'depart' ? null : maneuverDir(st.maneuver && st.maneuver.modifier)) : 'straight';
+        junctions.push({ along: r.along, dir });
+      });
     }
-    // OSM zīme vai ceļi vēl nav zināmi.
-    if (raw.d > (m && m.own ? 15 : 18)) return null;
-    const ok = x.face != null ? angleDiff((x.face + 180) % 360, raw.bearing) <= ROUTE_ANGLE : raw.side > 0 || !!(m && m.own);
-    return ok ? { along: raw.along, provisional: !m } : null;
+    junctions.sort((x, y) => x.along - y.along);
+    this._routePath = { gen: roadsGen, segs, project, bbox: [S, W, N, E], junctions, from: -Infinity, to: Infinity, route: true };
+    return this._routePath;
+  }
+
+  // Brīvā braukšana: mans ceļš uz priekšu (līdz maxM, krustojumos taisni).
+  _freePathObj(maxM = 400) {
+    const pos = this.pos;
+    if (!pos || !this.roads || !this.roads.ready) return null;
+    const ahead = this.roads.walk(pos.P, pos.next, maxM, true);
+    if (ahead.length < 2) return null;
+    // Līnija sākas pašreizējā posma sākumā (lai šis posms arī ir trajektorijā), "from" — mana vieta.
+    const k = 111320, cos = Math.cos(pos.P[1] * Math.PI / 180);
+    const back = this._backPoint(pos);
+    const line = back ? [back, ...ahead] : ahead;
+    const off = back ? Math.hypot((pos.P[0] - back[0]) * k * cos, (pos.P[1] - back[1]) * k) : 0;
+    let S = 90, W = 180, N = -90, E = -180;
+    for (const p of line) { S = Math.min(S, p[1]); N = Math.max(N, p[1]); W = Math.min(W, p[0]); E = Math.max(E, p[0]); }
+    const project = (lng, lat) => projectOnLine(line, lng, lat);
+    const pad = 0.0002;
+    const segs = this.roads.segmentsAlong([S - pad, W - pad, N + pad, E + pad], project, PATH_TOL_M);
+    const junctions = ahead.junctions.map(a => ({ along: a + off, dir: null }));
+    return { segs, project, bbox: [S, W, N, E], junctions, from: off + 2, to: off + maxM, route: false, uncertain: pos.uncertain, end: ahead.end };
+  }
+  // Pašreizējā posma gals AIZ manis (pretēji braukšanas virzienam).
+  _backPoint(pos) {
+    let best = null;
+    this.roads.eachSegInBox(pos.P[1] - 0.0002, pos.P[0] - 0.0004, pos.P[1] + 0.0002, pos.P[0] + 0.0004, seg => {
+      if (seg.id !== pos.segId) return;
+      best = (seg.b[0] === pos.next[0] && seg.b[1] === pos.next[1]) ? seg.a : seg.b;
+    });
+    return best;
+  }
+
+  // Zīmes novērtējums trajektorijā: { along, status, reason } vai null (nav uz trajektorijas),
+  // vai { opposite: true } (uz trajektorijas, bet pretējā virzienā).
+  _judge(x, path) {
+    const m = this.match(x);
+    if (m === null) return null;
+    let at, provisional = false;
+    if (m === undefined) {
+      // Ceļi šai vietai vēl nav ielādēti (tikai maršrutam): pagaidu, NEapstiprināts.
+      if (!path.route) return null;
+      const r = path.project(x.lng, x.lat);
+      if (!r || r.d > 18) return null;
+      const ok = x.face != null ? angleDiff((x.face + 180) % 360, r.bearing) <= ROUTE_ANGLE : r.side > 0;
+      return ok ? { along: r.along, status: 'probable', reason: 'roads-not-loaded', provisional: true } : null;
+    }
+    if (m.own) {
+      at = path.project(x.lng, x.lat);
+      if (!at || at.d > OWN_SIGN_TOL_M) return null;
+    } else {
+      if (m.quality === 'uncertain') return null;                   // nav zināms, kuram ceļam zīme pieder
+      if (!path.segs.has(m.segId)) {
+        // Maršrutam: šīs vietas ceļi kartē pašlaik nav ielādēti (zīme piesaistīta agrāk) —
+        // pagaidu vērtējums pēc zīmes ceļa ass (stingri ≤ 4 m un tas pats virziens), NEapstiprināts.
+        if (!path.route || this.roads.covers(m.roadPoint[1], m.roadPoint[0])) return null;   // cits ceļa posms
+        const r = path.project(m.roadPoint[0], m.roadPoint[1]);
+        if (!r || r.d > ROUTE_SEG_TOL_M) return null;
+        const ax = angleDiff(m.roadBearing, r.bearing);
+        if (Math.min(ax, 180 - ax) > 25 || angleDiff(m.travelDir, r.bearing) > ROUTE_ANGLE) return null;
+        return { along: r.along, status: 'probable', reason: 'roads-not-loaded', provisional: true };
+      }
+      at = path.project(m.roadPoint[0], m.roadPoint[1]);
+      if (!at) return null;
+    }
+    if (at.along < path.from || at.along > path.to) return null;
+    const d = this._dir(x);
+    if (d && angleDiff(d.dir, at.bearing) > ROUTE_ANGLE) return { opposite: true };
+    const sure = !!(d && d.sure) || x.verifiedDir != null;
+    const rule = turnRule(x.value);
+    const res = { along: at.along, status: 'confirmed', reason: '', provisional };
+    if (!rule) {
+      if (!d) { res.status = 'probable'; res.reason = 'dir-unknown'; }
+      else if (!sure) { res.status = 'probable'; res.reason = 'dir-side'; }
+    } else {
+      // Pagriezienu zīmes: virzienam jābūt apstiprinātam un krustojumam priekšā.
+      const j = path.junctions.find(q => q.along >= at.along - 5);
+      if (!sure) { res.status = 'unconfirmed'; res.reason = 'dir-unknown'; }
+      else if (!j || j.along - at.along > TURN_APPROACH_M) { res.status = 'unconfirmed'; res.reason = 'no-junction'; }
+      else if (rule.kind === 'only') {
+        res.junction = j.along; res.rule = rule;
+        if (path.route && j.dir && !rule.dirs.includes(j.dir)) { res.status = 'contradicts-route'; res.reason = 'route-' + j.dir; }
+        else if (!path.route && MULTI_LANE_CLASSES.has(m.cls || (this.roads && this._segCls(m.segId)))) { res.status = 'lane-unknown'; res.reason = 'multi-lane'; }
+        else if (path.route && MULTI_LANE_CLASSES.has(m.cls || this._segCls(m.segId))) { res.reason = 'lane-maybe'; }
+      }
+    }
+    if (path.uncertain && res.status === 'confirmed') { res.status = 'probable'; res.reason = 'gps-uncertain'; }
+    if (x.source === 'osm-turn') res.mapRule = true;               // kartes ierobežojums, ne pārbaudīta fiziska zīme
+    return res;
+  }
+  _segCls(segId) {
+    const p = this._routePath && this._routePath.segs.get(segId) || this._free && this._free.path && this._free.path.segs.get(segId);
+    return p && p.seg ? p.seg.cls : null;
+  }
+
+  // Galvenā atlase: zīmes, kas attiecas uz trajektoriju. Atgriež
+  // { list: [{ s, along, status, reason }], status: Map s → ieraksts, opposite: Set }.
+  _evaluate(path) {
+    const [S, W, N, E] = path.bbox, pad = 0.0005;
+    const list = [], opposite = new Set();
+    this.eachInBox(S - pad, W - pad, N + pad, E + pad, x => {
+      const r = this._judge(x, path);
+      if (!r) return;
+      if (r.opposite) { opposite.add(x); return; }
+      list.push(Object.assign({ s: x }, r));
+    });
+    // Vienā krustojuma pieejā dažādas obligātā virziena zīmes (piem. "tikai pa labi" un
+    // "tikai taisni") — tās ir joslām, kuras nezinām. Nevienu nepiemēro visām joslām.
+    const byJ = new Map();
+    for (const it of list) if (it.rule && it.rule.kind === 'only' && it.junction != null) {
+      const k = Math.round(it.junction);
+      if (!byJ.has(k)) byJ.set(k, []);
+      byJ.get(k).push(it);
+    }
+    for (const group of byJ.values()) {
+      const sets = new Set(group.map(it => it.rule.dirs.join(',')));
+      if (sets.size > 1) for (const it of group) if (it.status === 'confirmed' || it.status === 'contradicts-route') { it.status = 'lane-unknown'; it.reason = 'lane-conflict'; }
+    }
+    list.sort((a, b) => a.along - b.along);
+    const status = new Map();
+    for (const it of list) { status.set(it.s, it); it.s._app = it; }
+    return { list, status, opposite };
+  }
+
+  _freeApplicable() {
+    if (!this._freeDirty && this._free) return this._free;
+    this._freeDirty = false;
+    const path = this._freePathObj(400);
+    this._free = path ? Object.assign(this._evaluate(path), { path }) : null;
+    return this._free;
+  }
+
+  // Centralizēta atlase (skat. faila sākumu). Ar maršrutu — maršruta zīmes no "along";
+  // bez maršruta — zīmes uz mana ceļa priekšā. statuses — kurus statusus atgriezt.
+  getApplicableSigns({ along = null, maxM = 400, test = null, statuses = ['confirmed', 'probable'] } = {}) {
+    let list;
+    if (this.route) {
+      if (this._routeDirty) this._rebuildRouteList();
+      const from = along == null ? -Infinity : along;
+      const to = along == null ? Infinity : along + maxM;
+      list = this.routeList.filter(it => it.along >= from && it.along <= to)
+        .map(it => Object.assign({}, it, { dist: along == null ? it.along : it.along - along }));
+    } else {
+      const f = this._freeApplicable();
+      if (!f) return [];
+      list = f.list.filter(it => it.along - f.path.from <= maxM).map(it => Object.assign({}, it, { dist: it.along - f.path.from + 2 }));
+    }
+    list = list.filter(it => statuses.includes(it.status) && this.filter(it.s) && (!test || test(it.s)));
+    return dedupeAlong(list, 25);
   }
 
   _rebuildRouteList() {
     this._routeDirty = false;
-    const c = this.route.coords;
-    let s = 90, w = 180, n = -90, e = -180;
-    for (const p of c) { if (p[1] < s) s = p[1]; if (p[1] > n) n = p[1]; if (p[0] < w) w = p[0]; if (p[0] > e) e = p[0]; }
-    const pad = 0.0005, list = [];
-    this.eachInBox(s - pad, w - pad, n + pad, e + pad, x => {
-      const r = this._routeMember(x);
-      if (r) list.push({ s: x, along: r.along, provisional: r.provisional });
-    });
-    list.sort((a, b) => a.along - b.along);
-    this.routeList = dedupeAlong(list, 25);
+    const r = this._evaluate(this._routePathObj());
+    this.routeList = dedupeAlong(r.list, 25);
   }
 
-  // ---------- Brīvā braukšana: zīmes uz MANA ceļa priekšā ----------
-  // Nosaka, pa kuru ceļu braucu, un iet pa to uz priekšu līdz krustojumam.
+  // Brīvā braukšana: zīmes uz MANA ceļa priekšā (tikai apstiprinātas vai ar minētu virzienu,
+  // pagriezienu zīmes — tikai apstiprinātas). lat/lng/heading tiek ņemti no setPosition().
   signsAheadOnRoad(lat, lng, heading, accuracy, maxM = 400, test) {
-    if (!this.roads || !this.roads.ready || heading == null) return [];
-    const pos = this.roads.matchPosition(lat, lng, heading, accuracy);
-    if (!pos) return [];
-    const line = this.roads.walk(pos.P, pos.next, maxM);
-    if (line.length < 2) return [];
-    let S = 90, W = 180, N = -90, E = -180;
-    for (const p of line) { S = Math.min(S, p[1]); N = Math.max(N, p[1]); W = Math.min(W, p[0]); E = Math.max(E, p[0]); }
-    const pad = 0.0004, out = [];
-    this.eachInBox(S - pad, W - pad, N + pad, E + pad, x => {
-      if (!this.filter(x) || (test && !test(x))) return;
-      const m = this.match(x);
-      if (!m || (m.quality === 'uncertain' && m.dirSource !== 'face')) return;
-      const pt = m.own ? [x.lng, x.lat] : m.roadPoint;
-      const pr = projectOnLine(line, pt[0], pt[1]);
-      if (!pr || pr.d > (m.own ? 12 : 4) || pr.along < 3) return;
-      const d = this._dir(x);
-      if (d && angleDiff(d.dir, pr.bearing) > ROUTE_ANGLE) return;
-      out.push({ s: x, along: pr.along });
-    });
-    out.sort((a, b) => a.along - b.along);
-    return dedupeAlong(out, 25);
+    if (heading == null || !this.pos) return [];
+    return this.getApplicableSigns({ maxM, test }).map(it => Object.assign(it, { along: it.dist }));
   }
 
   // Maršruta zīmes priekšā: no "from" līdz "from + ahead" metriem.
@@ -255,6 +435,7 @@ class SignStore {
       if (it.along > from + ahead) break;
       if (!this.filter(it.s)) continue;
       if (it.s._m === null) continue; // nav uz ceļa
+      if (it.status !== 'confirmed' && it.status !== 'probable') continue;   // neapstiprinātas nav saistošas
       if (!test || test(it.s)) out.push(it);
     }
     return out;
@@ -267,6 +448,7 @@ class SignStore {
     let found = null;
     for (const it of this.routeList) {
       if (it.along > at) break;
+      if (it.status !== 'confirmed' && it.status !== 'probable') continue;
       if (it.along >= at - within && test(it.s)) found = it;
     }
     return found;
@@ -378,15 +560,21 @@ class SignStore {
         if (s.lat < S || s.lat > N || s.lng < W || s.lng > E || !this.filter(s)) continue;
         const pos = this._place(s, true);
         if (!pos) continue;
-        list.push({ s, pos, rel: 'mine' });
+        list.push({ s, pos, rel: REL_BY_STATUS[it.status] || 'other' });
       }
     } else {
+      const f = this.pos && this.heading != null ? this._freeApplicable() : null;
       this.eachInBox(S, W, N, E, s => {
         if (!this.filter(s)) return;
         const pos = this._place(s);
         if (!pos) return;
-        const rel = this.relation(s);
-        if (rel === 'opposite') return; // pretējā virziena zīmes nerāda
+        let rel = 'unknown';
+        if (f) {
+          if (f.opposite.has(s)) return;                    // mana ceļa pretējais virziens — nerāda
+          const it = f.status.get(s);
+          rel = it ? REL_BY_STATUS[it.status] : 'other';    // nav uz mana ceļa — blāva
+          if (!it) s._app = null;
+        } else s._app = null;
         list.push({ s, pos, rel });
       });
     }
@@ -452,4 +640,4 @@ function projectOnLine(line, lng, lat) {
   return best;
 }
 
-if (typeof module !== 'undefined') module.exports = { SignStore, dedupeAlong, projectOnLine, angleDiff };
+if (typeof module !== 'undefined') module.exports = { SignStore, dedupeAlong, projectOnLine, angleDiff, turnRule, maneuverDir };
