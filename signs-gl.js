@@ -357,6 +357,10 @@ class SignStore {
         else if (path.route && MULTI_LANE_CLASSES.has(m.cls || this._segCls(m.segId))) { res.reason = 'lane-maybe'; }
       }
     }
+    // Bez maršruta: aiz nākamā krustojuma nav zināms, vai brauksi taisni — tikai "iespējams".
+    if (!path.route && res.status === 'confirmed' && path.junctions.some(q => q.along > path.from && q.along < at.along - 5)) {
+      res.status = 'probable'; res.reason = 'after-junction';
+    }
     if (path.uncertain && res.status === 'confirmed') { res.status = 'probable'; res.reason = 'gps-uncertain'; }
     if (x.source === 'osm-turn') res.mapRule = true;               // kartes ierobežojums, ne pārbaudīta fiziska zīme
     return res;

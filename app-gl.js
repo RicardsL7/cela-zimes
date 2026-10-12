@@ -540,6 +540,7 @@ function signTimeInfo(s) {
       'gps-uncertain': 'GPS nevar droši atšķirt tuvos ceļus.',
       'lane-maybe': 'Var attiekties tikai uz noteiktu joslu.',
       'roads-not-loaded': 'Ceļa dati šai vietai vēl nav ielādēti.',
+      'after-junction': 'Aiz krustojuma — attiecas, ja brauksi taisni.',
     }[app.reason];
     if (why) notes.push(why);
     if (app.mapRule) notes.push('Kartes (OSM) pagrieziena ierobežojums — fiziska zīme nav pārbaudīta.');
@@ -1083,7 +1084,7 @@ function updateNextSign() {
   const r = next.s.restriction;
   $('nextSignTitle').textContent = describeRestriction(next.s.title, r) +
     (ti && ti.off ? ' (tagad nav spēkā)' : '') + (next.s.conflict ? ' (pretrunīgi dati)' : '') +
-    (next.status === 'probable' ? ' (virziens nav apstiprināts)' : '') +
+    (next.status === 'probable' ? (next.reason === 'after-junction' ? ' (ja brauksi taisni)' : ' (virziens nav apstiprināts)') : '') +
     (next.reason === 'lane-maybe' ? ' (var attiekties uz joslu)' : '');
   card.hidden = false;
 }
