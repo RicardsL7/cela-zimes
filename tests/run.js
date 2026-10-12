@@ -222,6 +222,26 @@ test('Imports: derīgas zīmes importē, nederīgas noraida ar kļūdām', () =>
   eq(r.records[0].restriction.text, 'P–Pk · 06:00–22:00'); eq(r.records[0].quality, 'verified');
 });
 
+// 11. No foto nolasītie plāksnīšu laiki
+test('11. Plāksnīte "⚒ 8.00–18.00" → darba dienās 08:00–18:00; datu fails bez kļūdām', () => {
+  const parsePlateTimes = G('parsePlateTimes');
+  const r = parsePlateTimes({ entries: [
+    { id: 'a', type: 'regulatory--no-stopping--g1', lat: 56.9076, lng: 24.0818, opening_hours: 'Mo-Fr 08:00-18:00; PH off', plate_text: '⚒ 8.00–18.00' },
+    { id: 'b', type: 'regulatory--no-stopping--g1', lat: 56.9, lng: 24.1, opening_hours: 'nesalasāms' },
+    { id: 'c', lat: 56.9, lng: 24.1, opening_hours: '08:00-18:00' },
+  ] }, parseCondition);
+  eq(r.records.length, 1); eq(r.errors.length, 2);
+  const p = r.records[0];
+  eq(describeRestriction('Apstāties aizliegts', p.restriction), 'Apstāties aizliegts · P–Pk · 08:00–18:00 (izņemot svētku dienas)');
+  eq(p.cond.test(rigaDate('2026-10-12T09:00:00+03:00')), true, 'pirmdiena 9:00');
+  eq(p.cond.test(rigaDate('2026-10-12T18:30:00+03:00')), false, 'pirmdiena 18:30');
+  eq(p.cond.test(rigaDate('2026-10-10T09:00:00+03:00')), false, 'sestdiena');
+  eq(p.cond.test(rigaDate('2026-11-18T09:00:00+02:00')), false, '18. novembris');
+  const file = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'plate-times.json'), 'utf8'));
+  const all = parsePlateTimes(file, parseCondition);
+  eq(all.errors.length, 0, 'kļūdas datu failā: ' + JSON.stringify(all.errors)); ok(all.records.length > 0, 'tukšs fails');
+});
+
 console.log(results.join('\n'));
 console.log(`\n${pass} izdevās, ${fail} neizdevās`);
 process.exit(fail ? 1 : 0);
