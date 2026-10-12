@@ -106,9 +106,9 @@ test('3. Pretēji virzieni: uz austrumiem rāda tikai savējo, uz rietumiem — 
   ok(routeIds(st).includes(east.uid) && !routeIds(st).includes(west.uid), 'uz austrumiem: ' + routeIds(st));
   st.setRoute(makeRoute([[250, 0], [-150, 0]])); st._rebuildRouteList();
   ok(routeIds(st).includes(west.uid) && !routeIds(st).includes(east.uid), 'uz rietumiem: ' + routeIds(st));
-  // brīvā braukšanā pēc kursa
+  // brīvā braukšanā: pēc mana ceļa posma UN kursa
   st.setRoute(null); st.heading = 90;
-  st.match(east); st.match(west);
+  const me = LL(0, -1); st.setPosition(me.lat, me.lng, 90, 5);
   eq(st.relation(east), 'mine'); eq(st.relation(west), 'opposite');
 });
 
@@ -165,7 +165,7 @@ test('7. Ierobežojums pāri pusnaktij (22:00–07:00 un Pk 22:00–06:00)', () 
 // 8. Zīme bez zināma laika
 test('8. Zīme bez zināma darbības laika — neizdomā, raksta "laiks nav zināms"', () => {
   const r = makeRestriction(null, 'mapillary-plate', 'low');
-  eq(r.known, false); eq(describeRestriction('Apstāties aizliegts', r), 'Apstāties aizliegts · laiks nav zināms');
+  eq(r.known, false); eq(describeRestriction('Apstāties aizliegts', r), 'Apstāties aizliegts · darbības laiks nav zināms');
   const u = parseCondition('wet');
   eq(u.known, false); eq(u.test(new Date()), null);
 });
@@ -191,6 +191,7 @@ test('9b. Zīmes priekšā uz MANA ceļa (bez maršruta)', () => {
   const behind = sign(-60, -6, 'regulatory--yield--g1', 270, 'priority');
   [ahead, other, behind].forEach(x => st.add(x));
   const me = LL(0, -1);
+  st.heading = 90; st.setPosition(me.lat, me.lng, 90, 8);
   const list = st.signsAheadOnRoad(me.lat, me.lng, 90, 8);
   eq(list.map(i => i.s.uid).join(), ahead.uid); ok(Math.abs(list[0].along - 120) < 3, 'attālums ' + list[0].along);
 });
@@ -240,6 +241,182 @@ test('11. Plāksnīte "⚒ 8.00–18.00" → darba dienās 08:00–18:00; datu f
   const file = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'plate-times.json'), 'utf8'));
   const all = parsePlateTimes(file, parseCondition);
   eq(all.errors.length, 0, 'kļūdas datu failā: ' + JSON.stringify(all.errors)); ok(all.records.length > 0, 'tukšs fails');
+});
+
+// =====================================================================
+// Zīmes attiecas TIKAI uz lietotāja reālo braukšanas ceļu (A–H)
+const turnRule = G('turnRule');
+// Maršruts ar OSRM līdzīgiem soļiem: turns: [{ at: [x,y], modifier }] (krustojumu vietas)
+function makeRouteSteps(pts, turns = [], crossings = []) {
+  const r = makeRoute(pts);
+  const steps = [{ maneuver: { type: 'depart' }, intersections: [{ location: P(...pts[0]), bearings: [90] }] }];
+  for (const c of crossings) steps[0].intersections.push({ location: P(...c), bearings: [0, 90, 180, 270] });
+  for (const t of turns) steps.push({ maneuver: { type: 'turn', modifier: t.modifier }, intersections: [{ location: P(...t.at), bearings: [0, 90, 180, 270] }] });
+  r.steps = steps;
+  return r;
+}
+const appl = (st, opts) => st.getApplicableSigns(Object.assign({ statuses: ['confirmed', 'probable', 'unconfirmed', 'lane-unknown', 'contradicts-route'] }, opts));
+const statusOf = (st, x, opts) => { const it = appl(st, opts).find(i => i.s === x); return it ? it.status : 'nav'; };
+const drive = (st, x, y, h, acc = 5) => { const p = LL(x, y); st.heading = h; return st.setPosition(p.lat, p.lng, h, acc); };
+
+test('A. Vienības gatve: blakus ceļa "Braukt tikai pa labi" netiek attiecināta uz manu ceļu', () => {
+  // Vienības gatve (trunk) ziemeļu–dienvidu virzienā, paralēli 18 m — vietējais ceļš, šķērsiela y=100.
+  roadIndex.setSegments([...road(0, -300, 0, 300, 'VIEN', { cls: 'trunk' }), ...road(18, -300, 18, 300, 'SIDE', { cls: 'service' }),
+    ...road(-200, 100, 200, 100, 'CROSS')], COVER);
+  const st = store();
+  const sideOnly = sign(22, 60, 'regulatory--turn-right-ahead--g1', 180, 'other');   // vietējā ceļa zīme
+  const trunkOnly = sign(9, 75, 'regulatory--turn-right-ahead--g1', 180, 'other');   // uz Vienības, bet joslai
+  const speed = sign(9, 20, 'regulatory--maximum-speed-limit-50--g1', 180, 'speed'); // uz Vienības manā virzienā
+  [sideOnly, trunkOnly, speed].forEach(x => st.add(x));
+  eq(roadIndex.snapSign(sideOnly.lat, sideOnly.lng, 180, sideOnly.value).roadId, 'SIDE', 'blakus zīmes ceļš');
+  const pos = drive(st, 0, -50, 0);
+  eq(pos.roadId, 'VIEN', 'mans ceļš');
+  eq(statusOf(st, sideOnly), 'nav', 'blakus ceļa zīme manā trajektorijā');
+  eq(st.relation(sideOnly), 'other', 'blakus ceļa zīme kartē nav "mana"');
+  eq(statusOf(st, trunkOnly), 'lane-unknown', 'obligātais virziens daudzjoslu ceļā bez joslu datiem');
+  ok(st.relation(trunkOnly) !== 'mine', 'joslas zīme parādīta kā saistoša');
+  eq(statusOf(st, speed), 'confirmed', 'ātruma zīme uz mana ceļa');
+  eq(st.relation(speed), 'mine');
+  const card = st.getApplicableSigns({}).map(i => i.s.uid);
+  ok(card.includes(speed.uid) && !card.includes(sideOnly.uid) && !card.includes(trunkOnly.uid), 'kartīte: ' + card);
+});
+
+test('B. Paralēlas ielas: brīvā braukšanā rāda tikai manas ielas zīmes', () => {
+  roadIndex.setSegments([...road(-200, 0, 300, 0, 'A'), ...road(-200, 25, 300, 25, 'B')], COVER);
+  const st = store();
+  const a = sign(80, -6, 'regulatory--no-stopping--g1', 270, 'other');
+  const b = sign(90, 19, 'regulatory--no-parking--g1', 270, 'other');   // ielas B labā puse (6 m no B, 19 m no A)
+  st.add(a); st.add(b);
+  drive(st, 0, -1, 90);
+  eq(statusOf(st, a), 'confirmed'); eq(statusOf(st, b), 'nav');
+  eq(st.relation(a), 'mine'); eq(st.relation(b), 'other');
+});
+
+test('C. Krustojums: pagrieziena ierobežojums attiecas tikai uz savu atzaru un manevru', () => {
+  roadIndex.setSegments([...road(-200, 0, 300, 0, 'MAIN'), ...road(100, -200, 100, 200, 'CROSS')], COVER);
+  const st = store();
+  const noLeft = sign(85, -6, 'regulatory--no-left-turn--g1', 270, 'other');            // MAIN pieeja
+  const straightOrRight = sign(80, -6, 'regulatory--go-straight-or-turn-right--g1', 270, 'other');
+  const crossOnly = sign(106, -20, 'regulatory--turn-right-ahead--g1', 180, 'other');   // CROSS pieeja no dienvidiem
+  [noLeft, straightOrRight, crossOnly].forEach(x => st.add(x));
+  st.setRoute(makeRouteSteps([[-150, 0], [250, 0]], [], [[100, 0]]));                  // taisni
+  st._rebuildRouteList();
+  eq(statusOf(st, noLeft), 'confirmed', 'aizliegts pa kreisi (manā pieejā)');
+  eq(statusOf(st, straightOrRight), 'confirmed', 'taisni vai pa labi, braucot taisni');
+  eq(statusOf(st, crossOnly), 'nav', 'šķērsielas pieejas zīme');
+  st.setRoute(makeRouteSteps([[-150, 0], [100, 0], [100, 150]], [{ at: [100, 0], modifier: 'left' }]));   // pa kreisi
+  st._rebuildRouteList();
+  eq(statusOf(st, straightOrRight), 'contradicts-route', 'zīme neatbilst manevram — iespējams, citai joslai');
+  ok(!st.routeSignsAhead(-1, 1000).some(i => i.s === straightOrRight), 'pretrunīgā zīme maršruta zīmēs');
+  eq(statusOf(st, noLeft), 'confirmed', 'aizliegums jārāda arī tad, ja maršruts to pārkāpj');
+});
+
+test('D. Atdalītas brauktuves: pretējās brauktuves zīmes nesajauc', () => {
+  // Ziemeļu virziena brauktuve x=0 (a→b uz ziemeļiem), dienvidu x=9 (a→b uz dienvidiem).
+  roadIndex.setSegments([...road(0, -300, 0, 300, 'NB', { oneway: true, cls: 'primary' }),
+    ...road(9, 300, 9, -300, 'SB', { oneway: true, cls: 'primary' })], COVER);
+  const st = store();
+  const nb = sign(-5, 20, 'regulatory--maximum-speed-limit-50--g1', null, 'speed');
+  const sb = sign(14, 40, 'regulatory--maximum-speed-limit-70--g1', null, 'speed');
+  st.add(nb); st.add(sb);
+  drive(st, 0, -40, 0);
+  eq(statusOf(st, nb), 'confirmed'); eq(statusOf(st, sb), 'nav');
+  st.setRoute(makeRoute([[0, -200], [0, 250]])); st._rebuildRouteList();
+  ok(routeIds(st).includes(nb.uid) && !routeIds(st).includes(sb.uid), 'maršrutā: ' + routeIds(st));
+});
+
+test('E. GPS kļūda: viens punkts blakus ielā ceļu nemaina, divi pēc kārtas — maina', () => {
+  roadIndex.setSegments([...road(-200, 0, 300, 0, 'A'), ...road(-200, 30, 300, 30, 'B')], COVER);
+  const st = store();
+  const a = sign(150, -6, 'regulatory--maximum-speed-limit-30--g1', 270, 'speed');
+  const b = sign(150, 24, 'regulatory--maximum-speed-limit-50--g1', 270, 'speed');
+  st.add(a); st.add(b);
+  eq(drive(st, 0, 0, 90).roadId, 'A');
+  eq(drive(st, 15, 0, 90).roadId, 'A');
+  eq(drive(st, 30, 26, 90).roadId, 'A', 'GPS lēciens uz B');
+  eq(statusOf(st, a), 'confirmed'); eq(statusOf(st, b), 'nav');
+  eq(drive(st, 45, 29, 90).roadId, 'B', 'otrais mērījums uz B');
+  eq(drive(st, 55, 30, 90, 65).roadId, 'B', 'vājš signāls (±65 m) ceļu nemaina');
+});
+
+test('F. Nogriežoties citā ielā zīmes pārslēdzas uz jauno ielu (arī mainot maršrutu)', () => {
+  roadIndex.setSegments([...road(-200, 0, 300, 0, 'MAIN'), ...road(100, -200, 100, 300, 'CROSS')], COVER);
+  const st = store();
+  const mainAfter = sign(180, -6, 'regulatory--maximum-speed-limit-30--g1', 270, 'speed');
+  const crossAhead = sign(106, 80, 'regulatory--maximum-speed-limit-40--g1', 180, 'speed');
+  st.add(mainAfter); st.add(crossAhead);
+  drive(st, 40, 0, 90);
+  eq(statusOf(st, mainAfter), 'confirmed'); eq(statusOf(st, crossAhead), 'nav');
+  drive(st, 100, 8, 0);                                     // nogriezos pa kreisi (uz ziemeļiem)
+  eq(st.pos.roadId, 'CROSS', 'uzreiz pēc pagrieziena (savienots ceļš)');
+  eq(statusOf(st, crossAhead), 'confirmed'); eq(statusOf(st, mainAfter), 'nav');
+  st.setRoute(makeRouteSteps([[-150, 0], [250, 0]], [], [[100, 0]])); st._rebuildRouteList();
+  ok(routeIds(st).includes(mainAfter.uid) && !routeIds(st).includes(crossAhead.uid), 'maršruts taisni');
+  st.setRoute(makeRouteSteps([[-150, 0], [100, 0], [100, 250]], [{ at: [100, 0], modifier: 'left' }])); st._rebuildRouteList();
+  ok(!routeIds(st).includes(mainAfter.uid) && routeIds(st).includes(crossAhead.uid), 'jauns maršruts pa kreisi: ' + routeIds(st));
+});
+
+test('G. Joslu ierobežojumi: obligātā virziena zīmi bez joslu datiem nepiemēro visām joslām', () => {
+  roadIndex.setSegments([...road(-200, 0, 300, 0, 'BIG', { cls: 'primary' }), ...road(100, -200, 100, 200, 'X'),
+    ...road(-200, 400, 300, 400, 'SMALL'), ...road(100, 200, 100, 600, 'Y')], COVER);
+  const st = store();
+  const big = sign(80, -9, 'regulatory--turn-right-ahead--g1', 270, 'other');
+  st.add(big);
+  drive(st, 20, 0, 90);
+  eq(statusOf(st, big), 'lane-unknown', 'daudzjoslu ceļš');
+  ok(!st.getApplicableSigns({}).some(i => i.s === big), 'nav kartītē');
+  const right = sign(80, 394, 'regulatory--turn-right-ahead--g1', 270, 'other');
+  const straight = sign(70, 394, 'regulatory--go-straight--g1', 270, 'other');
+  st.add(right);
+  drive(st, 20, 400, 90);
+  eq(statusOf(st, right), 'confirmed', 'viena josla, viena zīme');
+  st.add(straight); st._freeDirty = true;
+  eq(statusOf(st, right), 'lane-unknown', 'pretrunīgas obligātā virziena zīmes vienā pieejā = joslām');
+  eq(statusOf(st, straight), 'lane-unknown');
+  eq(turnRule('regulatory--go-straight-or-turn-left--g1').dirs.join(), 'straight,left');
+});
+
+test('H. Nepilnīgi dati: zīme ar nezināmu virzienu netiek parādīta kā apstiprināta', () => {
+  roadIndex.setSegments([...road(-200, 0, 300, 0, 'A'), ...road(100, -200, 100, 200, 'X')], COVER);
+  const st = store();
+  const speed = sign(60, -6, 'regulatory--maximum-speed-limit-30--g1', null, 'speed');    // virziens tikai pēc puses
+  const turn = sign(85, -6, 'regulatory--no-left-turn--g1', null, 'other');                // pagrieziens bez virziena
+  const virtual = sign(88, -6, 'regulatory--no-right-turn--g1', 270, 'other'); virtual.source = 'osm-turn';
+  [speed, turn, virtual].forEach(x => st.add(x));
+  drive(st, 0, 0, 90);
+  eq(statusOf(st, speed), 'probable'); eq(st.relation(speed), 'unknown', 'nav "mana" (apstiprināta)');
+  eq(statusOf(st, turn), 'unconfirmed'); ok(!st.getApplicableSigns({}).some(i => i.s === turn), 'nav kartītē');
+  const v = appl(st).find(i => i.s === virtual);
+  ok(v && v.mapRule, 'kartes ierobežojums atzīmēts kā "nav pārbaudīta fiziska zīme"');
+  // neskaidra kartes piesaiste (divi ceļi gandrīz vienādi) → apstiprinātu nav
+  roadIndex.setSegments([...road(-200, 0, 300, 0, 'P1'), ...road(-200, 12, 300, 12, 'P2')], COVER);
+  const st2 = store(); const s2 = sign(60, -5, 'regulatory--maximum-speed-limit-30--g1', 270, 'speed'); st2.add(s2);
+  drive(st2, 0, 6, 90);
+  ok(st2.pos.uncertain, 'GPS starp diviem ceļiem — neskaidrs');
+  ok(statusOf(st2, s2) !== 'confirmed', 'neskaidrā situācijā nekas nav "apstiprināts"');
+});
+
+test('I. "Iebraukt aizliegts" vidū kvartālam (iebrauktuvei/sliedēm) neattiecas uz manu ceļu; krustojumā — attiecas', () => {
+  roadIndex.setSegments([...road(-200, 0, 300, 0, 'A'), ...road(150, -200, 150, 200, 'X')], COVER);
+  const st = store();
+  const mid = sign(40, -6, 'regulatory--no-entry--g1', 270, 'other');      // 110 m līdz krustojumam
+  const atJ = sign(140, -6, 'regulatory--no-entry--g1', 270, 'other');     // 10 m pirms krustojuma
+  st.add(mid); st.add(atJ);
+  drive(st, 0, 0, 90);
+  eq(statusOf(st, mid), 'unconfirmed'); eq(statusOf(st, atJ), 'confirmed');
+});
+
+test('J. Zīme pie veloceliņa / tramvaja sliedēm netiek piesaistīta auto ceļam', () => {
+  roadIndex.setSegments([...road(-200, 0, 300, 0, 'A', { cls: 'secondary' })], COVER,
+    [{ a: P(-200, -8), b: P(300, -8), cls: 'path' }]);                      // veloceliņš 8 m no ass
+  const bike = sign(60, -7, 'regulatory--priority-over-oncoming-vehicles--g1', 270, 'other');   // 1 m no veloceliņa
+  const m1 = roadIndex.snapSign(bike.lat, bike.lng, 270, bike.value);
+  eq(m1.quality, 'uncertain', 'pie veloceliņa');
+  const road2 = sign(80, -5, 'regulatory--maximum-speed-limit-40--g1', 270, 'speed');           // pie brauktuves
+  eq(roadIndex.snapSign(road2.lat, road2.lng, 270, road2.value).quality, 'ok', 'pie brauktuves');
+  const st = store(); st.add(bike); st.add(road2);
+  drive(st, 0, 0, 90);
+  eq(statusOf(st, bike), 'nav'); eq(statusOf(st, road2), 'confirmed');
 });
 
 console.log(results.join('\n'));
