@@ -234,18 +234,20 @@ async function fetchSignPhoto(featureId, token) {
   if (signPhotoCache.has(featureId)) return signPhotoCache.get(featureId);
   const job = (async () => {
     const H = { headers: { Authorization: 'OAuth ' + token } };
-    const dets = (await (await fetch(`https://graph.mapillary.com/${featureId}/detections?fields=image,geometry`, H)).json()).data || [];
-    // Labākais foto: kur zīme ir vislielākā (tuvākā, skaidrākā).
+    const dets = (await (await fetch(`https://graph.mapillary.com/${featureId}/detections?fields=image,geometry&limit=60`, H)).json()).data || [];
+    // Labākais foto: kur zīme ir vislielākā (tuvākā — plāksnīšu teksts salasāms).
     let best = null;
-    for (const d of dets.slice(0, 8)) {
+    for (const d of dets) {
       const bb = d.geometry && detectionBBox(d.geometry);
       if (!bb || !d.image) continue;
       const area = (bb[2] - bb[0]) * (bb[3] - bb[1]);
       if (!best || area > best.area) best = { area, bb, image: d.image.id };
     }
     if (!best) return null;
-    const im = await (await fetch(`https://graph.mapillary.com/${best.image}?fields=thumb_2048_url,thumb_1024_url`, H)).json();
-    const url = im.thumb_2048_url || im.thumb_1024_url;
+    const im = await (await fetch(`https://graph.mapillary.com/${best.image}?fields=thumb_2048_url,thumb_1024_url,thumb_original_url`, H)).json();
+    // Ja zīme 2048 px foto ir maza (< 70 px), ņem oriģinālo izšķirtspēju — citādi plāksnīti nevar izlasīt.
+    const small = (best.bb[2] - best.bb[0]) * 2048 < 70;
+    const url = (small && im.thumb_original_url) || im.thumb_2048_url || im.thumb_1024_url;
     return url ? { url, bb: best.bb, image: best.image } : null;
   })().catch(() => null);
   signPhotoCache.set(featureId, job);

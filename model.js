@@ -119,6 +119,31 @@ function parseVerifiedGeoJSON(json, parse) {
   return out;
 }
 
+// No foto nolasītie plāksnīšu laiki (data/plate-times.json):
+//   { entries: [{ id, type, lat, lng, opening_hours, plate_text, source, read_at, confidence, image }] }
+// Ieraksts attiecas uz TĀDA PAŠA veida zīmēm PLATE_MATCH_M rādiusā (Mapillary vienu fizisku
+// zīmi bieži saglabā vairākkārt). Nesaprotamu laiku neimportē — zīmei paliek "laiks nav zināms".
+const PLATE_MATCH_M = 8;
+function parsePlateTimes(json, parse) {
+  const out = { records: [], errors: [] };
+  const list = json && Array.isArray(json.entries) ? json.entries : null;
+  if (!list) { out.errors.push({ index: -1, errors: ['nav "entries" saraksta'] }); return out; }
+  list.forEach((e, i) => {
+    const err = [];
+    if (!e || typeof e.type !== 'string' || !e.type) err.push('nav zīmes veida');
+    if (!(e && typeof e.lat === 'number' && Math.abs(e.lat) <= 90 && typeof e.lng === 'number' && Math.abs(e.lng) <= 180)) err.push('nederīgas koordinātas');
+    const cond = e && e.opening_hours ? parse(e.opening_hours) : null;
+    if (!(cond && cond.known)) err.push('laiks nav saprotams: ' + (e && e.opening_hours));
+    if (err.length) { out.errors.push({ index: i, id: e && e.id, errors: err }); return; }
+    out.records.push({
+      id: e.id || null, type: e.type, lat: e.lat, lng: e.lng, cond,
+      restriction: makeRestriction(cond, e.source || 'mapillary-foto', e.confidence || 'medium'),
+      plateText: e.plate_text || null, readAt: e.read_at || null, image: e.image || null,
+    });
+  });
+  return out;
+}
+
 // Dublikātu un pretrunu noteikšana (režģis ~30 m šūnās).
 class SignDeduper {
   constructor() { this.grid = new Map(); }
@@ -166,5 +191,5 @@ function gpsFixQuality(accuracy) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { makeRestriction, describeRestriction, toSignRecord, validateRecord, parseVerifiedGeoJSON, SignDeduper, gpsFixQuality };
+  module.exports = { makeRestriction, describeRestriction, toSignRecord, validateRecord, parseVerifiedGeoJSON, parsePlateTimes, SignDeduper, gpsFixQuality };
 }

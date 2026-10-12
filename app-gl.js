@@ -159,6 +159,35 @@ async function loadVerifiedSigns() {
   if (records.length) signs.refresh();
 }
 
+// ---------- No foto nolasītie plāksnīšu laiki (data/plate-times.json) ----------
+// Mapillary atrod zīmi, bet plāksnītes tekstu (laiku) nenolasa. Šie laiki ir nolasīti
+// no Mapillary foto un piesaistīti tāda paša veida zīmēm 8 m rādiusā.
+let plateTimes = [];
+async function loadPlateTimes() {
+  let json;
+  try {
+    const r = await fetch('data/plate-times.json', { cache: 'no-cache' });
+    if (!r.ok) return;
+    json = await r.json();
+  } catch { return; }
+  const { records, errors } = parsePlateTimes(json, parseCondition);
+  if (errors.length) console.warn('Plāksnīšu laiki: nederīgi ieraksti', errors);
+  plateTimes = records;
+  attachTimesSoon();
+}
+function attachPlateTimes() {
+  let n = 0;
+  const dLat = PLATE_MATCH_M / 111320;
+  for (const p of plateTimes) {
+    const dLng = dLat / Math.cos(p.lat * Math.PI / 180);
+    signs.eachInBox(p.lat - dLat, p.lng - dLng, p.lat + dLat, p.lng + dLng, s => {
+      if (s.plateRead || s.value !== p.type || distM(s.lat, s.lng, p.lat, p.lng) > PLATE_MATCH_M) return;
+      s.plateRead = p; s.timeCond = p.cond; s.restriction = p.restriction; n++;
+    });
+  }
+  return n;
+}
+
 function showCounts() {
   if (state.nav.active) return;
   const parts = [];
@@ -426,7 +455,7 @@ function mlyReadyAt(lat, lng) {
 }
 
 function attachTimes() {
-  let changed = false;
+  let changed = attachPlateTimes() > 0;
   for (const p of timePlates) {
     if (p.done) continue;
     const s = signs.findNear(p.lat, p.lng, 4, x => x.value && /^(regulatory|warning)--/.test(x.value));
@@ -492,9 +521,10 @@ function signTimeInfo(s) {
   if (s._m && s._m.quality === 'uncertain') notes.push('Piesaiste ceļam nav droša (' + (s._m.reason || 'neskaidrs') + ').');
   if (s.conflict) notes.push('Pretrunīgi dati: tuvumā ir cits ātruma ierobežojums.');
   if (s.verifiedAt) notes.push('Pārbaudīta zīme (' + String(s.verifiedAt).slice(0, 10) + ').');
+  if (s.plateRead && s.plateRead.plateText) notes.push(`Plāksnīte: „${s.plateRead.plateText}” (nolasīts no foto${s.plateRead.readAt ? ' ' + s.plateRead.readAt : ''}; ⚒ — darba dienas).`);
   const note = notes.length ? ' ' + notes.join(' ') : '';
   if (r && r.known) {
-    const cond = s.timeRule ? s.timeRule.cond : null;
+    const cond = s.timeRule ? s.timeRule.cond : (s.timeCond || null);
     const on = cond ? cond.test(new Date()) : null;
     return {
       time: cond ? cond.short : r.text, off: on === false,
@@ -1293,6 +1323,7 @@ async function init() {
   wireUi();
   buildCategoryList();
   loadVerifiedSigns();
+  loadPlateTimes();
   startGps();
   map.once('load', loadAllForView);
 }
