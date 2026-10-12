@@ -395,13 +395,14 @@ class SignStore {
       list.sort((a, d) => Math.hypot(a.pos.lat - c.lat, a.pos.lng - c.lng) - Math.hypot(d.pos.lat - c.lat, d.pos.lng - c.lng));
       list.length = 5000;
     }
+    // Zīmes ar zināmu darbības laiku ir svarīgākas — tās neaizsedz citas zīmes.
     const rank = { mine: 0, unknown: 10, other: 20 };
     src.setData({
       type: 'FeatureCollection',
       features: list.map(({ s, pos, rel }) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [pos.lng, pos.lat] },
-        properties: Object.assign({ icon: s.icon, title: s.title, rel, prio: rank[rel] + SIGN_PRIORITY[s.cat] },
+        properties: Object.assign({ icon: s.icon, title: s.title, rel, prio: rank[rel] + SIGN_PRIORITY[s.cat] - (s.restriction && s.restriction.known ? 8 : 0) },
           s.mid ? { mid: s.mid } : null,
           s._m && s._m.quality === 'uncertain' ? { unsure: s._m.reason || 'piesaiste nav droša' } : null,
           s.conflict ? { conflict: true } : null,
