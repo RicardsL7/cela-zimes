@@ -7,7 +7,7 @@ const vm = require('vm');
 
 const ctx = vm.createContext({ console, Intl, Date, Math, Map, Set, JSON, Number, String, Array, Object, isNaN, setTimeout, clearTimeout,
   signSvg: () => '<svg/>', encodeURIComponent });
-for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js']) {
+for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'nav.js', 'alerts.js']) {
   // Klases un const deklarācijas padara pieejamas testam.
   const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/if \(typeof module[\s\S]*?\n}\n?$/m, '');
   vm.runInContext(src + '\n;globalThis.__exp = (globalThis.__exp || {});', ctx, { filename: f });
@@ -417,6 +417,50 @@ test('J. Zīme pie veloceliņa / tramvaja sliedēm netiek piesaistīta auto ceļ
   const st = store(); st.add(bike); st.add(road2);
   drive(st, 0, 0, 90);
   eq(statusOf(st, bike), 'nav'); eq(statusOf(st, road2), 'confirmed');
+});
+
+// =====================================================================
+// Navigācijas līnija: nobrauktā daļa pazūd aiz bultas
+test('K. Maršruta līnija: paliek tikai nenobrauktā daļa (arī līkumos), bez lēkāšanas', () => {
+  const routePointAt = G('routePointAt'), routeRemaining = G('routeRemaining'), smoothProgress = G('smoothProgress');
+  const R = makeRoute([[0, 0], [100, 0], [100, 100], [0, 100]]);     // 300 m ar diviem pagriezieniem
+  const p = routePointAt(R, 150);
+  ok(Math.abs(LL(100, 50).lat - p.lat) < 1e-6 && Math.abs(LL(100, 50).lng - p.lng) < 1e-6, 'punkts pēc 150 m');
+  const rest = routeRemaining(R, 150);
+  eq(rest.length, 3, 'sākas pie bultas un turpinās pa maršruta punktiem'); eq(rest[1], R.coords[2]); eq(rest[2], R.coords[3]);
+  eq(routeRemaining(R, 0), R.coords, 'pirms brauciena — viss maršruts');
+  eq(routeRemaining(R, 1000).length, 2, 'galamērķī — tukša līnija');
+  // GPS svārstības atpakaļ līniju neatjauno; liels solis atpakaļ (pārrēķins) — jā
+  eq(smoothProgress(150, 140), 150); eq(smoothProgress(150, 160), 160); eq(smoothProgress(150, 60), 60); eq(smoothProgress(null, 20), 20);
+  eq(Math.round(routePointAt(R, 250).bearing), 270, 'virziens pēdējā posmā');
+});
+
+// Brīdinājumi (kā Waze)
+test('L. Brīdinājumi: kartē tikai noteiktās kategorijas; laikapstākļi tikai no datiem; ziņojumi noveco', () => {
+  const alertTypeForSign = G('alertTypeForSign'), alertTypeForOsm = G('alertTypeForOsm'), weatherAlerts = G('weatherAlerts');
+  const AlertStore = G('AlertStore'), makeReport = G('makeReport'), ALERT_TYPES = G('ALERT_TYPES');
+  eq(Object.keys(ALERT_TYPES).length, 25, '25 kategorijas');
+  eq(alertTypeForSign({ cat: 'camera' }), 'camera-fixed');
+  eq(alertTypeForSign({ cat: 'rail' }), 'rail');
+  eq(alertTypeForSign({ cat: 'signals' }), 'traffic-light');
+  eq(alertTypeForSign({ cat: 'other', value: 'warning--children--g2' }), 'school');
+  eq(alertTypeForSign({ cat: 'speed', value: 'regulatory--maximum-speed-limit-50--g1' }), null, 'parasta zīme nav brīdinājums');
+  eq(alertTypeForSign({ cat: 'other', value: 'regulatory--no-parking--g1' }), null);
+  const cond = parseCondition('Mo-Fr 07:00-19:00');
+  eq(alertTypeForSign({ cat: 'other', value: 'regulatory--no-left-turn--g1', timeRule: { cond } }, rigaDate('2026-10-12T09:00:00+03:00')), 'restriction', 'ierobežojums spēkā');
+  eq(alertTypeForSign({ cat: 'other', value: 'regulatory--no-left-turn--g1', timeRule: { cond } }, rigaDate('2026-10-12T21:00:00+03:00')), null, 'nav spēkā — nerāda');
+  eq(alertTypeForOsm({ highway: 'construction' }), 'roadworks'); eq(alertTypeForOsm({ hazard: 'ice' }), 'ice'); eq(alertTypeForOsm({ highway: 'primary' }), null);
+  eq(weatherAlerts({ weather_code: 3, visibility: 30000, temperature_2m: 9, precipitation: 0, rain: 0, showers: 0, snowfall: 0, wind_gusts_10m: 5 }).length, 0, 'labs laiks — nekā');
+  const bad = weatherAlerts({ weather_code: 45, visibility: 300, temperature_2m: -1, precipitation: 0.3, rain: 0, showers: 0, snowfall: 0.2, wind_gusts_10m: 22 }).map(w => w.type).sort().join();
+  eq(bad, 'fog,ice,snow,weather');
+  const saved = []; const st = new AlertStore({ load: () => [], save: l => saved.push(l.length) });
+  const t0 = Date.parse('2026-10-13T10:00:00Z');
+  const r = st.add(makeReport('police', 56.95, 24.1, 90, t0));
+  eq(st.list(t0 + 30 * 60000).length, 1, 'pēc 30 min vēl redzams');
+  eq(st.list(t0 + 61 * 60000).length, 0, 'pēc 61 min vairs nav');
+  ok(st.prune(t0 + 61 * 60000) && !st.items.has(r.id), 'novecojis izdzēsts');
+  let threw = false; try { makeReport('rail', 0, 0, null); } catch { threw = true; }
+  ok(threw, 'nevar "ziņot" par pastāvīgu objektu');
 });
 
 console.log(results.join('\n'));
