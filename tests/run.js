@@ -7,7 +7,7 @@ const vm = require('vm');
 
 const ctx = vm.createContext({ console, Intl, Date, Math, Map, Set, JSON, Number, String, Array, Object, isNaN, setTimeout, clearTimeout,
   signSvg: () => '<svg/>', encodeURIComponent });
-for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'nav.js', 'alerts.js']) {
+for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'nav.js', 'alerts.js', 'places.js']) {
   // Klases un const deklarācijas padara pieejamas testam.
   const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/if \(typeof module[\s\S]*?\n}\n?$/m, '');
   vm.runInContext(src + '\n;globalThis.__exp = (globalThis.__exp || {});', ctx, { filename: f });
@@ -463,13 +463,33 @@ test('L. Brīdinājumi: kartē tikai noteiktās kategorijas; laikapstākļi tika
   ok(threw, 'nevar "ziņot" par pastāvīgu objektu');
 });
 
-test('M. Kartes pogas: "Ziņot" un "Bīstami" kopā aptver visus ziņojamos veidus, bez dublikātiem', () => {
+test('M. Ziņojumu grupas (satiksme / bīstamība) kopā aptver visus ziņojamos veidus, bez dublikātiem', () => {
   const ALERT_TYPES = G('ALERT_TYPES'), RG = G('REPORT_GROUPS');
   const all = [...RG.traffic, ...RG.hazard];
   eq(new Set(all).size, all.length, 'bez dublikātiem');
   for (const t of all) ok(ALERT_TYPES[t] && ALERT_TYPES[t].report, t + ' ir ziņojams');
   const reportable = Object.keys(ALERT_TYPES).filter(t => ALERT_TYPES[t].report).sort().join();
   eq([...all].sort().join(), reportable, 'visi ziņojamie veidi ir kādā pogā');
+});
+
+test('N. Vietas tuvumā: 12 kategorijas, pareizs Overpass vaicājums, tuvākās pirmās, darba laiks', () => {
+  const CATS = G('PLACE_CATEGORIES'), q = G('buildPlacesQuery'), parse = G('parsePlaces'), pc = G('parseCondition');
+  eq(CATS.length, 12, '12 kategorijas kā Waze');
+  const qq = q('fuel', 56.95, 24.1, 3000);
+  ok(qq.includes('nwr["amenity"="fuel"](around:3000,56.95000,24.10000);') && qq.includes('out center'), 'degvielas vaicājums');
+  ok(q('crisis', 56.95, 24.1, 3000).split('around:').length === 4, 'ārkārtas palīdzība — 3 vaicājumi');
+  const now = new Date('2026-10-14T10:00:00Z'); // trešdiena 13:00 Rīgā
+  const els = [
+    { type: 'node', id: 1, lat: 56.96, lon: 24.1, tags: { amenity: 'fuel', name: 'Tālā', opening_hours: '24/7' } },
+    { type: 'way', id: 2, center: { lat: 56.951, lon: 24.1 }, tags: { amenity: 'fuel', brand: 'Circle K', 'addr:street': 'Brīvības iela', 'addr:housenumber': '1', opening_hours: 'Mo-Fr 06:00-08:00' } },
+    { type: 'node', id: 3, lat: 56.9511, lon: 24.1001, tags: { amenity: 'fuel', brand: 'Circle K' } },
+    { type: 'node', id: 4, tags: { amenity: 'fuel' } },
+  ];
+  const r = parse(els, 'fuel', 56.95, 24.1, now, pc);
+  eq(r.length, 2, 'bez koordinātēm un dublikātiem');
+  eq(r[0].name, 'Circle K'); eq(r[0].addr, 'Brīvības iela 1'); eq(r[0].open, false, 'slēgts 13:00');
+  eq(r[1].name, 'Tālā'); eq(r[1].open, true, '24/7 atvērts');
+  ok(r[0].d < r[1].d, 'tuvākā pirmā');
 });
 
 console.log(results.join('\n'));
