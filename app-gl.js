@@ -1580,45 +1580,41 @@ function placeSub(p) {
   bits.push(...p.extra);
   return bits.join(' · ');
 }
-async function showPlaces(catId) {
-  const cat = PLACE_CATEGORIES.find(c => c.id === catId);
-  const seq = ++placeSeq;
-  clearPlaceMarkers();
-  $('placesTitle').textContent = cat.label;
-  $('placesBack').hidden = false;
-  $('placeCats').hidden = true;
-  $('placeResults').hidden = false;
-  $('placeList').textContent = '';
-  $('placeStatus').textContent = 'Meklē tuvumā…';
-  const c = state.me || { lat: map.getCenter().lat, lng: map.getCenter().lng };
+// Ātri: 1) atmiņā saglabātais rezultāts (tā pati kategorija un vieta, ≤ 10 min) — uzreiz;
+// 2) Photon (~0,4 s) — saraksts un ikonas kartē; 3) fonā Overpass pēc OSM id — darba laiks, maksa;
+// ja Photon nestrādā — vecais ceļš caur Overpass.
+const placeCache = new Map();
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+}
+async function fetchPhotonPlaces(catId, c) {
   let places = [];
-  try {
-    for (const r of [3000, 10000, 30000]) {           // ja tuvumā maz — meklē tālāk
-      const q = buildPlacesQuery(catId, c.lat, c.lng, r);
-      // Overpass serveri dažreiz aizņemti (504) — vēl 2 mēģinājumi ar pauzi
-      let data;
-      for (let k = 0; ; k++) {
-        try { data = await fetchOverpass(q); break; }
-        catch (e) { if (k >= 2 || seq !== placeSeq) throw e; await new Promise(res => setTimeout(res, 1500 * (k + 1))); }
-      }
-      if (seq !== placeSeq) return;
-      places = parsePlaces(data.elements, catId, c.lat, c.lng, new Date(), parseCondition);
-      if (places.length >= 5) break;
-    }
-  } catch {
-    if (seq !== placeSeq) return;
-    $('placeStatus').textContent = 'Neizdevās ielādēt vietas (karšu serveris aizņemts). ';
-    const retry = document.createElement('button');
-    retry.type = 'button'; retry.className = 'link-btn'; retry.textContent = 'Mēģināt vēlreiz';
-    retry.addEventListener('click', () => showPlaces(catId));
-    $('placeStatus').appendChild(retry);
-    return;
+  for (const km of [5, 25]) {                      // ja tuvumā maz — meklē tālāk
+    const res = await withTimeout(fetch(buildPhotonPlacesUrl(catId, c.lat, c.lng, km, 25)), 6000);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    places = parsePhotonPlaces((await res.json()).features, catId, c.lat, c.lng);
+    if (places.length >= 5) break;
   }
-  places = places.slice(0, 25);
-  $('placeStatus').textContent = places.length
+  return places;
+}
+async function fetchOverpassPlaces(catId, c) {
+  let places = [];
+  for (const r of [3000, 15000]) {
+    const data = await withTimeout(fetchOverpass(buildPlacesQuery(catId, c.lat, c.lng, r)), 25000);
+    places = parsePlaces(data.elements, catId, c.lat, c.lng, new Date(), parseCondition);
+    if (places.length >= 5) break;
+  }
+  return places;
+}
+function placesStatusText(places, c) {
+  return places.length
     ? (state.me ? 'Tuvākās no tavas atrašanās vietas' : 'Tuvākās no kartes centra') + ' · dati: OpenStreetMap'
     : 'Tuvumā nekas netika atrasts.';
+}
+function renderPlaces(places, catId, c, fit) {
   const ul = $('placeList');
+  ul.textContent = '';
+  clearPlaceMarkers();
   for (const p of places) {
     const li = document.createElement('li');
     const b = document.createElement('button');
@@ -1634,7 +1630,7 @@ async function showPlaces(catId) {
     el.addEventListener('click', ev => { ev.stopPropagation(); goToPlace(p); });
     placeMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map));
   }
-  if (places.length) {
+  if (fit && places.length) {
     state.follow = false;
     const pts = places.slice(0, 8).map(p => [p.lng, p.lat]).concat([[c.lng, c.lat]]);
     const lngs = pts.map(q => q[0]), lats = pts.map(q => q[1]);
@@ -1642,6 +1638,60 @@ async function showPlaces(catId) {
     map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
       { padding: { top: 90, bottom: Math.min(sheetH + 30, map.getContainer().clientHeight - 200), left: 40, right: 90 }, maxZoom: 16, pitch: 0, bearing: 0, duration: 800 });
   }
+}
+async function showPlaces(catId) {
+  const cat = PLACE_CATEGORIES.find(c => c.id === catId);
+  const seq = ++placeSeq;
+  clearPlaceMarkers();
+  $('placesTitle').textContent = cat.label;
+  $('placesBack').hidden = false;
+  $('placeCats').hidden = true;
+  $('placeResults').hidden = false;
+  $('placeList').textContent = '';
+  const c = state.me || { lat: map.getCenter().lat, lng: map.getCenter().lng };
+  const key = catId + ':' + c.lat.toFixed(3) + ':' + c.lng.toFixed(3);   // ~100 m režģis
+  const hit = placeCache.get(key);
+  if (hit && Date.now() - hit.at < 10 * 60000) {
+    $('placeStatus').textContent = placesStatusText(hit.places, c);
+    return renderPlaces(hit.places, catId, c, true);
+  }
+  $('placeStatus').textContent = 'Meklē tuvumā…';
+  let places, viaPhoton = true;
+  try {
+    try { places = await fetchPhotonPlaces(catId, c); }
+    catch { await new Promise(r => setTimeout(r, 700)); if (seq !== placeSeq) return; places = await fetchPhotonPlaces(catId, c); }   // vēl 1 mēģinājums
+  }
+  catch {
+    viaPhoton = false;
+    if (seq !== placeSeq) return;
+    try { places = await fetchOverpassPlaces(catId, c); }
+    catch {
+      if (seq !== placeSeq) return;
+      $('placeStatus').textContent = 'Neizdevās ielādēt vietas. ';
+      const retry = document.createElement('button');
+      retry.type = 'button'; retry.className = 'link-btn'; retry.textContent = 'Mēģināt vēlreiz';
+      retry.addEventListener('click', () => showPlaces(catId));
+      $('placeStatus').appendChild(retry);
+      return;
+    }
+  }
+  if (seq !== placeSeq) return;
+  places = places.slice(0, 25);
+  placeCache.set(key, { at: Date.now(), places });
+  $('placeStatus').textContent = placesStatusText(places, c);
+  renderPlaces(places, catId, c, true);
+  if (!viaPhoton || !places.length) return;
+  // Fonā: darba laiks ("atvērts / slēgts"), maksa, vietu skaits — saraksts atjaunojas, kad dati atnāk
+  const q = buildPlaceDetailsQuery(places);
+  if (!q) return;
+  try {
+    const data = await withTimeout(fetchOverpass(q), 20000);
+    const merged = mergePlaceDetails(places, data.elements, new Date(), parseCondition);
+    placeCache.set(key, { at: Date.now(), places: merged });
+    if (seq !== placeSeq) return;
+    $('placeStatus').textContent = placesStatusText(merged, c);
+    renderPlaces(merged, catId, c, false);
+  } catch { /* bez darba laikiem saraksts paliek kā ir */ }
 }
 function goToPlace(p) {
   closePlaces();

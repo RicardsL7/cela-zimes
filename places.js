@@ -29,6 +29,8 @@ const PLACE_CATEGORIES = [
   { id: 'crisis',   label: 'Ārkārtas palīdzība',  color: '#c92a2a', q: ['nwr["amenity"~"^(police|fire_station)$"]', 'nwr["amenity"="hospital"]["emergency"="yes"]', 'nwr["social_facility"="shelter"]'],
     glyph: `<path d="M12 4.5 18.5 7v4.6c0 3.9-2.7 6.7-6.5 7.9-3.8-1.2-6.5-4-6.5-7.9V7Z" fill="none" stroke="${PLACE_W}" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 8.5v4.2" stroke="${PLACE_W}" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="15.2" r="1.1" fill="${PLACE_W}"/>` },
 ];
+// Ātrā meklēšana (Photon, ~0,4 s): OSM birkas katrai kategorijai
+const PLACE_PHOTON_TAGS = {"fuel": ["amenity:fuel"], "food": ["amenity:restaurant", "amenity:fast_food", "amenity:food_court"], "parking": ["amenity:parking"], "grocery": ["shop:supermarket", "shop:convenience", "shop:greengrocer"], "coffee": ["amenity:cafe"], "shopping": ["shop:mall", "shop:department_store", "shop:clothes", "shop:shoes", "shop:electronics", "shop:doityourself", "shop:hardware", "shop:furniture"], "pharmacy": ["amenity:pharmacy"], "ev": ["amenity:charging_station"], "medical": ["amenity:hospital", "amenity:clinic", "amenity:doctors"], "hotel": ["tourism:hotel", "tourism:motel", "tourism:guest_house", "tourism:hostel"], "park": ["leisure:park"], "crisis": ["amenity:police", "amenity:fire_station", "amenity:hospital"]};
 const PLACE_BY_ID = Object.fromEntries(PLACE_CATEGORIES.map(c => [c.id, c]));
 
 function placeIconSvg(id, size = 40) {
@@ -89,6 +91,66 @@ function parsePlaces(elements, catId, lat, lng, now = new Date(), parse = null) 
   return kept;
 }
 
+// ---------- Ātrais ceļš: Photon (tuvākās vietas uzreiz) ----------
+function buildPhotonPlacesUrl(catId, lat, lng, radiusKm, limit = 25) {
+  const tags = PLACE_PHOTON_TAGS[catId];
+  if (!tags) throw new Error('Nezināma kategorija: ' + catId);
+  return `https://photon.komoot.io/reverse?lat=${lat.toFixed(5)}&lon=${lng.toFixed(5)}&radius=${radiusKm}&limit=${limit}` +
+    tags.map(t => '&osm_tag=' + encodeURIComponent(t)).join('');
+}
+const PHOTON_OSM_TYPE = { N: 'node', W: 'way', R: 'relation' };
+function parsePhotonPlaces(features, catId, lat, lng) {
+  const c = PLACE_BY_ID[catId];
+  const out = [];
+  for (const f of features || []) {
+    const p = f.properties || {}, g = f.geometry && f.geometry.coordinates;
+    if (!g) continue;
+    const type = PHOTON_OSM_TYPE[p.osm_type];
+    out.push({
+      id: type ? type + p.osm_id : 'ph' + out.length, osmType: type || null, osmId: p.osm_id || null,
+      cat: catId, name: p.name || c.label, lat: g[1], lng: g[0], d: placeDistM(lat, lng, g[1], g[0]),
+      addr: [p.street, p.housenumber].filter(Boolean).join(' '), extra: [], oh: '', open: null,
+    });
+  }
+  out.sort((a, b) => a.d - b.d);
+  const kept = [];
+  for (const p of out) if (!kept.some(k => k.name === p.name && placeDistM(k.lat, k.lng, p.lat, p.lng) < 60)) kept.push(p);
+  return kept;
+}
+
+// ---------- Papildinājums fonā: darba laiks u.c. pēc OSM id (ātrs Overpass vaicājums bez telpiskas meklēšanas) ----------
+function buildPlaceDetailsQuery(places) {
+  const ids = { node: [], way: [], relation: [] };
+  for (const p of places) if (p.osmType && p.osmId) ids[p.osmType].push(p.osmId);
+  const parts = Object.entries(ids).filter(([, v]) => v.length).map(([t, v]) => `  ${t}(id:${v.join(',')});`);
+  return parts.length ? `[out:json][timeout:15];\n(\n${parts.join('\n')}\n);\nout tags;` : null;
+}
+// Pievieno darba laiku, maksu u.c.; privātās stāvvietas izmet. Atgriež jaunu sarakstu.
+function mergePlaceDetails(places, elements, now = new Date(), parse = null) {
+  const byId = new Map((elements || []).map(el => [el.type + el.id, el.tags || {}]));
+  const out = [];
+  for (const p of places) {
+    const t = byId.get(p.id);
+    if (!t) { out.push(p); continue; }
+    if (p.cat === 'parking' && /^(private|no|customers)$/.test(t.access || '')) continue;
+    const q = Object.assign({}, p, { extra: [] });
+    if (t.name && q.name === PLACE_BY_ID[p.cat].label) q.name = t.name;
+    else if (!t.name && (t.brand || t.operator) && q.name === PLACE_BY_ID[p.cat].label) q.name = t.brand || t.operator;
+    if (!q.addr) q.addr = [t['addr:street'], t['addr:housenumber']].filter(Boolean).join(' ');
+    if (p.cat === 'parking') {
+      if (t.fee === 'no') q.extra.push('bez maksas'); else if (t.fee === 'yes') q.extra.push('maksas');
+      if (t.capacity) q.extra.push(t.capacity + ' vietas');
+    }
+    if (p.cat === 'ev' && t.capacity) q.extra.push(t.capacity + ' uzlādes vietas');
+    if (p.cat === 'fuel' && t.brand && !q.name.toLowerCase().includes(t.brand.toLowerCase())) q.extra.push(t.brand);
+    q.oh = t.opening_hours || '';
+    q.open = placeOpenNow(q.oh, now, parse);
+    out.push(q);
+  }
+  return out;
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = { PLACE_CATEGORIES, buildPlacesQuery, parsePlaces, placeOpenNow, placeIconSvg };
+  module.exports = { PLACE_CATEGORIES, PLACE_PHOTON_TAGS, buildPlacesQuery, parsePlaces, placeOpenNow, placeIconSvg,
+    buildPhotonPlacesUrl, parsePhotonPlaces, buildPlaceDetailsQuery, mergePlaceDetails };
 }
