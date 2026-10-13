@@ -46,6 +46,12 @@ const ALERT_TYPES = {
   'obstacle':       { label: 'Šķērslis uz ceļa',            group: 'hazard',   ttl: 120, report: true },
 };
 
+// Ziņošanas grupas (kartes pogas): satiksmes notikumi un bīstamības / laikapstākļi.
+const REPORT_GROUPS = {
+  traffic: ['police', 'police-hidden', 'camera-mobile', 'accident', 'jam', 'roadworks', 'closure', 'lane-closed'],
+  hazard: ['hazard', 'object', 'pothole', 'stopped-vehicle', 'signal-broken', 'obstacle', 'ice', 'fog', 'rain', 'snow', 'flood', 'weather'],
+};
+
 // Simboli 24×24 koordinātās (balti). Vienkārši, viegli atpazīstami arī mazā izmērā.
 const ALERT_W = '#fff';
 const ALERT_GLYPHS = {
@@ -188,5 +194,5 @@ function alertInfo(it, now = Date.now()) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { ALERT_TYPES, alertSvg, alertTypeForSign, alertTypeForOsm, weatherAlerts, AlertStore, makeReport, alertInfo };
+  module.exports = { ALERT_TYPES, REPORT_GROUPS, alertSvg, alertTypeForSign, alertTypeForOsm, weatherAlerts, AlertStore, makeReport, alertInfo };
 }
