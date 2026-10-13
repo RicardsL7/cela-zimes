@@ -1419,7 +1419,7 @@ function nearbyAlerts(maxM = 3000) {
   const out = [];
   for (const it of alerts ? alerts.list() : []) {
     const d = distM(me.lat, me.lng, it.lat, it.lng);
-    if (d <= maxM) out.push({ type: it.type, lat: it.lat, lng: it.lng, d, src: it.source === 'user' ? 'tavs ziņojums' : 'OpenStreetMap' });
+    if (d <= maxM) out.push({ type: it.type, lat: it.lat, lng: it.lng, d, event: true, src: it.source === 'user' ? 'tavs ziņojums' : 'OpenStreetMap' });
   }
   const dLat = maxM / 111320, dLng = dLat / Math.cos(me.lat * Math.PI / 180);
   if (signs) signs.eachInBox(me.lat - dLat, me.lng - dLng, me.lat + dLat, me.lng + dLng, s => {
@@ -1439,7 +1439,11 @@ function renderNearbyAlerts() {
   ul.textContent = '';
   const items = [];
   for (const w of state.weather ? state.weather.list : []) items.push({ type: w.type, text: w.text, sub: 'tavā apkārtnē · Open-Meteo' });
-  for (const it of nearbyAlerts().slice(0, 8)) items.push({ type: it.type, text: ALERT_TYPES[it.type].label, sub: navDist(it.d) + ' · ' + it.src, at: it });
+  // Vispirms notikumi (ziņojumi, remontdarbi, bīstamības), tad pastāvīgie objekti tuvāk par 1 km
+  const near = nearbyAlerts();
+  const shown = near.filter(it => it.event).slice(0, 8);
+  shown.push(...near.filter(it => !it.event && it.d <= 1000).slice(0, Math.max(3, 10 - shown.length)));
+  for (const it of shown) items.push({ type: it.type, text: ALERT_TYPES[it.type].label, sub: navDist(it.d) + ' · ' + it.src, at: it });
   for (const it of items) {
     const li = document.createElement('li');
     const b = document.createElement('button');
@@ -1458,11 +1462,12 @@ function renderNearbyAlerts() {
   $('nearbyHead').hidden = $('nearbyEmpty').hidden = false;
   $('nearbyEmpty').hidden = items.length > 0;
 }
-// Skaits uz "Bīstami" pogas: laikapstākļi + notikumi ≤ 3 km (bez pastāvīgajiem luksoforiem).
+// Skaits uz "Bīstami" pogas.
 function updateHazardBadge() {
   const badge = $('hazardBadge');
   if (!badge) return;
-  const n = (state.weather ? state.weather.list.length : 0) + (alerts ? nearbyAlerts().length : 0);
+  // Tikai mainīgie notikumi (laikapstākļi, ziņojumi, remontdarbi, bīstamības) — ne pastāvīgās skolas zonas / kameras
+  const n = (state.weather ? state.weather.list.length : 0) + (alerts ? nearbyAlerts().filter(it => it.event).length : 0);
   badge.textContent = n > 9 ? '9+' : String(n);
   badge.hidden = !n || !state.signsOn || state.mapMode !== 'alerts';
 }
