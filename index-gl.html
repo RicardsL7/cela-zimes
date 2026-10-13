@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=24">
+  <link rel="stylesheet" href="style-gl.css?v=25">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -25,6 +25,12 @@
       </button>
     </form>
     <ul id="results" class="results" hidden></ul>
+    <!-- Liela poga: atrast vajadzīgo vietu tuvumā (kā Waze kategorijas) -->
+    <button type="button" id="placesBtn" class="places-btn" aria-controls="placesSheet">
+      <span class="pb-icons" id="placesBtnIcons" aria-hidden="true"></span>
+      <span class="pb-text">Atrast tuvumā<small>Degviela, ēdiens, stāvvieta, viesnīcas…</small></span>
+      <svg class="pb-chev" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
   </header>
 
   <!-- Nākamais pagrieziens (navigācijas laikā) -->
@@ -61,17 +67,16 @@
 
   <!-- Pogas labajā pusē -->
   <nav class="fab-stack" aria-label="Kartes vadība">
-    <button id="roadBtn" class="fab" title="Ziņot par satiksmi: policija, kamera, avārija, sastrēgums, remontdarbi, slēgts ceļš">
-      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M7.5 3h9a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4H12l-4.5 4v-4a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4Z" fill="#ff9f1c"/><path d="M12 6.5v5.2" stroke="#fff" stroke-width="2.3" stroke-linecap="round"/><circle cx="12" cy="14.4" r="1.35" fill="#fff"/></svg>
+    <button id="toggleSigns" class="fab" aria-pressed="true" title="Ieslēgt / izslēgt ceļa zīmes">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5v6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16.6" r="1.3" fill="currentColor"/></svg>
+      <span class="fab-label" id="toggleSignsLabel">Zīmes</span>
+    </button>
+    <button id="reportBtn" class="fab report-fab" title="Ziņot par notikumu uz ceļa">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 3 21.5 19.5h-19Z" fill="currentColor"/><path d="M12 9v5" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16.8" r="1.2" fill="#fff"/></svg>
       <span class="fab-label">Ziņot</span>
     </button>
-    <button id="hazardBtn" class="fab" title="Bīstamība un brīdinājumi tuvumā">
-      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M10.3 3.9a2 2 0 0 1 3.4 0l8 13.6a2 2 0 0 1-1.7 3H4a2 2 0 0 1-1.7-3Z" fill="#ffc400"/><path d="M12 8.8v5" stroke="#3a2f00" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16.9" r="1.25" fill="#3a2f00"/></svg>
-      <span class="fab-label">Bīstami</span>
-      <span id="hazardBadge" class="fab-badge" hidden>0</span>
-    </button>
     <button id="centerBtn" class="fab" title="Sekot man">
-      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 3 19 20l-7-4-7 4Z" fill="#1a73e8"/></svg>
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 3 19 20l-7-4-7 4Z" fill="currentColor"/></svg>
       <span class="fab-label">Es</span>
     </button>
     <button id="settingsBtn" class="fab" title="Iestatījumi" aria-expanded="false" aria-controls="settings">
@@ -119,19 +124,28 @@
   <!-- Ziņot par notikumu -->
   <section id="reportSheet" class="sheet" hidden aria-labelledby="reportTitle">
     <div class="sheet-head">
-      <h2 id="reportTitle">Ziņot par satiksmi</h2>
+      <h2 id="reportTitle">Ziņot par notikumu</h2>
       <button id="closeReport" class="link-btn">Aizvērt</button>
     </div>
-    <div id="reportTabs" class="report-tabs" role="tablist">
-      <button type="button" role="tab" data-kind="traffic" aria-selected="true">Satiksme</button>
-      <button type="button" role="tab" data-kind="hazard" aria-selected="false">Bīstamība</button>
-    </div>
     <div id="reportGrid" class="report-grid"></div>
-    <h3 id="nearbyHead" class="nearby-head" hidden>Tuvumā (līdz 3 km)</h3>
-    <ul id="nearbyList" class="nearby-list"></ul>
-    <p id="nearbyEmpty" class="fine" hidden>Tuvumā nav zināmu brīdinājumu.</p>
     <p class="fine">Ziņojums tiek pievienots tavā vietā uz ceļa un pazūd pats (piem. policija pēc 1 h).
       Lietotnei nav sava servera, tāpēc ziņojumi redzami tikai šajā ierīcē.</p>
+  </section>
+
+  <!-- Vietas tuvumā -->
+  <section id="placesSheet" class="sheet places-sheet" hidden aria-labelledby="placesTitle">
+    <div class="sheet-head">
+      <button id="placesBack" class="back-btn" type="button" aria-label="Atpakaļ uz kategorijām" hidden>
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="m15 6-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <h2 id="placesTitle">Kategorijas</h2>
+      <button id="closePlaces" class="link-btn" type="button">Aizvērt</button>
+    </div>
+    <ul id="placeCats" class="place-cats"></ul>
+    <div id="placeResults" hidden>
+      <p id="placeStatus" class="fine place-status"></p>
+      <ul id="placeList" class="place-list"></ul>
+    </div>
   </section>
 
   <!-- Iestatījumu panelis -->
@@ -143,13 +157,6 @@
     <label class="row master" for="profileSelect">
       <span>Es braucu ar</span>
       <select id="profileSelect" class="select"></select>
-    </label>
-    <label class="row master" for="modeSelect">
-      <span>Kartē rādīt</span>
-      <select id="modeSelect" class="select">
-        <option value="alerts">Tikai brīdinājumus (kā Waze)</option>
-        <option value="signs">Visas ceļa zīmes</option>
-      </select>
     </label>
     <label class="row master">
       <span>Rādīt brīdinājumus / zīmes</span>
@@ -176,19 +183,20 @@
       </div>
       <p id="mlyNote" class="fine"></p>
     </div>
-    <p class="fine">Dati: © OpenStreetMap līdzautori, © Mapillary, © OpenFreeMap. Maršruti: OSRM. Meklēšana: Photon, Nominatim. Laikapstākļi: Open-Meteo.</p>
+    <p class="fine">Dati: © OpenStreetMap līdzautori, © Mapillary, © OpenFreeMap. Maršruti: OSRM. Meklēšana: Photon, Nominatim. Laikapstākļi: Open-Meteo. Vietas: OpenStreetMap (Overpass).</p>
   </section>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script src="signs.js?v=24"></script>
-  <script src="mapillary.js?v=24"></script>
-  <script src="roads-gl.js?v=24"></script>
-  <script src="basemap-gl.js?v=24"></script>
-  <script src="signs-gl.js?v=24"></script>
-  <script src="nav.js?v=24"></script>
-  <script src="times.js?v=24"></script>
-  <script src="alerts.js?v=24"></script>
-  <script src="model.js?v=24"></script>
-  <script src="app-gl.js?v=24"></script>
+  <script src="signs.js?v=25"></script>
+  <script src="mapillary.js?v=25"></script>
+  <script src="roads-gl.js?v=25"></script>
+  <script src="basemap-gl.js?v=25"></script>
+  <script src="signs-gl.js?v=25"></script>
+  <script src="nav.js?v=25"></script>
+  <script src="times.js?v=25"></script>
+  <script src="alerts.js?v=25"></script>
+  <script src="places.js?v=25"></script>
+  <script src="model.js?v=25"></script>
+  <script src="app-gl.js?v=25"></script>
 </body>
 </html>

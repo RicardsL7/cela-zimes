@@ -13,8 +13,6 @@
   --nav-bg: #173a6e;      /* pagrieziena josla */
   --nav-fg: #ffffff;
   --shadow: 0 6px 20px rgba(22, 32, 46, .18);
-  --fab-bg: #ffffff;
-  --fab-bg-active: #eef1f5;
   --font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
   --font-sign: "Barlow Condensed", "Arial Narrow", sans-serif;
   color-scheme: light;
@@ -32,8 +30,6 @@
     --route: #4c95ff;
     --nav-bg: #12305c;
     --shadow: 0 6px 20px rgba(0, 0, 0, .45);
-    --fab-bg: #243044;
-    --fab-bg-active: #2d3b52;
     color-scheme: dark;
   }
 }
@@ -172,35 +168,20 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* ---- Pogas ---- */
 .fab-stack {
-  position: fixed; z-index: 10; right: calc(env(safe-area-inset-right, 0px) + 10px);
+  position: fixed; z-index: 10; right: 12px;
   top: calc(env(safe-area-inset-top, 0px) + 84px);
-  display: flex; flex-direction: column; gap: 9px;
+  display: flex; flex-direction: column; gap: 10px;
   transition: top .3s ease;
-  pointer-events: none;            /* tukšās vietas starp pogām nebloķē kartes žestus */
 }
 .navigating .fab-stack { top: calc(env(safe-area-inset-top, 0px) + 112px); }
 .fab {
-  position: relative; pointer-events: auto;
-  width: 56px; padding: 8px 0 6px; border: 1px solid rgba(22, 32, 46, .06); border-radius: 16px;
-  background: var(--fab-bg); box-shadow: 0 2px 8px rgba(22, 32, 46, .16), 0 1px 2px rgba(22, 32, 46, .10);
-  color: #5f6b7a;
-  display: grid; justify-items: center; gap: 2px;
-  transition: transform .12s ease, box-shadow .2s ease;
-  -webkit-tap-highlight-color: transparent;
+  width: 62px; padding: 10px 0 7px; border: 0; border-radius: 18px;
+  background: var(--panel); box-shadow: var(--shadow); color: var(--accent);
+  display: grid; justify-items: center; gap: 3px;
+  transition: transform .12s ease;
 }
-.fab:active { transform: scale(.94); background: var(--fab-bg-active); }
-.fab:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-.fab-label { font: 600 10.5px var(--font-body); color: var(--muted); letter-spacing: .02em; }
-.fab-badge {
-  position: absolute; top: -5px; right: -5px; min-width: 20px; height: 20px; padding: 0 5px;
-  border-radius: 999px; background: #e03131; color: #fff; border: 2px solid var(--fab-bg);
-  font: 700 11px/16px var(--font-body); text-align: center;
-}
-/* "Es": karte vairs neseko — poga zila, lai būtu skaidrs, ka jānospiež */
-.fab.attn { background: #1a73e8; }
-.fab.attn svg path { fill: #fff; }
-.fab.attn .fab-label { color: #fff; }
-.fab[aria-expanded="true"] { box-shadow: 0 0 0 2px var(--accent), 0 2px 8px rgba(22, 32, 46, .16); }
+.fab:active { transform: scale(.94); }
+.fab-label { font: 600 11px var(--font-body); color: var(--muted); letter-spacing: .02em; }
 .fab.off { color: var(--muted); }
 .fab.off svg { opacity: .55; }
 .fab.off .fab-label { color: var(--danger); }
@@ -342,6 +323,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 
 /* ---- Brīdinājumi (kā Waze) ---- */
+.report-fab { color: #e8590c; }
 .wx-bar {
   position: fixed; z-index: 10; left: 50%; transform: translateX(-50%);
   bottom: calc(env(safe-area-inset-bottom, 0px) + 94px);
@@ -364,19 +346,43 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .report-btn:active { transform: scale(.96); }
 .popup-btn { margin-top: 8px; width: 100%; }
-.report-tabs { display: flex; gap: 6px; margin-top: 8px; padding: 4px; border-radius: 12px; background: var(--bg); }
-.report-tabs button {
-  flex: 1; padding: 8px; border: 0; border-radius: 9px; background: transparent; color: var(--muted);
-  font: 600 14px var(--font-body);
+
+/* ---- Liela poga "Atrast tuvumā" (kā Waze kategorijas) ---- */
+.places-btn {
+  width: 100%; margin-top: 8px; display: flex; align-items: center; gap: 12px;
+  padding: 9px 12px 9px 10px; border: 0; border-radius: 16px;
+  background: var(--panel); color: var(--fg); box-shadow: var(--shadow); text-align: left;
 }
-.report-tabs button[aria-selected="true"] { background: var(--panel); color: var(--fg); box-shadow: 0 1px 4px rgba(22, 32, 46, .15); }
-.nearby-head { margin: 16px 0 6px; font: 700 13px var(--font-body); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-.nearby-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-.nearby-item {
-  width: 100%; display: flex; align-items: center; gap: 10px; padding: 6px 8px;
-  border: 0; border-radius: 12px; background: transparent; color: var(--fg); text-align: left;
+.places-btn:active { transform: scale(.985); }
+.pb-icons { display: flex; flex: none; }
+.pb-icons svg + svg { margin-left: -6px; }
+.pb-icons svg { border-radius: 9px; box-shadow: 0 0 0 2px var(--panel); }
+.pb-text { flex: 1; min-width: 0; display: grid; font: 700 16px/1.2 var(--font-body); }
+.pb-text small { font: 500 13px/1.3 var(--font-body); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pb-chev { flex: none; color: var(--muted); }
+.results:not([hidden]) ~ .places-btn, .previewing .places-btn { display: none; }
+/* Poga aizņem vietu zem meklēšanas — pārējās kartes kontroles nedaudz zemāk (navigācijā nemainās) */
+html:not(.navigating):not(.previewing) .fab-stack,
+html:not(.navigating):not(.previewing) .limit-badge { top: calc(env(safe-area-inset-top, 0px) + 140px); }
+html:not(.navigating):not(.previewing) .next-sign { top: calc(env(safe-area-inset-top, 0px) + 140px); }
+html:not(.navigating):not(.previewing) .loader { top: calc(env(safe-area-inset-top, 0px) + 132px); }
+
+.places-sheet .sheet-head { gap: 6px; }
+.places-sheet h2 { flex: 1; }
+.back-btn { border: 0; background: none; color: var(--fg); padding: 4px; margin-left: -6px; display: grid; }
+.place-cats, .place-list { list-style: none; margin: 4px 0 0; padding: 0; }
+.place-cat, .place-item {
+  width: 100%; display: flex; align-items: center; gap: 14px;
+  padding: 10px 4px; border: 0; border-bottom: 1px solid var(--line);
+  background: none; color: var(--fg); text-align: left; font: 600 16px var(--font-body);
 }
-.nearby-item:active { background: var(--bg); }
-.nb-text { display: grid; }
-.nb-title { font: 600 14px var(--font-body); }
-.nb-sub { font: 500 12px var(--font-body); color: var(--muted); }
+.place-cat > span { flex: 1; }
+.place-cat:active, .place-item:active { background: var(--bg); }
+.place-cat svg:first-child, .place-item svg:first-child { flex: none; }
+.pc-chev { color: var(--muted); }
+.pl-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.pl-text strong { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-sub { font: 500 13px var(--font-body); color: var(--muted); }
+.pl-go { flex: none; font: 700 13px var(--font-body); color: var(--accent); padding: 6px 10px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.place-status { margin: 4px 0 2px; }
+.place-marker { border: 0; padding: 0; background: none; cursor: pointer; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .3)); display: grid; }

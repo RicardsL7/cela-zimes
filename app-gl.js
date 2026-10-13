@@ -32,7 +32,7 @@ const state = {
   ),
   warn: store.get('warn', true),
   profile: store.get('profile', 'car'),   // car | truck | tram | bike
-  mapMode: store.get('mapMode', 'alerts'), // alerts — tikai brīdinājumi (kā Waze) | signs — visas ceļa zīmes
+  mapMode: 'alerts', // kartē vienmēr tikai brīdinājumi (kā Waze); visu zīmju režīms vairs netiek piedāvāts
   basemap: store.get('basemap', 'auto'),
   mlyToken: store.get('mlyToken', ''),
   testMode: false,
@@ -813,7 +813,6 @@ function followCamera(dur = 900) {
 
 // Viens jauns atrašanās vietas mērījums (no GPS, testa klikšķa vai simulācijas).
 function onFix(lat, lng, speedKmh, gpsHeading, dur = 900, accuracy = null) {
-  if (!state.me) setTimeout(updateFollowBtn, 0);
   state.me = { lat, lng, speedKmh, accuracy };
   state.gpsQuality = gpsFixQuality(accuracy);
   // Navigācijā bulta brauc pa maršruta līniju, nobrauktā daļa aiz tās pazūd.
@@ -1025,7 +1024,7 @@ async function previewRoute() {
     drawRoute(route);
     signs.setRoute(route);     // rāda tikai maršruta zīmes manā virzienā
     prepareRoute(route);
-    state.follow = false; updateFollowBtn();
+    state.follow = false;
     $('routeDest').textContent = dest.name;
     $('routeSub').textContent = state.me ? (dest.sub || '')
       : 'Tava atrašanās vieta vēl nav zināma — maršruts no kartes centra. Atļauj atrašanās vietu.';
@@ -1057,7 +1056,7 @@ function startNav() {
   $('statusBox').hidden = true;
   $('etaBox').hidden = false;
   $('endNav').hidden = false;
-  state.follow = true; updateFollowBtn();
+  state.follow = true;
   setBusy('prep', null);
   resetNavProgress();
   drawRoute(state.nav.route);
@@ -1375,32 +1374,13 @@ function renderWeather() {
     bar.appendChild(chip);
   }
   bar.hidden = !list.length;
-  updateHazardBadge();
 }
 
 // ---------- Ziņot (lietotāja ziņojumi) ----------
 function wireAlerts() {
-  // Kartes pogas labajā malā: "Ziņot" — satiksmes notikumi, "Bīstami" — bīstamības un aktuālie brīdinājumi.
-  $('roadBtn').addEventListener('click', () => openReport('traffic'));
-  $('hazardBtn').addEventListener('click', () => openReport('hazard'));
-  for (const tab of document.querySelectorAll('#reportTabs [data-kind]')) tab.addEventListener('click', () => openReport(tab.dataset.kind));
-  $('closeReport').addEventListener('click', () => { $('reportSheet').hidden = true; });
-  setInterval(updateHazardBadge, 15000);
-  $('modeSelect').addEventListener('change', e => {
-    state.mapMode = e.target.value; store.set('mapMode', state.mapMode);
-    applySignVisibility(); renderWeather(); updateNextSign(); updateRouteSummary();
-  });
-  setInterval(() => loadWeather(false), 60000);
-}
-// Ziņošanas panelis: izvēlētās grupas pogas + aktuālie brīdinājumi tuvumā / priekšā.
-function openReport(kind) {
-  toggleSettings(false);
-  for (const tab of document.querySelectorAll('#reportTabs [data-kind]')) tab.setAttribute('aria-selected', String(tab.dataset.kind === kind));
-  $('reportTitle').textContent = kind === 'traffic' ? 'Ziņot par satiksmi' : 'Bīstamība uz ceļa';
   const grid = $('reportGrid');
-  grid.textContent = '';
-  for (const type of REPORT_GROUPS[kind]) {
-    const t = ALERT_TYPES[type];
+  for (const [type, t] of Object.entries(ALERT_TYPES)) {
+    if (!t.report) continue;
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'report-btn';
     b.innerHTML = `<img src="${alertDataUrl(type)}" alt="" width="40" height="40"><span></span>`;
@@ -1408,70 +1388,10 @@ function openReport(kind) {
     b.addEventListener('click', () => reportAlert(type));
     grid.appendChild(b);
   }
-  renderNearbyAlerts();
-  $('reportSheet').hidden = false;
+  $('reportBtn').addEventListener('click', () => { $('reportSheet').hidden = false; });
+  $('closeReport').addEventListener('click', () => { $('reportSheet').hidden = true; });
+  setInterval(() => loadWeather(false), 60000);
 }
-
-// Aktuālie brīdinājumi ap mani (≤ 3 km): ziņojumi, OSM notikumi, kameras, pārbrauktuves,
-// skolas zonas, spēkā esoši ierobežojumi un laikapstākļi. Tikai reāli dati — nekas netiek izdomāts.
-function nearbyAlerts(maxM = 3000) {
-  const me = state.me || { lat: map.getCenter().lat, lng: map.getCenter().lng };
-  const out = [];
-  for (const it of alerts ? alerts.list() : []) {
-    const d = distM(me.lat, me.lng, it.lat, it.lng);
-    if (d <= maxM) out.push({ type: it.type, lat: it.lat, lng: it.lng, d, event: true, src: it.source === 'user' ? 'tavs ziņojums' : 'OpenStreetMap' });
-  }
-  const dLat = maxM / 111320, dLng = dLat / Math.cos(me.lat * Math.PI / 180);
-  if (signs) signs.eachInBox(me.lat - dLat, me.lng - dLng, me.lat + dLat, me.lng + dLng, s => {
-    const t = alertTypeForSign(s);
-    if (!t || t === 'traffic-light' || !signFitsProfile(s, state.profile)) return;
-    const d = distM(me.lat, me.lng, s.lat, s.lng);
-    if (d <= maxM) out.push({ type: t, lat: s.lat, lng: s.lng, d, src: s.source === 'mapillary' ? 'Mapillary' : s.source === 'verified' ? 'pārbaudīta zīme' : 'OpenStreetMap' });
-  });
-  out.sort((a, b) => a.d - b.d);
-  // Viena un tā pati vieta (piem. Mapillary dublikāti) — tikai vienreiz
-  const kept = [];
-  for (const it of out) if (!kept.some(k => k.type === it.type && distM(k.lat, k.lng, it.lat, it.lng) < 40)) kept.push(it);
-  return kept;
-}
-function renderNearbyAlerts() {
-  const ul = $('nearbyList');
-  ul.textContent = '';
-  const items = [];
-  for (const w of state.weather ? state.weather.list : []) items.push({ type: w.type, text: w.text, sub: 'tavā apkārtnē · Open-Meteo' });
-  // Vispirms notikumi (ziņojumi, remontdarbi, bīstamības), tad pastāvīgie objekti tuvāk par 1 km
-  const near = nearbyAlerts();
-  const shown = near.filter(it => it.event).slice(0, 8);
-  shown.push(...near.filter(it => !it.event && it.d <= 1000).slice(0, Math.max(3, 10 - shown.length)));
-  for (const it of shown) items.push({ type: it.type, text: ALERT_TYPES[it.type].label, sub: navDist(it.d) + ' · ' + it.src, at: it });
-  for (const it of items) {
-    const li = document.createElement('li');
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = 'nearby-item';
-    b.innerHTML = `<img src="${alertDataUrl(it.type)}" alt="" width="32" height="32"><span class="nb-text"><span class="nb-title"></span><span class="nb-sub"></span></span>`;
-    b.querySelector('.nb-title').textContent = it.text;
-    b.querySelector('.nb-sub').textContent = it.sub;
-    if (it.at) b.addEventListener('click', () => {
-      $('reportSheet').hidden = true;
-      state.follow = false; updateFollowBtn();
-      map.flyTo({ center: [it.at.lng, it.at.lat], zoom: Math.max(map.getZoom(), 16.5), pitch: 0, duration: 900 });
-    });
-    li.appendChild(b);
-    ul.appendChild(li);
-  }
-  $('nearbyHead').hidden = $('nearbyEmpty').hidden = false;
-  $('nearbyEmpty').hidden = items.length > 0;
-}
-// Skaits uz "Bīstami" pogas.
-function updateHazardBadge() {
-  const badge = $('hazardBadge');
-  if (!badge) return;
-  // Tikai mainīgie notikumi (laikapstākļi, ziņojumi, remontdarbi, bīstamības) — ne pastāvīgās skolas zonas / kameras
-  const n = (state.weather ? state.weather.list.length : 0) + (alerts ? nearbyAlerts().filter(it => it.event).length : 0);
-  badge.textContent = n > 9 ? '9+' : String(n);
-  badge.hidden = !n || !state.signsOn || state.mapMode !== 'alerts';
-}
-
 function reportAlert(type) {
   // Vieta: uz ceļa, kur esmu (kartes piesaiste), citādi GPS vieta.
   const p = signs.pos && !signs.pos.uncertain ? { lat: signs.pos.P[1], lng: signs.pos.P[0] } : state.me;
@@ -1479,7 +1399,6 @@ function reportAlert(type) {
   const it = alerts.add(makeReport(type, p.lat, p.lng, state.heading));
   $('reportSheet').hidden = true;
   refreshAlerts();
-  updateHazardBadge();
   setStatus(`Paldies! „${ALERT_TYPES[type].label}” būs redzams ${ALERT_TYPES[type].ttl >= 120 ? Math.round(ALERT_TYPES[type].ttl / 60) + ' h' : ALERT_TYPES[type].ttl + ' min'} (tikai šajā ierīcē).`);
   return it;
 }
@@ -1501,11 +1420,13 @@ function applySignVisibility() {
   }
   signs.refresh();
   refreshAlerts();
-  updateHazardBadge();
+  const btn = $('toggleSigns');
+  btn.setAttribute('aria-pressed', String(state.signsOn));
+  btn.classList.toggle('off', !state.signsOn);
+  $('toggleSignsLabel').textContent = !state.signsOn ? 'Izslēgts' : alertsMode ? 'Brīdin.' : 'Zīmes';
   $('masterSwitch').checked = state.signsOn;
   $('catList').classList.toggle('disabled', !state.signsOn);
   $('catList').hidden = alertsMode;
-  $('modeSelect').value = state.mapMode;
 }
 
 function buildCategoryList() {
@@ -1529,12 +1450,6 @@ function buildCategoryList() {
   }
 }
 
-// "Es" poga izceļas, kad karte vairs neseko man (vajag nospiest, lai atgrieztos).
-function updateFollowBtn() {
-  const b = $('centerBtn');
-  if (b) b.classList.toggle('attn', !state.follow && !!state.me);
-}
-
 function toggleSettings(open) {
   $('settings').hidden = !open;
   $('settingsBtn').setAttribute('aria-expanded', String(open));
@@ -1547,6 +1462,9 @@ async function applyBasemap(choice) {
 }
 
 function wireUi() {
+  $('toggleSigns').addEventListener('click', () => {
+    state.signsOn = !state.signsOn; store.set('signsOn', state.signsOn); applySignVisibility();
+  });
   $('masterSwitch').addEventListener('change', e => {
     state.signsOn = e.target.checked; store.set('signsOn', state.signsOn); applySignVisibility();
   });
@@ -1566,13 +1484,12 @@ function wireUi() {
     else if (state.nav.active) startSimulation();
     setStatus(state.testMode ? 'Testa režīms: noklikšķini uz ceļa kartē vai sāc maršrutu — tas tiks nobraukts automātiski.' : 'Testa režīms izslēgts.');
   });
-  // "Es": kamera atpakaļ pie manis un atkal seko (navigācijā — sasvērta, braukšanas virzienā).
   $('centerBtn').addEventListener('click', () => {
-    state.follow = true; updateFollowBtn();
+    state.follow = true;
     if (state.me) followCamera(800);
     else { setStatus(gpsProblem || 'Meklē atrašanās vietu…'); startGps(); }
   });
-  $('settingsBtn').addEventListener('click', () => { $('reportSheet').hidden = true; toggleSettings($('settings').hidden); });
+  $('settingsBtn').addEventListener('click', () => { if ($('settings').hidden) closePlaces(); toggleSettings($('settings').hidden); });
   $('closeSettings').addEventListener('click', () => toggleSettings(false));
 
   // Galamērķis
@@ -1634,6 +1551,110 @@ function cancelPreview() {
   document.documentElement.classList.remove('previewing');
 }
 
+// ---------- Vietas tuvumā (degviela, ēdiens, viesnīcas…) ----------
+let placeMarkers = [], placeSeq = 0;
+function clearPlaceMarkers() { for (const m of placeMarkers) m.remove(); placeMarkers = []; }
+function openPlaces() {
+  toggleSettings(false);
+  $('results').hidden = true;
+  showPlaceCats();
+  $('placesSheet').hidden = false;
+}
+function closePlaces() {
+  $('placesSheet').hidden = true;
+  placeSeq++;
+  clearPlaceMarkers();
+}
+function showPlaceCats() {
+  placeSeq++;
+  clearPlaceMarkers();
+  $('placesTitle').textContent = 'Kategorijas';
+  $('placesBack').hidden = true;
+  $('placeResults').hidden = true;
+  $('placeCats').hidden = false;
+}
+function placeSub(p) {
+  const bits = [navDist(p.d)];
+  if (p.open === true) bits.push('atvērts'); else if (p.open === false) bits.push('slēgts');
+  if (p.addr) bits.push(p.addr);
+  bits.push(...p.extra);
+  return bits.join(' · ');
+}
+async function showPlaces(catId) {
+  const cat = PLACE_CATEGORIES.find(c => c.id === catId);
+  const seq = ++placeSeq;
+  clearPlaceMarkers();
+  $('placesTitle').textContent = cat.label;
+  $('placesBack').hidden = false;
+  $('placeCats').hidden = true;
+  $('placeResults').hidden = false;
+  $('placeList').textContent = '';
+  $('placeStatus').textContent = 'Meklē tuvumā…';
+  const c = state.me || { lat: map.getCenter().lat, lng: map.getCenter().lng };
+  let places = [];
+  try {
+    for (const r of [3000, 10000, 30000]) {           // ja tuvumā maz — meklē tālāk
+      const data = await fetchOverpass(buildPlacesQuery(catId, c.lat, c.lng, r));
+      if (seq !== placeSeq) return;
+      places = parsePlaces(data.elements, catId, c.lat, c.lng, new Date(), parseCondition);
+      if (places.length >= 5) break;
+    }
+  } catch {
+    if (seq !== placeSeq) return;
+    $('placeStatus').textContent = 'Neizdevās ielādēt vietas. Pārbaudi internetu un mēģini vēlreiz.';
+    return;
+  }
+  places = places.slice(0, 25);
+  $('placeStatus').textContent = places.length
+    ? (state.me ? 'Tuvākās no tavas atrašanās vietas' : 'Tuvākās no kartes centra') + ' · dati: OpenStreetMap'
+    : 'Tuvumā nekas netika atrasts.';
+  const ul = $('placeList');
+  for (const p of places) {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'place-item';
+    b.innerHTML = placeIconSvg(catId, 34) + '<span class="pl-text"><strong></strong><span class="pl-sub"></span></span><span class="pl-go">Braukt</span>';
+    b.querySelector('strong').textContent = p.name;
+    b.querySelector('.pl-sub').textContent = placeSub(p);
+    b.addEventListener('click', () => goToPlace(p));
+    li.appendChild(b); ul.appendChild(li);
+    const el = document.createElement('button');
+    el.type = 'button'; el.className = 'place-marker'; el.title = p.name;
+    el.innerHTML = placeIconSvg(catId, 30);
+    el.addEventListener('click', ev => { ev.stopPropagation(); goToPlace(p); });
+    placeMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map));
+  }
+  if (places.length) {
+    state.follow = false;
+    const pts = places.slice(0, 8).map(p => [p.lng, p.lat]).concat([[c.lng, c.lat]]);
+    const lngs = pts.map(q => q[0]), lats = pts.map(q => q[1]);
+    const sheetH = $('placesSheet').offsetHeight;
+    map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+      { padding: { top: 90, bottom: Math.min(sheetH + 30, map.getContainer().clientHeight - 200), left: 40, right: 90 }, maxZoom: 16, pitch: 0, bearing: 0, duration: 800 });
+  }
+}
+function goToPlace(p) {
+  closePlaces();
+  selectDestination({ name: p.name, sub: [p.addr, PLACE_CATEGORIES.find(c => c.id === p.cat).label].filter(Boolean).join(', '), lat: p.lat, lng: p.lng });
+}
+function wirePlaces() {
+  const icons = $('placesBtnIcons');
+  for (const id of ['fuel', 'food', 'parking', 'hotel']) icons.insertAdjacentHTML('beforeend', placeIconSvg(id, 26));
+  const ul = $('placeCats');
+  for (const c of PLACE_CATEGORIES) {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'place-cat';
+    b.innerHTML = placeIconSvg(c.id, 34) + '<span></span><svg class="pc-chev" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    b.querySelector('span').textContent = c.label;
+    b.addEventListener('click', () => showPlaces(c.id));
+    li.appendChild(b); ul.appendChild(li);
+  }
+  $('placesBtn').addEventListener('click', openPlaces);
+  $('placesBack').addEventListener('click', showPlaceCats);
+  $('closePlaces').addEventListener('click', closePlaces);
+}
+
 // ---------- Starts ----------
 async function init() {
   const bm = await loadBasemapStyle(state.basemap);
@@ -1688,7 +1709,7 @@ async function init() {
   });
   map.on('moveend', () => { signs.refresh(); clearTimeout(init._t); init._t = setTimeout(loadAllForView, 150); });
   for (const ev of ['dragstart', 'rotatestart', 'pitchstart']) {
-    map.on(ev, e => { if (e.originalEvent) { state.follow = false; updateFollowBtn(); } });
+    map.on(ev, e => { if (e.originalEvent) state.follow = false; });
   }
   map.on('click', 'signs', e => {
     const f = e.features && e.features[0];
@@ -1711,7 +1732,7 @@ async function init() {
   map.on('click', e => {
     $('results').hidden = true;
     if (map.getLayer('signs') && map.queryRenderedFeatures(e.point, { layers: ['signs', 'alerts'].filter(l => map.getLayer(l)) }).length) return;
-    if (state.testMode && !state.nav.active) { state.follow = false; updateFollowBtn(); onFix(e.lngLat.lat, e.lngLat.lng, 55, null, 300); }
+    if (state.testMode && !state.nav.active) { state.follow = false; onFix(e.lngLat.lat, e.lngLat.lng, 55, null, 300); }
   });
 
   wireUi();
@@ -1719,6 +1740,7 @@ async function init() {
   loadVerifiedSigns();
   loadPlateTimes();
   wireAlerts();
+  wirePlaces();
   startGps();
   map.once('load', loadAllForView);
 }
