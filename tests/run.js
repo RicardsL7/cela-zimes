@@ -492,6 +492,26 @@ test('N. Vietas tuvumā: 12 kategorijas, pareizs Overpass vaicājums, tuvākās 
   ok(r[0].d < r[1].d, 'tuvākā pirmā');
 });
 
+test('O. Vietas ātri (Photon) + darba laiks fonā pēc OSM id; privātās stāvvietas izmestas', () => {
+  const url = G('buildPhotonPlacesUrl'), pp = G('parsePhotonPlaces'), dq = G('buildPlaceDetailsQuery'), merge = G('mergePlaceDetails'), pc = G('parseCondition');
+  const u = url('food', 56.95, 24.1, 5, 25);
+  ok(u.startsWith('https://photon.komoot.io/reverse?lat=56.95000&lon=24.10000&radius=5&limit=25'), 'Photon adrese');
+  ok(u.includes('osm_tag=amenity%3Arestaurant') && u.includes('osm_tag=amenity%3Afast_food'), 'vairākas birkas');
+  const feats = [
+    { geometry: { coordinates: [24.1, 56.97] }, properties: { osm_type: 'N', osm_id: 1, name: 'Tālā' } },
+    { geometry: { coordinates: [24.1, 56.951] }, properties: { osm_type: 'W', osm_id: 2, street: 'Brīvības iela', housenumber: '5' } },
+    { geometry: { coordinates: [24.1, 56.9512] }, properties: { osm_type: 'N', osm_id: 3, name: 'Privātā' } },
+  ];
+  const r = pp(feats, 'parking', 56.95, 24.1);
+  eq(r.map(p => p.id).join(), 'way2,node3,node1', 'tuvākā pirmā');
+  eq(r[0].name, 'Stāvvieta'); eq(r[0].addr, 'Brīvības iela 5');
+  const q = dq(r);
+  ok(q.includes('node(id:3,1);') && q.includes('way(id:2);') && q.includes('out tags'), 'vaicājums pēc id');
+  const m = merge(r, [{ type: 'way', id: 2, tags: { name: 'Centrs', fee: 'yes', capacity: '40', opening_hours: '24/7' } }, { type: 'node', id: 3, tags: { access: 'private' } }], new Date(), pc);
+  eq(m.length, 2, 'privātā izmesta');
+  eq(m[0].name, 'Centrs'); eq(m[0].open, true); eq(m[0].extra.join(), 'maksas,40 vietas');
+});
+
 console.log(results.join('\n'));
 console.log(`\n${pass} izdevās, ${fail} neizdevās`);
 process.exit(fail ? 1 : 0);
