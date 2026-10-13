@@ -32,6 +32,7 @@ const state = {
   ),
   warn: store.get('warn', true),
   profile: store.get('profile', 'car'),   // car | truck | tram | bike
+  mapMode: store.get('mapMode', 'alerts'), // alerts — tikai brīdinājumi (kā Waze) | signs — visas ceļa zīmes
   basemap: store.get('basemap', 'auto'),
   mlyToken: store.get('mlyToken', ''),
   testMode: false,
@@ -205,6 +206,9 @@ function buildQuery(s, w, n, e) {
   node["highway"~"^(stop|give_way|traffic_signals|crossing|speed_camera)$"](${bb});
   node["traffic_calming"](${bb});
   node["railway"="level_crossing"](${bb});
+  node["hazard"](${bb});
+  way["hazard"]["highway"](${bb});
+  way["highway"="construction"](${bb});
   way["highway"]["maxspeed"](${bb});
   way["highway"]["maxspeed:conditional"](${bb});
   way["highway"]["access:conditional"](${bb});
@@ -250,6 +254,7 @@ async function loadOsmForView() {
     let added = 0;
     for (const el of data.elements || []) {
       if (el.type !== 'node') readTimeRules(el);
+      readOsmAlert(el);
       if (el.type === 'node') {
         if (state.seenNodes.has(el.id)) continue;
         state.seenNodes.add(el.id);
@@ -761,6 +766,7 @@ function moveMeMarker(lng, lat, dur) {
   if (!meMarker) return createMeMarker(lng, lat);
   const from = meMarker.getLngLat();
   cancelAnimationFrame(meTween);
+  cancelAnimationFrame(navAnim);
   if (distM(from.lat, from.lng, lat, lng) > 400 || !dur) { meMarker.setLngLat([lng, lat]); return; }
   const t0 = performance.now();
   const step = () => {
@@ -793,8 +799,10 @@ function followCamera(dur = 900) {
   const driving = state.nav.active || (state.heading != null && (state.me.speedKmh ?? 0) > 5);
   const h = map.getContainer().clientHeight;
   const v = state.me.speedKmh ?? 0;
+  // Navigācijā kamera seko bultai uz maršruta (tur, kur tā būs pēc animācijas).
+  const c = state.nav.active && state.nav.onRoute && state.nav.target != null ? routePointAt(state.nav.route, state.nav.target) : null;
   map.easeTo({
-    center: [state.me.lng, state.me.lat],
+    center: c ? [c.lng, c.lat] : [state.me.lng, state.me.lat],
     bearing: driving && state.heading != null ? state.heading : map.getBearing(),
     pitch: driving ? 55 : 0,
     zoom: driving ? (v > 80 ? 15.8 : v > 50 ? 16.4 : 17) : Math.max(map.getZoom(), 15),
@@ -807,7 +815,18 @@ function followCamera(dur = 900) {
 function onFix(lat, lng, speedKmh, gpsHeading, dur = 900, accuracy = null) {
   state.me = { lat, lng, speedKmh, accuracy };
   state.gpsQuality = gpsFixQuality(accuracy);
-  moveMeMarker(lng, lat, state.follow ? dur : 300);
+  // Navigācijā bulta brauc pa maršruta līniju, nobrauktā daļa aiz tās pazūd.
+  let onRoute = false;
+  if (state.nav.active && state.nav.route && state.gpsQuality !== 'poor') {
+    const loc = locateOnRoute(state.nav.route, lat, lng);
+    if (loc.off <= ROUTE_SNAP_M) {
+      state.nav.target = smoothProgress(state.nav.target, loc.along);
+      navShow(state.nav.target, state.follow ? dur : 300);
+      onRoute = true;
+    }
+  }
+  state.nav.onRoute = onRoute;
+  if (!onRoute) moveMeMarker(lng, lat, state.follow ? dur : 300);
   $('speedValue').textContent = speedKmh == null ? '–' : Math.round(speedKmh);
   // Vājš signāls: neatjauno braukšanas virzienu (tas lēkātu) un brīdina.
   setBusy('gps', state.gpsQuality === 'poor' ? `Vājš GPS signāls (±${Math.round(accuracy)} m) — zīmes var būt neprecīzas` : null);
@@ -816,6 +835,7 @@ function onFix(lat, lng, speedKmh, gpsHeading, dur = 900, accuracy = null) {
   signs.setPosition(lat, lng, state.heading, accuracy == null ? 10 : accuracy);
   updateLimit();
   loadDirectionsNearMe();
+  loadWeather(false);
   if (state.nav.active) updateNav();
   else updateNextSign();
   followCamera(dur);
@@ -923,9 +943,45 @@ function installRouteLayers() {
     layout: { 'line-join': 'round', 'line-cap': 'round' },
     paint: { 'line-color': '#3d93ff', 'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 10, 3, 15, 7, 18, 18] } });
 }
-function drawRoute(route) {
+// Maršruta līnija. along — cik metru jau nobraukts: tad zīmē TIKAI atlikušo daļu
+// (no bultas līdz galamērķim pa maršruta punktiem). Viens avots — vecās līnijas nepaliek.
+function drawRoute(route, along = null) {
   const src = map.getSource('route');
-  if (src) src.setData(route ? { type: 'Feature', geometry: { type: 'LineString', coordinates: route.coords }, properties: {} } : EMPTY_FC);
+  if (src) src.setData(route ? { type: 'Feature', geometry: { type: 'LineString', coordinates: routeRemaining(route, along) }, properties: {} } : EMPTY_FC);
+}
+
+// ---------- Bulta uz maršruta; nobrauktā daļa pazūd aiz tās ----------
+// Navigācijā bultu novieto uz maršruta (kartes piesaiste maršrutam) un kopā ar to
+// vienmērīgi (pa maršruta līkumiem) pārvieto līnijas sākumu. GPS svārstības atpakaļ
+// neņem vērā (smoothProgress), tāpēc līnija nelēkā un nobrauktā daļa neatgriežas.
+const ROUTE_SNAP_M = 30;     // tālāk par šo no maršruta — bulta rāda GPS vietu, līnija netiek griezta
+let navAnim = 0, lastRouteDraw = 0;
+function navShow(target, dur) {
+  const route = state.nav.route;
+  if (!route) return;
+  cancelAnimationFrame(navAnim);
+  cancelAnimationFrame(meTween);
+  const from = state.nav.shown == null ? target : state.nav.shown;
+  const place = (a, force) => {
+    state.nav.shown = a;
+    const p = routePointAt(route, a);
+    if (meMarker) meMarker.setLngLat([p.lng, p.lat]); else createMeMarker(p.lng, p.lat);
+    const now = performance.now();
+    if (force || now - lastRouteDraw > 80) { lastRouteDraw = now; drawRoute(route, a); }   // ~12 reizes sekundē
+  };
+  if (!dur || Math.abs(target - from) > 400) return place(target, true);
+  const t0 = performance.now();
+  const step = () => {
+    const k = Math.min(1, (performance.now() - t0) / dur);
+    place(from + (target - from) * k, k === 1);
+    if (k < 1) navAnim = requestAnimationFrame(step);
+  };
+  step();
+}
+function resetNavProgress() {
+  cancelAnimationFrame(navAnim);
+  state.nav.target = null;
+  state.nav.shown = null;
 }
 
 async function selectDestination(place) {
@@ -1002,12 +1058,15 @@ function startNav() {
   $('endNav').hidden = false;
   state.follow = true;
   setBusy('prep', null);
+  resetNavProgress();
+  drawRoute(state.nav.route);
   if (state.testMode) startSimulation();
-  else if (state.me) { updateNav(); followCamera(1200); }
+  else if (state.me) onFix(state.me.lat, state.me.lng, state.me.speedKmh, null, 1200, state.me.accuracy);
 }
 
 function endNav() {
   stopSimulation();
+  resetNavProgress();
   routePrepId++;
   setBusy('prep', null);
   signs.setRoute(null);
@@ -1068,16 +1127,35 @@ function isNoticeSign(x) {
 // braucu (līdz krustojumam), nevis vienkārši tuvākā zīme apkārt.
 function updateNextSign() {
   const card = $('nextSign');
+  const alertsMode = state.mapMode === 'alerts';
+  const test = alertsMode ? (x => !!alertTypeForSign(x)) : isNoticeSign;
   let next = null, d = 0;
   if (state.signsOn && state.nav.active && state.nav.along != null) {
-    next = signs.routeSignsAhead(state.nav.along + 3, 700, isNoticeSign)[0];
+    next = signs.routeSignsAhead(state.nav.along + 3, 700, test)[0];
     if (next) d = next.along - state.nav.along;
   } else if (state.signsOn && !state.nav.route && state.me && state.heading != null &&
              (state.me.speedKmh ?? 0) > 8 && state.gpsQuality !== 'poor') {
-    next = signs.signsAheadOnRoad(state.me.lat, state.me.lng, state.heading, state.me.accuracy || 10, 400, isNoticeSign)[0];
+    next = signs.signsAheadOnRoad(state.me.lat, state.me.lng, state.heading, state.me.accuracy || 10, 400, test)[0];
     if (next) d = next.along;
   }
+  // Brīdinājumu režīmā: arī ziņojumi / OSM notikumi priekšā uz mana ceļa.
+  if (alertsMode && state.signsOn) {
+    const a = nextAlertAhead();
+    if (a && (!next || a.dist < d)) {
+      next = null; d = a.dist;
+      setNextCard(alertDataUrl(a.it.type), d, ALERT_TYPES[a.it.type].label + (a.it.source === 'user' ? ' (tavs ziņojums)' : ''));
+      return;
+    }
+  }
   if (!next) { card.hidden = true; return; }
+  if (alertsMode) {
+    const t = alertTypeForSign(next.s);
+    const ti = signTimeInfo(next.s);
+    setNextCard(alertDataUrl(t), d, (t === 'restriction' ? describeRestriction(next.s.title, next.s.restriction) : ALERT_TYPES[t].label) +
+      (next.status === 'probable' ? (next.reason === 'after-junction' ? ' (ja brauksi taisni)' : ' (virziens nav apstiprināts)') : '') +
+      (ti && ti.off ? ' (tagad nav spēkā)' : ''));
+    return;
+  }
   if ($('nextSignImg').dataset.src !== next.s.src) { $('nextSignImg').src = next.s.src; $('nextSignImg').dataset.src = next.s.src; }
   $('nextSignDist').textContent = d < 30 ? 'Tagad' : 'Pēc ' + navDist(d);
   const ti = signTimeInfo(next.s);
@@ -1091,6 +1169,7 @@ function updateNextSign() {
 // Maršruta kartītē: cik un kādas zīmes būs pa ceļam.
 function updateRouteSummary() {
   if (!state.nav.route || state.nav.active) return;
+  if (state.mapMode === 'alerts') return updateRouteAlertSummary();
   const list = signs.routeSignsAhead(-1, Infinity, isNoticeSign).map(it => it.s);
   if (!list.length) { $('routeSigns').textContent = state.mlyToken ? 'Meklē zīmes pa ceļam…' : ''; return; }
   const n = c => list.filter(x => x.cat === c).length;
@@ -1112,6 +1191,7 @@ async function reroute() {
     const route = await requestRoute(state.me, state.nav.dest);
     state.nav.route = route;
     state.nav.along = null;
+    resetNavProgress();              // jauns maršruts sākas no manis — līnija no jauna
     drawRoute(route);
     signs.setRoute(route);
     prepareRoute(route);
@@ -1144,16 +1224,214 @@ function startSimulation() {
 }
 function stopSimulation() { clearInterval(simTimer); simTimer = null; }
 
+// ---------- Brīdinājumi (kā Waze) ----------
+// Notikumi, kas nav ceļa zīmes: lietotāja ziņojumi, OSM būvdarbi / bīstamas vietas.
+// Laikapstākļi — josla zem meklēšanas (tie attiecas uz apkārtni, ne vienu punktu).
+let alerts = null;
+
+// OSM objekts → brīdinājums (būvējams ceļš, hazard=*). Mezglam — tā vieta, ceļam — vidus.
+function readOsmAlert(el) {
+  const type = alertTypeForOsm(el.tags);
+  if (!type || !alerts) return;
+  const id = 'osm:' + el.type + el.id;
+  if (alerts.items.has(id)) return;
+  let lat = el.lat, lng = el.lon;
+  if (el.type === 'way' && el.geometry && el.geometry.length) {
+    const g = el.geometry[Math.floor(el.geometry.length / 2)];
+    lat = g.lat; lng = g.lon;
+  }
+  if (lat == null) return;
+  const name = el.tags.name ? el.tags.name + ' — ' : '';
+  const what = type === 'roadworks' ? 'ceļš tiek būvēts vai remontēts' : 'bīstama vieta' + (el.tags.hazard ? ' (' + el.tags.hazard.replace(/_/g, ' ') + ')' : '');
+  alerts.add({ id, type, lat, lng, source: 'osm', title: ALERT_TYPES[type].label, info: name + what, createdAt: Date.now(), expiresAt: null });
+  refreshAlertsSoon();
+}
+
+function installAlertLayer() {
+  if (map.getSource('alerts')) return;
+  map.addSource('alerts', { type: 'geojson', data: EMPTY_FC });
+  map.addLayer({
+    id: 'alerts', type: 'symbol', source: 'alerts',
+    layout: {
+      'icon-image': ['get', 'icon'],
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.55, 16, 0.85, 18.5, 1.1],
+      'icon-allow-overlap': true,
+      'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
+      'symbol-sort-key': ['get', 'prio'],
+    },
+  });
+  refreshAlerts();
+}
+let alertsTimer = null;
+function refreshAlertsSoon() { clearTimeout(alertsTimer); alertsTimer = setTimeout(refreshAlerts, 200); }
+function refreshAlerts() {
+  const src = map && map.getSource && map.getSource('alerts');
+  if (!src || !alerts) return;
+  const show = state.signsOn && state.mapMode === 'alerts';
+  const list = show ? alerts.list() : [];
+  src.setData({ type: 'FeatureCollection', features: list.map(it => ({
+    type: 'Feature', geometry: { type: 'Point', coordinates: [it.lng, it.lat] },
+    properties: { id: it.id, icon: 'alert:' + it.type, prio: it.source === 'user' ? 0 : 5 },
+  })) });
+}
+
+function showAlertPopup(id, coords) {
+  const it = alerts.items.get(id);
+  if (!it) return;
+  const el = document.createElement('div');
+  const b = document.createElement('div'); b.textContent = ALERT_TYPES[it.type].label; el.appendChild(b);
+  const i = document.createElement('div'); i.className = 'popup-time'; i.textContent = alertInfo(it); el.appendChild(i);
+  const popup = new maplibregl.Popup({ closeButton: false, offset: 18, maxWidth: '270px' }).setLngLat(coords).setDOMContent(el).addTo(map);
+  if (it.source === 'user') {
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 'btn ghost small popup-btn'; del.textContent = 'Vairs nav — noņemt';
+    del.addEventListener('click', () => { alerts.remove(id); refreshAlerts(); popup.remove(); });
+    el.appendChild(del);
+  }
+}
+
+// Nākamais notikums priekšā uz maršruta vai mana ceļa: { it, dist } vai null.
+function nextAlertAhead() {
+  if (!alerts) return null;
+  let best = null;
+  for (const it of alerts.list()) {
+    let dist = null, bearing = null;
+    if (state.nav.active && state.nav.route && state.nav.along != null) {
+      const r = signs._matchRoute(it.lat, it.lng);
+      if (!r || r.d > 30) continue;
+      dist = r.along - state.nav.along; bearing = r.bearing;
+      if (dist < 3 || dist > 1500) continue;
+    } else if (!state.nav.route && signs.pos && state.heading != null) {
+      const f = signs._freeApplicable();
+      if (!f) continue;
+      const pr = f.path.project(it.lng, it.lat);
+      if (!pr || pr.d > 25) continue;
+      dist = pr.along - f.path.from + 2; bearing = pr.bearing;
+      if (dist < 3 || dist > 400) continue;
+    } else continue;
+    if (it.heading != null && bearing != null && angleDiff(it.heading, bearing) > 90) continue;   // ziņots pretējā virzienā
+    if (!best || dist < best.dist) best = { it, dist };
+  }
+  return best;
+}
+
+function setNextCard(src, d, title) {
+  const card = $('nextSign');
+  if ($('nextSignImg').dataset.src !== src) { $('nextSignImg').src = src; $('nextSignImg').dataset.src = src; }
+  $('nextSignDist').textContent = d < 30 ? 'Tagad' : 'Pēc ' + navDist(d);
+  $('nextSignTitle').textContent = title;
+  card.hidden = false;
+}
+
+// Maršruta kartītē: kādi brīdinājumi būs pa ceļam.
+function updateRouteAlertSummary() {
+  const counts = {};
+  for (const it of signs.routeSignsAhead(-1, Infinity, x => !!alertTypeForSign(x))) {
+    const t = alertTypeForSign(it.s); counts[t] = (counts[t] || 0) + 1;
+  }
+  for (const it of alerts ? alerts.list() : []) {
+    const r = signs._matchRoute(it.lat, it.lng);
+    if (r && r.d <= 30) counts[it.type] = (counts[it.type] || 0) + 1;
+  }
+  const order = ['police', 'police-hidden', 'camera-mobile', 'camera-fixed', 'accident', 'jam', 'closure', 'lane-closed', 'roadworks',
+    'restriction', 'rail', 'school', 'traffic-light'];
+  const parts = Object.keys(counts).sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99)
+    .map(t => `${counts[t]} × ${ALERT_TYPES[t].label.toLowerCase()}`);
+  $('routeSigns').textContent = parts.length ? 'Pa ceļam: ' + parts.join(' · ') : (state.mlyToken ? 'Meklē brīdinājumus pa ceļam…' : '');
+}
+
+// ---------- Laikapstākļi (Open-Meteo, bez atslēgas) ----------
+let weatherAt = null, weatherTime = 0;
+async function loadWeather(force) {
+  if (!state.me) return;
+  const moved = !weatherAt || distM(weatherAt[0], weatherAt[1], state.me.lat, state.me.lng) > 15000;
+  if (!force && !moved && Date.now() - weatherTime < 10 * 60000) return;
+  weatherAt = [state.me.lat, state.me.lng]; weatherTime = Date.now();
+  try {
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + state.me.lat.toFixed(3) + '&longitude=' + state.me.lng.toFixed(3) +
+      '&current=temperature_2m,precipitation,rain,showers,snowfall,weather_code,wind_gusts_10m,visibility&wind_speed_unit=ms&timezone=auto';
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    state.weather = { list: weatherAlerts(j.current), time: j.current && j.current.time };
+  } catch (err) {
+    console.warn('Laikapstākļi nav ielādēti', err);
+    state.weather = null;
+  }
+  renderWeather();
+}
+function renderWeather() {
+  const bar = $('wxBar');
+  const list = state.signsOn && state.mapMode === 'alerts' && state.weather ? state.weather.list : [];
+  bar.textContent = '';
+  for (const w of list) {
+    const chip = document.createElement('div');
+    chip.className = 'wx-chip';
+    chip.title = 'Laikapstākļi tavā apkārtnē · Open-Meteo' + (state.weather.time ? ' · ' + state.weather.time.slice(11, 16) : '');
+    const img = document.createElement('img'); img.src = alertDataUrl(w.type); img.alt = ''; img.width = 22; img.height = 22;
+    const t = document.createElement('span'); t.textContent = w.text;
+    chip.append(img, t);
+    bar.appendChild(chip);
+  }
+  bar.hidden = !list.length;
+}
+
+// ---------- Ziņot (lietotāja ziņojumi) ----------
+function wireAlerts() {
+  const grid = $('reportGrid');
+  for (const [type, t] of Object.entries(ALERT_TYPES)) {
+    if (!t.report) continue;
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'report-btn';
+    b.innerHTML = `<img src="${alertDataUrl(type)}" alt="" width="40" height="40"><span></span>`;
+    b.querySelector('span').textContent = t.label;
+    b.addEventListener('click', () => reportAlert(type));
+    grid.appendChild(b);
+  }
+  $('reportBtn').addEventListener('click', () => { $('reportSheet').hidden = false; });
+  $('closeReport').addEventListener('click', () => { $('reportSheet').hidden = true; });
+  $('modeSelect').addEventListener('change', e => {
+    state.mapMode = e.target.value; store.set('mapMode', state.mapMode);
+    applySignVisibility(); renderWeather(); updateNextSign(); updateRouteSummary();
+  });
+  setInterval(() => loadWeather(false), 60000);
+}
+function reportAlert(type) {
+  // Vieta: uz ceļa, kur esmu (kartes piesaiste), citādi GPS vieta.
+  const p = signs.pos && !signs.pos.uncertain ? { lat: signs.pos.P[1], lng: signs.pos.P[0] } : state.me;
+  if (!p) { setStatus('Atrašanās vieta vēl nav zināma — ziņojumu nevar pievienot.'); return; }
+  const it = alerts.add(makeReport(type, p.lat, p.lng, state.heading));
+  $('reportSheet').hidden = true;
+  refreshAlerts();
+  setStatus(`Paldies! „${ALERT_TYPES[type].label}” būs redzams ${ALERT_TYPES[type].ttl >= 120 ? Math.round(ALERT_TYPES[type].ttl / 60) + ' h' : ALERT_TYPES[type].ttl + ' min'} (tikai šajā ierīcē).`);
+  return it;
+}
+
 // ---------- Saskarne ----------
 function applySignVisibility() {
+  const alertsMode = state.mapMode === 'alerts';
   signs.setEnabled(state.signsOn);
-  signs.setFilter(s => state.cats[s.cat] && signFitsProfile(s, state.profile));
+  if (alertsMode) {
+    // Brīdinājumu režīms: no zīmēm rāda TIKAI brīdinājumus (kameras, pārbrauktuves, luksofori,
+    // skolas zonas, šobrīd spēkā esoši ierobežojumi) ar vienotām ikonām.
+    signs.setFilter(s => !!alertTypeForSign(s) && signFitsProfile(s, state.profile));
+    signs.iconFor = s => 'alert:' + (alertTypeForSign(s) || 'hazard');
+    signs.titleFor = s => { const t = alertTypeForSign(s); return t ? ALERT_TYPES[t].label : s.title; };
+  } else {
+    signs.setFilter(s => state.cats[s.cat] && signFitsProfile(s, state.profile));
+    signs.iconFor = null;
+    signs.titleFor = null;
+  }
+  signs.refresh();
+  refreshAlerts();
   const btn = $('toggleSigns');
   btn.setAttribute('aria-pressed', String(state.signsOn));
   btn.classList.toggle('off', !state.signsOn);
-  $('toggleSignsLabel').textContent = state.signsOn ? 'Zīmes' : 'Izslēgtas';
+  $('toggleSignsLabel').textContent = !state.signsOn ? 'Izslēgts' : alertsMode ? 'Brīdin.' : 'Zīmes';
   $('masterSwitch').checked = state.signsOn;
   $('catList').classList.toggle('disabled', !state.signsOn);
+  $('catList').hidden = alertsMode;
+  $('modeSelect').value = state.mapMode;
 }
 
 function buildCategoryList() {
@@ -1291,11 +1569,14 @@ async function init() {
   });
   signs = new SignStore(map);
   signs.decorate = signTimeInfo;
+  alerts = new AlertStore({ load: () => store.get('reports', []), save: list => store.set('reports', list) });
+  setInterval(() => { if (alerts.prune()) refreshAlerts(); }, 30000);   // novecojušos ziņojumus noņem
   setInterval(() => { signs.refresh(); updateLimit(); }, 60000); // laika ierobežojumi mainās
 
   map.on('style.load', () => {
     installRouteLayers();
     signs.install();
+    installAlertLayer();
     roadIndex.ready = false; roadIndex.coverage = null;
     signs.setRoads(state.vector ? roadIndex : null);
     if (state.nav.route) drawRoute(state.nav.route);
@@ -1323,7 +1604,10 @@ async function init() {
   map.on('moveend', scheduleRoads);
   map.on('sourcedata', e => { if (e.sourceId === 'openmaptiles' && e.tile) { roadGen++; scheduleRoads(); } });
   map.on('resize', () => { clearTimeout(init._fit); init._fit = setTimeout(fitRoute, 250); });
-  map.on('styleimagemissing', e => { if (/^(mly|own):/.test(e.id)) signs.loadImage(e.id); });
+  map.on('styleimagemissing', e => {
+    if (/^alert:/.test(e.id)) { signs.iconUrl.set(e.id, alertDataUrl(e.id.slice(6))); signs.loadImage(e.id); }
+    else if (/^(mly|own):/.test(e.id)) signs.loadImage(e.id);
+  });
   map.on('moveend', () => { signs.refresh(); clearTimeout(init._t); init._t = setTimeout(loadAllForView, 150); });
   for (const ev of ['dragstart', 'rotatestart', 'pitchstart']) {
     map.on(ev, e => { if (e.originalEvent) state.follow = false; });
@@ -1340,11 +1624,15 @@ async function init() {
       .setLngLat(f.geometry.coordinates).setDOMContent(el).addTo(map);
     if (f.properties.mid && state.mlyToken) showSignPhoto(el, f.properties.mid, popup);
   });
+  map.on('click', 'alerts', e => {
+    const f = e.features && e.features[0];
+    if (f) showAlertPopup(f.properties.id, f.geometry.coordinates);
+  });
   map.on('mouseenter', 'signs', () => { map.getCanvas().style.cursor = 'pointer'; });
   map.on('mouseleave', 'signs', () => { map.getCanvas().style.cursor = ''; });
   map.on('click', e => {
     $('results').hidden = true;
-    if (map.getLayer('signs') && map.queryRenderedFeatures(e.point, { layers: ['signs'] }).length) return;
+    if (map.getLayer('signs') && map.queryRenderedFeatures(e.point, { layers: ['signs', 'alerts'].filter(l => map.getLayer(l)) }).length) return;
     if (state.testMode && !state.nav.active) { state.follow = false; onFix(e.lngLat.lat, e.lngLat.lng, 55, null, 300); }
   });
 
@@ -1352,6 +1640,7 @@ async function init() {
   buildCategoryList();
   loadVerifiedSigns();
   loadPlateTimes();
+  wireAlerts();
   startGps();
   map.once('load', loadAllForView);
 }

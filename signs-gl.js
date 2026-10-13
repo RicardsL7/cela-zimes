@@ -76,6 +76,8 @@ class SignStore {
     this.roads = null;       // roadIndex vai null
     this.enabled = true;
     this.decorate = null;    // s → { time, off, unk, info } (laika ierobežojumi)
+    this.iconFor = null;     // s → attēla id (brīdinājumu režīmā — vienotas ikonas)
+    this.titleFor = null;    // s → nosaukums
     this.iconUrl = new Map(); // attēla id -> adrese
     this.loading = new Set();
     this._timer = null;
@@ -604,7 +606,7 @@ class SignStore {
       features: list.map(({ s, pos, rel }) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [pos.lng, pos.lat] },
-        properties: Object.assign({ icon: s.icon, title: s.title, rel, prio: rank[rel] + SIGN_PRIORITY[s.cat] - (s.restriction && s.restriction.known ? 8 : 0) },
+        properties: Object.assign({ icon: this.iconFor ? this.iconFor(s) : s.icon, title: this.titleFor ? this.titleFor(s) : s.title, rel, prio: rank[rel] + SIGN_PRIORITY[s.cat] - (s.restriction && s.restriction.known ? 8 : 0) },
           s.mid ? { mid: s.mid } : null,
           s._m && s._m.quality === 'uncertain' ? { unsure: s._m.reason || 'piesaiste nav droša' } : null,
           s.conflict ? { conflict: true } : null,

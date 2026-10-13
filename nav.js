@@ -121,3 +121,45 @@ function routeProgress(route, lat, lng) {
   const timeLeft = route.duration * (total ? remaining / total : 0);
   return { loc, next, toNext, remaining, timeLeft, arrived: remaining < 25 };
 }
+
+// ---------- Nobrauktā / atlikušā maršruta daļa ----------
+// Punkts uz maršruta pēc nobrauktā attāluma (metri no sākuma) — pa maršruta punktiem,
+// nevis taisnā līnijā. Atgriež { lng, lat, idx, t, bearing }.
+function routePointAt(route, along) {
+  const { coords, cum } = route;
+  const n = coords.length;
+  if (n < 2) return { lng: coords[0][0], lat: coords[0][1], idx: 0, t: 0, bearing: 0 };
+  const total = cum[n - 1];
+  const a = Math.max(0, Math.min(total, along));
+  let lo = 0, hi = n - 2;                       // meklē posmu: cum[i] <= a <= cum[i + 1]
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (cum[mid] <= a) lo = mid; else hi = mid - 1;
+  }
+  const i = lo, len = cum[i + 1] - cum[i];
+  const t = len > 0 ? (a - cum[i]) / len : 0;
+  const p = coords[i], q = coords[i + 1];
+  const cos = Math.cos(p[1] * Math.PI / 180);
+  const bearing = (Math.atan2((q[0] - p[0]) * cos, q[1] - p[1]) * 180 / Math.PI + 360) % 360;
+  return { lng: p[0] + (q[0] - p[0]) * t, lat: p[1] + (q[1] - p[1]) * t, idx: i, t, bearing };
+}
+
+// Vēl nenobrauktā maršruta daļa: no punkta "along" līdz galamērķim (ar visiem līkumiem).
+function routeRemaining(route, along) {
+  if (along == null || along <= 0) return route.coords;
+  const p = routePointAt(route, along);
+  const out = [[p.lng, p.lat]];
+  for (let i = p.idx + 1; i < route.coords.length; i++) out.push(route.coords[i]);
+  if (out.length === 1) out.push([p.lng, p.lat]);   // galamērķis sasniegts — tukša līnija
+  return out;
+}
+
+// Progress bez lēkāšanas: GPS svārstības atpakaļ (līdz maxBack m) neņem vērā,
+// lai nobrauktā līnija neparādītos atkal. Lielāks solis atpakaļ — īsts (piem. pēc pārrēķina).
+function smoothProgress(prev, next, maxBack = 30) {
+  if (prev == null || next == null) return next;
+  if (next >= prev) return next;
+  return prev - next <= maxBack ? prev : next;
+}
+
+if (typeof module !== 'undefined') module.exports = { routePointAt, routeRemaining, smoothProgress, locateOnRoute, routeProgress };
