@@ -76,7 +76,7 @@ function parsePlaces(elements, catId, lat, lng, now = new Date(), parse = null) 
       if (t.capacity) extra.push(t.capacity + ' vietas');
     }
     if (catId === 'ev' && t.capacity) extra.push(t.capacity + ' uzlādes vietas');
-    if (catId === 'fuel' && t.brand && t.brand !== name) extra.push(t.brand);
+    if (catId === 'fuel' && t.brand && !name.toLowerCase().includes(t.brand.toLowerCase())) extra.push(t.brand);
     out.push({
       id: el.type + el.id, cat: catId, name, lat: plat, lng: plng,
       d: placeDistM(lat, lng, plat, plng),

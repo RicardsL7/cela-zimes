@@ -1594,14 +1594,24 @@ async function showPlaces(catId) {
   let places = [];
   try {
     for (const r of [3000, 10000, 30000]) {           // ja tuvumā maz — meklē tālāk
-      const data = await fetchOverpass(buildPlacesQuery(catId, c.lat, c.lng, r));
+      const q = buildPlacesQuery(catId, c.lat, c.lng, r);
+      // Overpass serveri dažreiz aizņemti (504) — vēl 2 mēģinājumi ar pauzi
+      let data;
+      for (let k = 0; ; k++) {
+        try { data = await fetchOverpass(q); break; }
+        catch (e) { if (k >= 2 || seq !== placeSeq) throw e; await new Promise(res => setTimeout(res, 1500 * (k + 1))); }
+      }
       if (seq !== placeSeq) return;
       places = parsePlaces(data.elements, catId, c.lat, c.lng, new Date(), parseCondition);
       if (places.length >= 5) break;
     }
   } catch {
     if (seq !== placeSeq) return;
-    $('placeStatus').textContent = 'Neizdevās ielādēt vietas. Pārbaudi internetu un mēģini vēlreiz.';
+    $('placeStatus').textContent = 'Neizdevās ielādēt vietas (karšu serveris aizņemts). ';
+    const retry = document.createElement('button');
+    retry.type = 'button'; retry.className = 'link-btn'; retry.textContent = 'Mēģināt vēlreiz';
+    retry.addEventListener('click', () => showPlaces(catId));
+    $('placeStatus').appendChild(retry);
     return;
   }
   places = places.slice(0, 25);
