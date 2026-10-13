@@ -463,6 +463,15 @@ test('L. Brīdinājumi: kartē tikai noteiktās kategorijas; laikapstākļi tika
   ok(threw, 'nevar "ziņot" par pastāvīgu objektu');
 });
 
+test('M. Kartes pogas: "Ziņot" un "Bīstami" kopā aptver visus ziņojamos veidus, bez dublikātiem', () => {
+  const ALERT_TYPES = G('ALERT_TYPES'), RG = G('REPORT_GROUPS');
+  const all = [...RG.traffic, ...RG.hazard];
+  eq(new Set(all).size, all.length, 'bez dublikātiem');
+  for (const t of all) ok(ALERT_TYPES[t] && ALERT_TYPES[t].report, t + ' ir ziņojams');
+  const reportable = Object.keys(ALERT_TYPES).filter(t => ALERT_TYPES[t].report).sort().join();
+  eq([...all].sort().join(), reportable, 'visi ziņojamie veidi ir kādā pogā');
+});
+
 console.log(results.join('\n'));
 console.log(`\n${pass} izdevās, ${fail} neizdevās`);
 process.exit(fail ? 1 : 0);
