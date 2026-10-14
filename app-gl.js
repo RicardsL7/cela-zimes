@@ -104,6 +104,21 @@ function rememberFace(s) {
   }, 2000);
 }
 
+// Zīmes, kurām Mapillary virziena nav — atceras 7 dienas, lai tās katru reizi nepieprasītu no jauna.
+const NODIR_MAX_AGE = 7 * 24 * 3600 * 1000;
+const noDirCache = new Map(Object.entries(store.get('nodir', {})).filter(([, t]) => Date.now() - t < NODIR_MAX_AGE));
+let noDirSaveTimer = null;
+function rememberNoDir(keys) {
+  const now = Date.now();
+  for (const k of keys) noDirCache.set(k, now);
+  clearTimeout(noDirSaveTimer);
+  noDirSaveTimer = setTimeout(() => {
+    let entries = [...noDirCache];
+    if (entries.length > 20000) entries = entries.slice(-20000);
+    store.set('nodir', Object.fromEntries(entries));
+  }, 2000);
+}
+
 // ---------- Zīmes ----------
 // Dublikāti un pretrunas (model.js → SignDeduper):
 //   • tāda pati Mapillary zīme ≤ 5 m — dublikāts (Mapillary to bieži saglabā vairākkārt);
@@ -222,16 +237,76 @@ function buildQuery(s, w, n, e) {
 out body geom;`;
 }
 
-async function fetchOverpass(query) {
-  const controllers = OVERPASS_URLS.map(() => new AbortController());
-  const attempts = OVERPASS_URLS.map(async (url, i) => {
-    const res = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(query), signal: controllers[i].signal });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const json = await res.json();
-    controllers.forEach((c, j) => { if (j !== i) c.abort(); });
-    return json;
+// Abi Overpass serveri paralēli — ņem ātrāko; ilgāk par 35 s negaida (serveri bieži pārslogoti).
+// Vienādi vaicājumi, kas notiek vienlaikus, tiek sūtīti tikai vienreiz.
+function fetchOverpass(query, timeoutMs = 35000) {
+  return onceInflight('ovp|' + query, () => {
+    const controllers = OVERPASS_URLS.map(() => new AbortController());
+    const timer = setTimeout(() => controllers.forEach(c => c.abort()), timeoutMs);
+    const attempts = OVERPASS_URLS.map(async (url, i) => {
+      const res = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(query), signal: controllers[i].signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const json = await res.json();
+      controllers.forEach((c, j) => { if (j !== i) c.abort(); });
+      return json;
+    });
+    return Promise.any(attempts).finally(() => clearTimeout(timer));
   });
-  return Promise.any(attempts);
+}
+
+// ---------- OSM dati pa šūnām telefona kešatmiņā ----------
+// Katru ~1 km šūnu glabā 3 dienas: atkārtoti atverot to pašu vietu, zīmes parādās uzreiz bez Overpass.
+const OSM_CELL_MAX_AGE = 3 * 24 * 3600 * 1000;
+function osmElementBox(el) {
+  let s = 90, w = 180, n = -90, e = -180, any = false;
+  const add = (la, lo) => { if (la == null || lo == null) return; any = true; s = Math.min(s, la); n = Math.max(n, la); w = Math.min(w, lo); e = Math.max(e, lo); };
+  add(el.lat, el.lon);
+  for (const g of el.geometry || []) add(g.lat, g.lon);
+  for (const m of el.members || []) { add(m.lat, m.lon); for (const g of m.geometry || []) add(g.lat, g.lon); }
+  return any ? [s, w, n, e] : null;
+}
+// Sadala Overpass elementus pa šūnām (elements, kas šķērso vairākas šūnas, nonāk katrā no tām).
+function splitByCells(elements, cells) {
+  const out = new Map(cells.map(c => [c, []]));
+  for (const el of elements) {
+    const b = osmElementBox(el);
+    if (!b) continue;
+    for (let la = Math.floor(b[0] / CELL); la <= Math.floor(b[2] / CELL); la++)
+      for (let lo = Math.floor(b[1] / CELL); lo <= Math.floor(b[3] / CELL); lo++) {
+        const arr = out.get(la + ':' + lo);
+        if (arr) arr.push(el);
+      }
+  }
+  return out;
+}
+
+function processOsmElements(elements) {
+  let added = 0;
+  for (const el of elements || []) {
+    if (el.type !== 'node') readTimeRules(el);
+    readOsmAlert(el);
+    if (el.type === 'node') {
+      if (state.seenNodes.has(el.id)) continue;
+      state.seenNodes.add(el.id);
+      const sign = classifyNode(el.tags);
+      if (sign && addSign(el.lat, el.lon, sign)) added++;
+    } else if (el.type === 'way' && el.geometry && !state.ways.has(el.id)) {
+      const limit = parseMaxspeed(el.tags.maxspeed);
+      if (!limit) continue;
+      const pts = el.geometry.map(p => [p.lat, p.lon]);
+      state.ways.set(el.id, { limit, pts });
+      indexWay(limit, pts, speedCondition(el.tags));
+      added += addWaySpeedSign(pts, limit);
+    }
+  }
+  return added;
+}
+function osmApplied(added) {
+  attachTimesSoon();
+  state.counts.osm += added;
+  signs.refresh();
+  showCounts();
+  updateLimit();
 }
 
 async function loadOsmForView() {
@@ -240,42 +315,29 @@ async function loadOsmForView() {
   const cells = [];
   for (let la = Math.floor(vs / CELL); la <= Math.floor(vn / CELL); la++)
     for (let lo = Math.floor(vw / CELL); lo <= Math.floor(ve / CELL); lo++) cells.push(la + ':' + lo);
-  const missing = cells.filter(c => !state.loadedCells.has(c));
+  let missing = cells.filter(c => !state.loadedCells.has(c));
   if (!missing.length || missing.length > MAX_CELLS) return;
 
-  const las = missing.map(c => +c.split(':')[0]), los = missing.map(c => +c.split(':')[1]);
-  const s = Math.min(...las) * CELL, n = (Math.max(...las) + 1) * CELL;
-  const w = Math.min(...los) * CELL, e = (Math.max(...los) + 1) * CELL;
-
   state.loading = true;
-  if (!state.mlyToken) setBusy('osm', 'Ielādē ceļa zīmes…');
   try {
-    const data = await fetchOverpass(buildQuery(s.toFixed(4), w.toFixed(4), n.toFixed(4), e.toFixed(4)));
+    // 1) No telefona kešatmiņas — uzreiz
+    const cached = await Promise.all(missing.map(c => cacheGet('osm', c, OSM_CELL_MAX_AGE)));
     let added = 0;
-    for (const el of data.elements || []) {
-      if (el.type !== 'node') readTimeRules(el);
-      readOsmAlert(el);
-      if (el.type === 'node') {
-        if (state.seenNodes.has(el.id)) continue;
-        state.seenNodes.add(el.id);
-        const sign = classifyNode(el.tags);
-        if (sign && addSign(el.lat, el.lon, sign)) added++;
-      } else if (el.type === 'way' && el.geometry && !state.ways.has(el.id)) {
-        const limit = parseMaxspeed(el.tags.maxspeed);
-        if (!limit) continue;
-        const pts = el.geometry.map(p => [p.lat, p.lon]);
-        state.ways.set(el.id, { limit, pts });
-        indexWay(limit, pts, speedCondition(el.tags));
-        added += addWaySpeedSign(pts, limit);
-      }
-    }
-    missing.forEach(c => state.loadedCells.add(c));
-    attachTimesSoon();
+    missing.forEach((c, i) => { if (cached[i]) { added += processOsmElements(cached[i]); state.loadedCells.add(c); } });
+    if (added || cached.some(Boolean)) osmApplied(added);
+    missing = missing.filter((c, i) => !cached[i]);
+    if (!missing.length) { state.osmRetryMs = 0; setTimeout(loadOsmForView, 100); return; }
+
+    // 2) Pārējās šūnas no Overpass
+    const las = missing.map(c => +c.split(':')[0]), los = missing.map(c => +c.split(':')[1]);
+    const s = Math.min(...las) * CELL, n = (Math.max(...las) + 1) * CELL;
+    const w = Math.min(...los) * CELL, e = (Math.max(...los) + 1) * CELL;
+    if (!state.mlyToken) setBusy('osm', 'Ielādē ceļa zīmes…');
+    const data = await fetchOverpass(buildQuery(s.toFixed(4), w.toFixed(4), n.toFixed(4), e.toFixed(4)));
+    osmApplied(processOsmElements(data.elements));
+    const parts = splitByCells(data.elements || [], missing);
+    for (const c of missing) { state.loadedCells.add(c); cachePut('osm', c, parts.get(c)); }
     state.osmRetryMs = 0;
-    state.counts.osm += added;
-    signs.refresh();
-    showCounts();
-    updateLimit();
     setTimeout(loadOsmForView, 100);
   } catch (err) {
     console.warn('OSM zīmes nav ielādētas', err);
@@ -656,9 +718,13 @@ async function loadMapillaryForView() {
 
 // Ielādē virzienus zīmēm apgabalā (tikai tām, kuru virziens vēl nav zināms).
 async function loadDirectionsBox(s, w, n, e) {
-  const counts = new Map();
+  const counts = new Map(), asked = [];
   signs.eachInBox(s, w, n, e, x => {
-    if (x.value && x.face == null) counts.set(x.value, (counts.get(x.value) || 0) + 1);
+    if (!x.value || x.face != null) return;
+    const k = faceKey(x.value, x.lat, x.lng);
+    if (noDirCache.has(k)) return;               // jau zināms, ka virziena nav
+    asked.push(x);
+    counts.set(x.value, (counts.get(x.value) || 0) + 1);
   });
   if (!counts.size) return 0;
   const found = await fetchMapillaryDirectionsArea(w, s, e, n, state.mlyToken, counts);
@@ -667,6 +733,7 @@ async function loadDirectionsBox(s, w, n, e) {
     const x = signs.findNear(f.lat, f.lng, 5, z => z.value === f.value && z.face == null);
     if (x) { x.face = MLY_DIR_IS_FACE ? f.dir : (f.dir + 180) % 360; signs.faceChanged(x); rememberFace(x); matched++; }
   }
+  rememberNoDir(asked.filter(x => x.face == null).map(x => faceKey(x.value, x.lat, x.lng)));
   if (matched) signs.facesChanged();
   return matched;
 }
@@ -880,10 +947,10 @@ const PIN_ICON = '<svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 2
 
 async function searchPhoton(q) {
   const c = state.me || { lat: map.getCenter().lat, lng: map.getCenter().lng };
-  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=7&lat=${c.lat.toFixed(4)}&lon=${c.lng.toFixed(4)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const json = await res.json();
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=7&lat=${c.lat.toFixed(2)}&lon=${c.lng.toFixed(2)}`;
+  // Tas pats teksts ~1 km apkārtnē — no kešatmiņas (1 diena)
+  const json = await cachedJson('photon', q.toLowerCase() + '@' + c.lat.toFixed(2) + ',' + c.lng.toFixed(2), 24 * 3600 * 1000,
+    () => fetchJson(url, {}, 7000));
   return (json.features || []).map(f => {
     const p = f.properties || {};
     const street = [p.street, p.housenumber].filter(Boolean).join(' ');
@@ -894,9 +961,8 @@ async function searchPhoton(q) {
 }
 async function searchNominatim(q) {
   const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=lv&q=' + encodeURIComponent(q);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return (await res.json()).map(it => {
+  const json = await cachedJson('nominatim', q.toLowerCase(), 24 * 3600 * 1000, () => fetchJson(url, {}, 8000));
+  return json.map(it => {
     const [name, ...rest] = it.display_name.split(', ');
     return { name, sub: rest.slice(0, 3).join(', '), lat: +it.lat, lng: +it.lon };
   });
@@ -984,6 +1050,16 @@ function resetNavProgress() {
   state.nav.shown = null;
 }
 
+// Maršruts: tas pats sākums (~10 m) un galamērķis 10 min laikā — no kešatmiņas (piem. atkārtoti atverot to pašu vietu).
+async function cachedRoute(from, to) {
+  const key = from.lat.toFixed(4) + ',' + from.lng.toFixed(4) + '>' + to.lat.toFixed(5) + ',' + to.lng.toFixed(5);
+  const hit = await cacheGet('route', key, 10 * 60000);
+  if (hit) return structuredClone(hit);          // kopija — navigācija maina maršruta stāvokli
+  const route = await onceInflight('route|' + key, () => requestRoute(from, to));
+  cachePut('route', key, structuredClone(route));
+  return route;
+}
+
 async function selectDestination(place) {
   $('results').hidden = true;
   $('searchInput').value = place.name;
@@ -1019,7 +1095,7 @@ async function previewRoute() {
   const from = state.me || { lat: map.getCenter().lat, lng: map.getCenter().lng };
   setBusy('route', 'Meklē maršrutu…');
   try {
-    const route = await requestRoute(from, dest);
+    const route = await cachedRoute(from, dest);
     state.nav.route = route;
     drawRoute(route);
     signs.setRoute(route);     // rāda tikai maršruta zīmes manā virzienā
@@ -1188,7 +1264,7 @@ async function reroute() {
   state.nav.offCount = 0;
   setBusy('route', 'Pārrēķina maršrutu…');
   try {
-    const route = await requestRoute(state.me, state.nav.dest);
+    const route = await cachedRoute(state.me, state.nav.dest);
     state.nav.route = route;
     state.nav.along = null;
     resetNavProgress();              // jauns maršruts sākas no manis — līnija no jauna
@@ -1350,9 +1426,8 @@ async function loadWeather(force) {
   try {
     const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + state.me.lat.toFixed(3) + '&longitude=' + state.me.lng.toFixed(3) +
       '&current=temperature_2m,precipitation,rain,showers,snowfall,weather_code,wind_gusts_10m,visibility&wind_speed_unit=ms&timezone=auto';
-    const r = await fetch(url);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const j = await r.json();
+    // ~1 km apkārtnē 10 min derīgs (arī pēc lapas pārlādes)
+    const j = await cachedJson('wx', state.me.lat.toFixed(2) + ',' + state.me.lng.toFixed(2), 10 * 60000, () => fetchJson(url, {}, 8000));
     state.weather = { list: weatherAlerts(j.current), time: j.current && j.current.time };
   } catch (err) {
     console.warn('Laikapstākļi nav ielādēti', err);
@@ -1580,19 +1655,22 @@ function placeSub(p) {
   bits.push(...p.extra);
   return bits.join(' · ');
 }
-// Ātri: 1) atmiņā saglabātais rezultāts (tā pati kategorija un vieta, ≤ 10 min) — uzreiz;
-// 2) Photon (~0,4 s) — saraksts un ikonas kartē; 3) fonā Overpass pēc OSM id — darba laiks, maksa;
-// ja Photon nestrādā — vecais ceļš caur Overpass.
-const placeCache = new Map();
-function withTimeout(promise, ms) {
-  return Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+// Ātri:
+//  1) telefona kešatmiņa (tā pati kategorija ~1 km rādiusā, ≤ 24 h) — uzreiz;
+//  2) vietas, kas jau ir ielādētajā kartē (flīžu POI) — uzreiz, bez interneta;
+//  3) tīkls: Photon; ja tas 2,5 s neatbild — paralēli arī Overpass; ņem pirmo atbildi;
+//  4) fonā darba laiki pēc OSM id. Visi pieprasījumi ar laika limitu.
+const PLACES_MAX_AGE = 24 * 3600 * 1000;
+function placesKey(catId, c) { return catId + ':' + Math.round(c.lat / 0.01) + ':' + Math.round(c.lng / 0.01); }
+function freshPlaces(list, c) {        // attālumi no tagadējās vietas, "atvērts" pēc tagadējā laika
+  const now = new Date();
+  return resortPlaces(list, c.lat, c.lng).map(p => Object.assign(p, { open: placeOpenNow(p.oh, now, parseCondition) }));
 }
 async function fetchPhotonPlaces(catId, c) {
   let places = [];
   for (const km of [5, 25]) {                      // ja tuvumā maz — meklē tālāk
-    const res = await withTimeout(fetch(buildPhotonPlacesUrl(catId, c.lat, c.lng, km, 25)), 6000);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    places = parsePhotonPlaces((await res.json()).features, catId, c.lat, c.lng);
+    const j = await fetchJson(buildPhotonPlacesUrl(catId, c.lat, c.lng, km, 25), {}, 8000);
+    places = parsePhotonPlaces(j.features, catId, c.lat, c.lng);
     if (places.length >= 5) break;
   }
   return places;
@@ -1600,11 +1678,17 @@ async function fetchPhotonPlaces(catId, c) {
 async function fetchOverpassPlaces(catId, c) {
   let places = [];
   for (const r of [3000, 15000]) {
-    const data = await withTimeout(fetchOverpass(buildPlacesQuery(catId, c.lat, c.lng, r)), 25000);
+    const data = await fetchOverpass(buildPlacesQuery(catId, c.lat, c.lng, r), 20000);
     places = parsePlaces(data.elements, catId, c.lat, c.lng, new Date(), parseCondition);
     if (places.length >= 5) break;
   }
   return places;
+}
+function tilePlaces(catId, c) {
+  try {
+    const src = Object.keys(map.getStyle().sources).find(k => map.getStyle().sources[k].type === 'vector');
+    return src ? parseTilePlaces(map.querySourceFeatures(src, { sourceLayer: 'poi' }), catId, c.lat, c.lng) : [];
+  } catch { return []; }
 }
 function placesStatusText(places, c) {
   return places.length
@@ -1649,45 +1733,60 @@ async function showPlaces(catId) {
   $('placeResults').hidden = false;
   $('placeList').textContent = '';
   const c = state.me || { lat: map.getCenter().lat, lng: map.getCenter().lng };
-  const key = catId + ':' + c.lat.toFixed(3) + ':' + c.lng.toFixed(3);   // ~100 m režģis
-  const hit = placeCache.get(key);
-  if (hit && Date.now() - hit.at < 10 * 60000) {
-    $('placeStatus').textContent = placesStatusText(hit.places, c);
-    return renderPlaces(hit.places, catId, c, true);
-  }
-  $('placeStatus').textContent = 'Meklē tuvumā…';
-  let places, viaPhoton = true;
-  try {
-    try { places = await fetchPhotonPlaces(catId, c); }
-    catch { await new Promise(r => setTimeout(r, 700)); if (seq !== placeSeq) return; places = await fetchPhotonPlaces(catId, c); }   // vēl 1 mēģinājums
-  }
-  catch {
-    viaPhoton = false;
-    if (seq !== placeSeq) return;
-    try { places = await fetchOverpassPlaces(catId, c); }
-    catch {
-      if (seq !== placeSeq) return;
-      $('placeStatus').textContent = 'Neizdevās ielādēt vietas. ';
-      const retry = document.createElement('button');
-      retry.type = 'button'; retry.className = 'link-btn'; retry.textContent = 'Mēģināt vēlreiz';
-      retry.addEventListener('click', () => showPlaces(catId));
-      $('placeStatus').appendChild(retry);
-      return;
-    }
-  }
+  const key = placesKey(catId, c);
+
+  // 1) Kešatmiņa
+  const hit = await cacheGet('places', key, PLACES_MAX_AGE);
   if (seq !== placeSeq) return;
-  places = places.slice(0, 25);
-  placeCache.set(key, { at: Date.now(), places });
+  if (hit) {
+    const list = freshPlaces(hit, c).slice(0, 25);
+    $('placeStatus').textContent = placesStatusText(list, c);
+    return renderPlaces(list, catId, c, true);
+  }
+
+  // 2) Uzreiz no kartes
+  const tile = tilePlaces(catId, c).slice(0, 25);
+  if (tile.length) {
+    $('placeStatus').textContent = 'Tuvākās kartē · meklē vēl…';
+    renderPlaces(tile, catId, c, true);
+  } else $('placeStatus').textContent = 'Meklē tuvumā…';
+
+  // 3) Tīkls: Photon, pēc 2,5 s paralēli arī Overpass
+  let settled = false;
+  const photon = fetchPhotonPlaces(catId, c).then(p => ({ p, viaPhoton: true }));
+  const overpass = new Promise((res, rej) => setTimeout(() => {
+    if (settled || seq !== placeSeq) return rej(new Error('skip'));
+    fetchOverpassPlaces(catId, c).then(p => res({ p, viaPhoton: false }), rej);
+  }, 2500));
+  let result;
+  try { result = await Promise.any([photon, overpass]); }
+  catch {
+    settled = true;
+    if (seq !== placeSeq) return;
+    if (tile.length) { $('placeStatus').textContent = 'Rādītas vietas no kartes (meklēšanas serveri šobrīd neatbild).'; return; }
+    $('placeStatus').textContent = 'Neizdevās ielādēt vietas. ';
+    const retry = document.createElement('button');
+    retry.type = 'button'; retry.className = 'link-btn'; retry.textContent = 'Mēģināt vēlreiz';
+    retry.addEventListener('click', () => showPlaces(catId));
+    $('placeStatus').appendChild(retry);
+    return;
+  }
+  settled = true;
+  let places = result.p.slice(0, 25);
+  if (!places.length && tile.length) places = tile;     // tīklā nekas — paliek kartes vietas
+  cachePut('places', key, places);
+  if (seq !== placeSeq) return;
   $('placeStatus').textContent = placesStatusText(places, c);
-  renderPlaces(places, catId, c, true);
-  if (!viaPhoton || !places.length) return;
-  // Fonā: darba laiks ("atvērts / slēgts"), maksa, vietu skaits — saraksts atjaunojas, kad dati atnāk
+  renderPlaces(places, catId, c, !tile.length);
+  if (!result.viaPhoton || !places.length) return;
+
+  // 4) Fonā: darba laiks ("atvērts / slēgts"), maksa, vietu skaits
   const q = buildPlaceDetailsQuery(places);
   if (!q) return;
   try {
-    const data = await withTimeout(fetchOverpass(q), 20000);
+    const data = await fetchOverpass(q, 20000);
     const merged = mergePlaceDetails(places, data.elements, new Date(), parseCondition);
-    placeCache.set(key, { at: Date.now(), places: merged });
+    cachePut('places', key, merged);
     if (seq !== placeSeq) return;
     $('placeStatus').textContent = placesStatusText(merged, c);
     renderPlaces(merged, catId, c, false);
@@ -1717,6 +1816,7 @@ function wirePlaces() {
 
 // ---------- Starts ----------
 async function init() {
+  setTimeout(() => cachePrune(), 20000);   // izmet > 7 dienas vecus kešatmiņas ierakstus
   const bm = await loadBasemapStyle(state.basemap);
   state.vector = bm.vector;
   map = new maplibregl.Map({

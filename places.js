@@ -32,6 +32,14 @@ const PLACE_CATEGORIES = [
 // Ātrā meklēšana (Photon, ~0,4 s): OSM birkas katrai kategorijai
 const PLACE_PHOTON_TAGS = {"fuel": ["amenity:fuel"], "food": ["amenity:restaurant", "amenity:fast_food", "amenity:food_court"], "parking": ["amenity:parking"], "grocery": ["shop:supermarket", "shop:convenience", "shop:greengrocer"], "coffee": ["amenity:cafe"], "shopping": ["shop:mall", "shop:department_store", "shop:clothes", "shop:shoes", "shop:electronics", "shop:doityourself", "shop:hardware", "shop:furniture"], "pharmacy": ["amenity:pharmacy"], "ev": ["amenity:charging_station"], "medical": ["amenity:hospital", "amenity:clinic", "amenity:doctors"], "hotel": ["tourism:hotel", "tourism:motel", "tourism:guest_house", "tourism:hostel"], "park": ["leisure:park"], "crisis": ["amenity:police", "amenity:fire_station", "amenity:hospital"]};
 const PLACE_BY_ID = Object.fromEntries(PLACE_CATEGORIES.map(c => [c.id, c]));
+// Uzreiz no kartes (OpenMapTiles "poi" slānis jau ielādētajās kartes flīzēs) — bez interneta pieprasījuma
+const PLACE_TILE_SUBCLASS = {
+  fuel: ['fuel'], food: ['restaurant', 'fast_food', 'food_court'], parking: ['parking'],
+  grocery: ['supermarket', 'convenience', 'greengrocer'], coffee: ['cafe'],
+  shopping: ['mall', 'department_store', 'clothes', 'shoes', 'electronics', 'doityourself', 'hardware', 'furniture'],
+  pharmacy: ['pharmacy'], ev: ['charging_station'], medical: ['hospital', 'clinic', 'doctors'],
+  hotel: ['hotel', 'motel', 'guest_house', 'hostel'], park: ['park'], crisis: ['police', 'fire_station', 'hospital'],
+};
 
 function placeIconSvg(id, size = 40) {
   const c = PLACE_BY_ID[id];
@@ -89,6 +97,29 @@ function parsePlaces(elements, catId, lat, lng, now = new Date(), parse = null) 
   const kept = [];
   for (const p of out) if (!kept.some(k => k.name === p.name && placeDistM(k.lat, k.lng, p.lat, p.lng) < 60)) kept.push(p);
   return kept;
+}
+
+// Kartes flīžu POI → vietu saraksts (pēc attāluma, bez dublikātiem no blakus flīzēm).
+function parseTilePlaces(features, catId, lat, lng) {
+  const c = PLACE_BY_ID[catId], want = new Set(PLACE_TILE_SUBCLASS[catId] || []);
+  const out = [];
+  for (const f of features || []) {
+    const p = f.properties || {};
+    if (!want.has(p.subclass)) continue;
+    if (catId === 'park' && !p.name) continue;
+    const g = f.geometry && f.geometry.type === 'Point' && f.geometry.coordinates;
+    if (!g) continue;
+    out.push({ id: 'tile' + out.length, osmType: null, osmId: null, cat: catId, name: p.name || c.label,
+      lat: g[1], lng: g[0], d: placeDistM(lat, lng, g[1], g[0]), addr: '', extra: [], oh: '', open: null });
+  }
+  out.sort((a, b) => a.d - b.d);
+  const kept = [];
+  for (const p of out) if (!kept.some(k => k.name === p.name && placeDistM(k.lat, k.lng, p.lat, p.lng) < 60)) kept.push(p);
+  return kept;
+}
+// Saglabātam sarakstam pārrēķina attālumus no jaunās vietas un sakārto.
+function resortPlaces(places, lat, lng) {
+  return places.map(p => Object.assign({}, p, { d: placeDistM(lat, lng, p.lat, p.lng) })).sort((a, b) => a.d - b.d);
 }
 
 // ---------- Ātrais ceļš: Photon (tuvākās vietas uzreiz) ----------
@@ -152,5 +183,5 @@ function mergePlaceDetails(places, elements, now = new Date(), parse = null) {
 
 if (typeof module !== 'undefined') {
   module.exports = { PLACE_CATEGORIES, PLACE_PHOTON_TAGS, buildPlacesQuery, parsePlaces, placeOpenNow, placeIconSvg,
-    buildPhotonPlacesUrl, parsePhotonPlaces, buildPlaceDetailsQuery, mergePlaceDetails };
+    buildPhotonPlacesUrl, parsePhotonPlaces, buildPlaceDetailsQuery, mergePlaceDetails, parseTilePlaces, resortPlaces, PLACE_TILE_SUBCLASS };
 }

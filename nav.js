@@ -16,9 +16,14 @@ function navTime(sec) {
 // Pieprasa maršrutu un sagatavo to sekošanai.
 async function requestRoute(from, to) {
   const url = `${OSRM_URL}${from.lng},${from.lat};${to.lng},${to.lat}?overview=false&geometries=geojson&steps=true`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const data = await res.json();
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl && setTimeout(() => ctrl.abort(), 15000);     // ilgāk par 15 s negaida
+  let data;
+  try {
+    const res = await fetch(url, ctrl ? { signal: ctrl.signal } : {});
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    data = await res.json();
+  } finally { if (timer) clearTimeout(timer); }
   if (!data.routes || !data.routes.length) throw new Error('Maršruts nav atrasts');
   const r = data.routes[0];
   const steps = r.legs.flatMap(l => l.steps);

@@ -184,9 +184,13 @@ async function fetchDirectionsBox(w, s, e, n, values, token, depth) {
     const url = 'https://graph.mapillary.com/map_features?fields=aligned_direction,object_value,geometry&limit=2000' +
       '&object_values=' + values.map(encodeURIComponent).join(',') +
       '&bbox=' + [w, s, e, n].map(v => v.toFixed(6)).join(',');
-    const res = await fetch(url, { headers: { Authorization: 'OAuth ' + token } });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    data = (await res.json()).data || [];
+    // Ilgāk par 25 s negaida — tad mēģinās vēlāk (API dažreiz atbild ļoti lēni)
+    const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), 25000);
+    try {
+      const res = await fetch(url, { headers: { Authorization: 'OAuth ' + token }, signal: ctrl.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      data = (await res.json()).data || [];
+    } finally { clearTimeout(timer); }
   } finally { mlyApiDone(); }
   const out = [];
   for (const f of data) {
