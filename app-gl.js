@@ -815,16 +815,16 @@ let meMarker = null, meTween = null;
 function createMeMarker(lng, lat) {
   const el = document.createElement('div');
   el.className = 'me-icon';
-  // 3D bulta kā Waze: gaiši zila virsma ar šķautni, bieza balta mala, tumši zils "sāns" (biezums)
+  // 3D bulta kā Waze: maigi zaļa virsma (#74C476) ar šķautni, bieza balta mala, tumši zaļš "sāns" (biezums)
   // un ēna; ap to gaiši pelēks aplis, kas viegli pulsē. Kamēr virziens nav zināms — spīdīga lodīte.
   el.innerHTML = `<div class="me-halo"></div>
     <svg class="me-arrow" viewBox="0 0 64 64" aria-hidden="true">
       <defs>
-        <linearGradient id="meTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ff3ff"/><stop offset=".55" stop-color="#33cdf0"/><stop offset="1" stop-color="#17a6d6"/></linearGradient>
-        <linearGradient id="meRight" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2bb8e6"/><stop offset="1" stop-color="#0f86c0"/></linearGradient>
-        <linearGradient id="meSide" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3f8f"/><stop offset="1" stop-color="#23275e"/></linearGradient>
+        <linearGradient id="meTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bdeeb9"/><stop offset=".55" stop-color="#74c476"/><stop offset="1" stop-color="#55ad5c"/></linearGradient>
+        <linearGradient id="meRight" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#62b866"/><stop offset="1" stop-color="#3f9649"/></linearGradient>
+        <linearGradient id="meSide" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f6b3c"/><stop offset="1" stop-color="#1d4a28"/></linearGradient>
         <filter id="meBlur" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2.4"/></filter>
-        <radialGradient id="meBall" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="#b5f6ff"/><stop offset=".5" stop-color="#33cdf0"/><stop offset="1" stop-color="#0f7fb8"/></radialGradient>
+        <radialGradient id="meBall" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="#d4f5cf"/><stop offset=".5" stop-color="#74c476"/><stop offset="1" stop-color="#3b8f46"/></radialGradient>
       </defs>
       <g class="me-chevron">
         <path d="M32 13 52 47 32 39 12 47Z" fill="rgba(10,20,50,.45)" stroke="rgba(10,20,50,.45)" stroke-width="6" stroke-linejoin="round" filter="url(#meBlur)" transform="translate(0 8)"/>
