@@ -7,7 +7,7 @@ const vm = require('vm');
 
 const ctx = vm.createContext({ console, Intl, Date, Math, Map, Set, JSON, Number, String, Array, Object, isNaN, setTimeout, clearTimeout,
   signSvg: () => '<svg/>', encodeURIComponent });
-for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'nav.js', 'alerts.js', 'places.js']) {
+for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'nav.js', 'alerts.js', 'places.js', 'cache.js']) {
   // Klases un const deklarācijas padara pieejamas testam.
   const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/if \(typeof module[\s\S]*?\n}\n?$/m, '');
   vm.runInContext(src + '\n;globalThis.__exp = (globalThis.__exp || {});', ctx, { filename: f });
@@ -22,9 +22,13 @@ const dedupeAlong = G('dedupeAlong');
 // ---------- Palīgi ----------
 let pass = 0, fail = 0;
 const results = [];
+const pending = [];
 function test(name, fn) {
-  try { fn(); pass++; results.push('  ✓ ' + name); }
-  catch (e) { fail++; results.push('  ✗ ' + name + '\n      ' + e.message); }
+  const idx = results.push('') - 1;
+  const okF = () => { pass++; results[idx] = '  ✓ ' + name; };
+  const bad = e => { fail++; results[idx] = '  ✗ ' + name + '\n      ' + e.message; };
+  try { const r = fn(); if (r && typeof r.then === 'function') pending.push(r.then(okF, bad)); else okF(); }
+  catch (e) { bad(e); }
 }
 function eq(a, b, msg) { if (a !== b) throw new Error(`${msg || ''} — sagaidīts ${JSON.stringify(b)}, ir ${JSON.stringify(a)}`); }
 function ok(v, msg) { if (!v) throw new Error(msg || 'nav patiess'); }
@@ -512,6 +516,32 @@ test('O. Vietas ātri (Photon) + darba laiks fonā pēc OSM id; privātās stāv
   eq(m[0].name, 'Centrs'); eq(m[0].open, true); eq(m[0].extra.join(), 'maksas,40 vietas');
 });
 
-console.log(results.join('\n'));
-console.log(`\n${pass} izdevās, ${fail} neizdevās`);
-process.exit(fail ? 1 : 0);
+test('P. Kešatmiņa: atkārtots pieprasījums netiek sūtīts; vienlaicīgi apvienoti; noveco', async () => {
+  const cachedJson = G('cachedJson'), cacheGet = G('cacheGet'), onceInflight = G('onceInflight');
+  let calls = 0;
+  const loader = () => new Promise(r => setTimeout(() => r({ n: ++calls }), 5));
+  const [a, b] = await Promise.all([cachedJson('t', 'k', 60000, loader), cachedJson('t', 'k', 60000, loader)]);
+  eq(calls, 1, 'vienlaicīgie apvienoti'); eq(a.n, 1); eq(b.n, 1);
+  const c = await cachedJson('t', 'k', 60000, loader);
+  eq(calls, 1, 'otrreiz no kešatmiņas'); eq(c.n, 1);
+  eq(await cacheGet('t', 'k', 0), null, 'novecojis netiek izmantots');
+  eq(await cacheGet('t', 'cits', 60000), null);
+  let x = 0; await Promise.all([onceInflight('z', async () => ++x), onceInflight('z', async () => ++x)]); eq(x, 1);
+});
+
+test('Q. Vietas uzreiz no kartes flīzēm (bez interneta): kategorija, attālums, bez dublikātiem', () => {
+  const tp = G('parseTilePlaces'), rs = G('resortPlaces');
+  const F = (sub, name, lng, lat) => ({ properties: { class: 'x', subclass: sub, name }, geometry: { type: 'Point', coordinates: [lng, lat] } });
+  const feats = [F('fuel', 'Neste', 24.1, 56.96), F('fuel', 'Circle K', 24.1, 56.951), F('fuel', 'Circle K', 24.1001, 56.9511),
+    F('restaurant', 'Lido', 24.1, 56.9505), F('charging_station', null, 24.1, 56.9502)];
+  const r = tp(feats, 'fuel', 56.95, 24.1);
+  eq(r.map(p => p.name).join(), 'Circle K,Neste', 'tikai degviela, tuvākā pirmā, dublikāts izmests');
+  eq(tp(feats, 'ev', 56.95, 24.1)[0].name, 'EV uzlāde', 'bez nosaukuma — kategorijas nosaukums');
+  eq(rs(r, 56.97, 24.1)[0].name, 'Neste', 'pārkārtots pēc jaunās vietas');
+});
+
+Promise.all(pending).then(() => {
+  console.log(results.join('\n'));
+  console.log(`\n${pass} izdevās, ${fail} neizdevās`);
+  process.exit(fail ? 1 : 0);
+});
