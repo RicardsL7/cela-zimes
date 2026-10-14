@@ -540,6 +540,21 @@ test('Q. Vietas uzreiz no kartes flīzēm (bez interneta): kategorija, attālums
   eq(rs(r, 56.97, 24.1)[0].name, 'Neste', 'pārkārtots pēc jaunās vietas');
 });
 
+test('R. Darba laika punkts: zaļš / oranžs / dzeltens / sarkans / pelēks ar laiku', () => {
+  const st = G('placeStatus'), pc = G('parseCondition');
+  const wed22 = new Date('2026-10-14T19:00:00Z');   // trešdiena 22:00 Rīgā
+  const S = (oh, now = wed22) => { const r = st(oh, now, pc); return r.state + ' | ' + r.text; };
+  eq(S('Mo-Su 08:00-23:00'), 'open | atvērts līdz 23:00');
+  eq(S('Mo-Su 08:00-22:30'), 'closing | aizveras pēc 30 min');
+  eq(S('Mo-Su 22:45-23:59'), 'opening | atveras pēc 45 min');
+  eq(S('Mo-Fr 08:00-18:00'), 'closed | slēgts · atveras rīt 08:00');
+  eq(S('Mo-Fr 08:00-18:00', new Date('2026-10-16T19:00:00Z')), 'closed | slēgts · atveras pirmdien 08:00', 'piektdienas vakars');
+  eq(S('Mo-Su 20:00-02:00'), 'open | atvērts līdz rīt 02:00', 'pāri pusnaktij');
+  eq(S('24/7'), 'open | atvērts visu diennakti');
+  eq(S(''), 'unknown | ');
+  eq(S('pēc vienošanās'), 'unknown | ');
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
