@@ -1,6 +1,8 @@
 /* Pilnekrāna karte; vadība peld virs tās: meklēšana / pagrieziena josla augšā,
    pogas labajā malā, ātrums un ierašanās laiks apakšā. */
 :root {
+  --me-t0: #bdeeb9; --me-t1: #74c476; --me-t2: #66ac68; --me-r0: #68b06a; --me-r1: #518953;
+  --me-s0: #345835; --me-s1: #233b23; --me-b0: #d5edd6; --me-b2: #518953;
   --bg: #eef1f5;
   --panel: #ffffff;
   --fg: #16202e;
@@ -398,3 +400,15 @@ html:not(.navigating):not(.previewing) .loader { top: calc(env(safe-area-inset-t
 .pm-dot { position: absolute; top: -2px; right: -2px; width: 11px; height: 11px; border-radius: 50%; border: 2px solid #fff; box-sizing: border-box; }
 .pm-dot.st-unknown { display: none; }
 .place-marker { position: relative; }
+
+/* ---- Bultas krāsas izvēle ---- */
+.arrow-row { flex-wrap: wrap; cursor: default; }
+.arrow-colors { display: grid; grid-template-columns: repeat(5, 34px); gap: 10px; }
+.color-swatch {
+  width: 34px; height: 34px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--sw) 45%, #fff), var(--sw) 55%, color-mix(in srgb, var(--sw) 75%, #000));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .25), inset 0 0 0 2px rgba(255, 255, 255, .6);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.color-swatch:active { transform: scale(.92); }
+.color-swatch[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--panel), 0 0 0 5px var(--sw), 0 2px 6px rgba(0, 0, 0, .25); }

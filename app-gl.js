@@ -810,6 +810,50 @@ function loadAllForView() {
   loadMapillaryForView();
 }
 
+// ---------- Bultas krāsa (iestatījumos 10 krāsas) ----------
+// No vienas pamatkrāsas aprēķina visus toņus: gaišo un tumšo šķautni, biezumu un lodītes atspīdumu.
+const ARROW_COLORS = [
+  { id: 'green',  label: 'Zaļa',      hex: '#74C476' },
+  { id: 'blue',   label: 'Zila',      hex: '#3B8BFF' },
+  { id: 'cyan',   label: 'Tirkīza',   hex: '#33CDF0' },
+  { id: 'purple', label: 'Violeta',   hex: '#8B5CF6' },
+  { id: 'pink',   label: 'Rozā',      hex: '#EC4899' },
+  { id: 'red',    label: 'Sarkana',   hex: '#EF4444' },
+  { id: 'orange', label: 'Oranža',    hex: '#F97316' },
+  { id: 'yellow', label: 'Dzeltena',  hex: '#F5C518' },
+  { id: 'slate',  label: 'Pelēka',    hex: '#64748B' },
+  { id: 'black',  label: 'Melna',     hex: '#2B2F36' },
+];
+function mixHex(hex, to, k) {          // k = 0..1, to = [r, g, b]
+  const n = parseInt(hex.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255];
+  return '#' + c.map((v, i) => Math.round(v + (to[i] - v) * k).toString(16).padStart(2, '0')).join('');
+}
+function applyArrowColor(id) {
+  const c = ARROW_COLORS.find(x => x.id === id) || ARROW_COLORS[0];
+  const W = [255, 255, 255], K = [0, 0, 0], st = document.documentElement.style;
+  const v = {
+    t0: mixHex(c.hex, W, .55), t1: c.hex, t2: mixHex(c.hex, K, .12),
+    r0: mixHex(c.hex, K, .1), r1: mixHex(c.hex, K, .3),
+    s0: mixHex(c.hex, K, .55), s1: mixHex(c.hex, K, .7),
+    b0: mixHex(c.hex, W, .7), b2: mixHex(c.hex, K, .3),
+  };
+  for (const [k, val] of Object.entries(v)) st.setProperty('--me-' + k, val);
+  for (const b of document.querySelectorAll('#arrowColors [data-color]')) b.setAttribute('aria-pressed', String(b.dataset.color === c.id));
+  state.arrowColor = c.id;
+}
+function wireArrowColors() {
+  const box = $('arrowColors');
+  for (const c of ARROW_COLORS) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'color-swatch'; b.dataset.color = c.id;
+    b.title = c.label; b.setAttribute('aria-label', 'Bultas krāsa: ' + c.label);
+    b.style.setProperty('--sw', c.hex);
+    b.addEventListener('click', () => { applyArrowColor(c.id); store.set('arrowColor', c.id); });
+    box.appendChild(b);
+  }
+  applyArrowColor(store.get('arrowColor', 'green'));
+}
+
 // ---------- Mana atrašanās vieta ----------
 let meMarker = null, meTween = null;
 function createMeMarker(lng, lat) {
@@ -820,11 +864,11 @@ function createMeMarker(lng, lat) {
   el.innerHTML = `<div class="me-halo"></div>
     <svg class="me-arrow" viewBox="0 0 64 64" aria-hidden="true">
       <defs>
-        <linearGradient id="meTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bdeeb9"/><stop offset=".55" stop-color="#74c476"/><stop offset="1" stop-color="#55ad5c"/></linearGradient>
-        <linearGradient id="meRight" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#62b866"/><stop offset="1" stop-color="#3f9649"/></linearGradient>
-        <linearGradient id="meSide" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f6b3c"/><stop offset="1" stop-color="#1d4a28"/></linearGradient>
+        <linearGradient id="meTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--me-t0)"/><stop offset=".55" style="stop-color:var(--me-t1)"/><stop offset="1" style="stop-color:var(--me-t2)"/></linearGradient>
+        <linearGradient id="meRight" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--me-r0)"/><stop offset="1" style="stop-color:var(--me-r1)"/></linearGradient>
+        <linearGradient id="meSide" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--me-s0)"/><stop offset="1" style="stop-color:var(--me-s1)"/></linearGradient>
         <filter id="meBlur" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2.4"/></filter>
-        <radialGradient id="meBall" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="#d4f5cf"/><stop offset=".5" stop-color="#74c476"/><stop offset="1" stop-color="#3b8f46"/></radialGradient>
+        <radialGradient id="meBall" cx=".38" cy=".32" r=".75"><stop offset="0" style="stop-color:var(--me-b0)"/><stop offset=".5" style="stop-color:var(--me-t1)"/><stop offset="1" style="stop-color:var(--me-b2)"/></radialGradient>
       </defs>
       <g class="me-chevron">
         <path d="M32 13 52 47 32 39 12 47Z" fill="rgba(10,20,50,.45)" stroke="rgba(10,20,50,.45)" stroke-width="6" stroke-linejoin="round" filter="url(#meBlur)" transform="translate(0 8)"/>
@@ -1554,6 +1598,7 @@ async function applyBasemap(choice) {
 }
 
 function wireUi() {
+  wireArrowColors();
   $('toggleSigns').addEventListener('click', () => {
     state.signsOn = !state.signsOn; store.set('signsOn', state.signsOn); applySignVisibility();
   });
