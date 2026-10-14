@@ -1701,6 +1701,32 @@ function readTilePois() {
     return src ? map.querySourceFeatures(src, { sourceLayer: 'poi' }).map(f => ({ properties: f.properties, geometry: f.geometry })) : [];
   } catch { return []; }
 }
+// Darba laiki pēc OSM id no OpenStreetMap API (~0,3 s, daudz stabilāk par Overpass);
+// ja tas neatbild — Overpass. Atgriež elementus { type, id, tags }.
+async function fetchPlaceDetails(places) {
+  const ids = { node: [], way: [], relation: [] };
+  for (const p of places) if (p.osmType && p.osmId) ids[p.osmType].push(p.osmId);
+  try {
+    const parts = await Promise.all(Object.entries(ids).filter(([, v]) => v.length).map(([t, v]) =>
+      fetchJson(`https://api.openstreetmap.org/api/0.6/${t}s.json?${t}s=${v.join(',')}`, {}, 8000)));
+    return parts.flatMap(j => j.elements || []);
+  } catch {
+    const q = buildPlaceDetailsQuery(places);
+    if (!q) return [];
+    return (await fetchOverpass(q, 20000)).elements || [];
+  }
+}
+async function enrichPlaces(places, key, catId, c, seq) {
+  if (!places.some(p => p.osmType && !p.det)) return;
+  try {
+    const els = await fetchPlaceDetails(places);
+    const merged = mergePlaceDetails(places, els, new Date(), parseCondition).map(p => Object.assign(p, { det: true }));
+    cachePut('places', key, merged);
+    if (seq !== placeSeq) return;
+    $('placeStatus').textContent = placesStatusText(merged, c);
+    renderPlaces(merged, catId, c, false);
+  } catch { /* bez darba laikiem saraksts paliek kā ir */ }
+}
 function tilePlaces(catId, c) {
   if (!tilePoiSnapshot || !tilePoiSnapshot.length) tilePoiSnapshot = readTilePois();
   return parseTilePlaces(tilePoiSnapshot, catId, c.lat, c.lng);
@@ -1767,7 +1793,8 @@ async function showPlaces(catId) {
   if (hit) {
     const list = freshPlaces(hit, c).slice(0, 25);
     $('placeStatus').textContent = placesStatusText(list, c);
-    return renderPlaces(list, catId, c, true);
+    renderPlaces(list, catId, c, true);
+    return enrichPlaces(hit, key, catId, c, seq);     // ja saglabātajam sarakstam vēl nav darba laiku
   }
 
   // 2) Uzreiz no kartes
@@ -1805,18 +1832,8 @@ async function showPlaces(catId) {
   $('placeStatus').textContent = placesStatusText(places, c);
   renderPlaces(places, catId, c, !tile.length);
   if (!result.viaPhoton || !places.length) return;
-
-  // 4) Fonā: darba laiks ("atvērts / slēgts"), maksa, vietu skaits
-  const q = buildPlaceDetailsQuery(places);
-  if (!q) return;
-  try {
-    const data = await fetchOverpass(q, 20000);
-    const merged = mergePlaceDetails(places, data.elements, new Date(), parseCondition);
-    cachePut('places', key, merged);
-    if (seq !== placeSeq) return;
-    $('placeStatus').textContent = placesStatusText(merged, c);
-    renderPlaces(merged, catId, c, false);
-  } catch { /* bez darba laikiem saraksts paliek kā ir */ }
+  // Fonā: darba laiks (krāsainais punkts), maksa, vietu skaits
+  await enrichPlaces(places, key, catId, c, seq);
 }
 function goToPlace(p) {
   closePlaces();

@@ -89,7 +89,7 @@ function placeWhen(t, now) {
   const [d0] = placeRigaDay(now), [d1, dow] = placeRigaDay(t), [dTom] = placeRigaDay(new Date(now.getTime() + 864e5));
   const hm = placeRigaHm(t);
   if (d1 === d0) return hm;
-  if (d1 === dTom) return 'rīt ' + hm;
+  if (d1 === dTom) return hm === '00:00' ? '24:00' : 'rīt ' + hm;   // "līdz 24:00", nevis "līdz rīt 00:00"
   return LV_DAYS_ON[dow] + ' ' + hm;
 }
 function placeMinutes(ms) {
