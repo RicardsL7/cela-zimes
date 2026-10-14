@@ -31,7 +31,7 @@ const state = {
     store.get('cats', {})
   ),
   warn: store.get('warn', true),
-  profile: store.get('profile', 'car'),   // car | truck | tram | bike
+  profile: 'car',   // vienmēr vieglais automobilis (izvēle no iestatījumiem noņemta)
   mapMode: 'alerts', // kartē vienmēr tikai brīdinājumi (kā Waze); visu zīmju režīms vairs netiek piedāvāts
   basemap: store.get('basemap', 'auto'),
   mlyToken: store.get('mlyToken', ''),
@@ -1604,14 +1604,6 @@ function wireUi() {
   });
   $('masterSwitch').addEventListener('change', e => {
     state.signsOn = e.target.checked; store.set('signsOn', state.signsOn); applySignVisibility();
-  });
-  // Transportlīdzeklis: rāda tikai tā vadītājam noderīgās zīmes.
-  const prof = $('profileSelect');
-  for (const [key, p] of Object.entries(VEHICLE_PROFILES)) prof.add(new Option(p.label, key));
-  prof.value = state.profile;
-  prof.addEventListener('change', () => {
-    state.profile = prof.value; store.set('profile', state.profile); applySignVisibility();
-    if (state.nav.route) updateRouteSummary();
   });
   $('warnSwitch').checked = state.warn;
   $('warnSwitch').addEventListener('change', e => { state.warn = e.target.checked; store.set('warn', state.warn); updateLimit(); });
