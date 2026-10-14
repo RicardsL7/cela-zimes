@@ -289,6 +289,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* ---- "Tu esi šeit" ---- */
 .me-icon { width: 58px; height: 58px; position: relative; pointer-events: none; }
 .me-arrow { position: absolute; inset: 0; width: 58px; height: 58px; overflow: visible; }
+.me-halo {
+  position: absolute; left: 50%; top: 50%; width: 92px; height: 92px; margin: -46px 0 0 -46px;
+  border-radius: 50%; background: rgba(150, 160, 172, .26); border: 1.5px solid rgba(130, 140, 152, .42);
+  animation: me-breathe 2.6s ease-in-out infinite;
+}
+@keyframes me-breathe {
+  0%, 100% { transform: scale(.82); opacity: 1; }
+  50% { transform: scale(1.04); opacity: .55; }
+}
 .me-chevron { display: none; }
 .has-heading .me-chevron { display: inline; }
 .has-heading .me-ball { display: none; }
