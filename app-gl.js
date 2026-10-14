@@ -1631,6 +1631,7 @@ let placeMarkers = [], placeSeq = 0;
 function clearPlaceMarkers() { for (const m of placeMarkers) m.remove(); placeMarkers = []; }
 function openPlaces() {
   toggleSettings(false);
+  tilePoiSnapshot = readTilePois();
   $('results').hidden = true;
   showPlaceCats();
   $('placesSheet').hidden = false;
@@ -1684,11 +1685,19 @@ async function fetchOverpassPlaces(catId, c) {
   }
   return places;
 }
-function tilePlaces(catId, c) {
+// Kartes POI nolasa brīdī, kad atver "Atrast tuvumā" (tad karte rāda lietotāja apkārtni);
+// vēlāk karte var būt attālināta citas kategorijas rezultātiem, tāpēc izmanto šo momentuzņēmumu.
+let tilePoiSnapshot = null;
+function readTilePois() {
   try {
-    const src = Object.keys(map.getStyle().sources).find(k => map.getStyle().sources[k].type === 'vector');
-    return src ? parseTilePlaces(map.querySourceFeatures(src, { sourceLayer: 'poi' }), catId, c.lat, c.lng) : [];
+    const st = map.getStyle();
+    const src = st && Object.keys(st.sources).find(k => st.sources[k].type === 'vector');
+    return src ? map.querySourceFeatures(src, { sourceLayer: 'poi' }).map(f => ({ properties: f.properties, geometry: f.geometry })) : [];
   } catch { return []; }
+}
+function tilePlaces(catId, c) {
+  if (!tilePoiSnapshot || !tilePoiSnapshot.length) tilePoiSnapshot = readTilePois();
+  return parseTilePlaces(tilePoiSnapshot, catId, c.lat, c.lng);
 }
 function placesStatusText(places, c) {
   return places.length
