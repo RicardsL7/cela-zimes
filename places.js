@@ -69,6 +69,65 @@ function placeOpenNow(oh, now, parse) {
   try { const c = parse(oh); return c.known ? !!c.test(now) : null; } catch { return null; }
 }
 
+// ---------- Darba laika statuss ar krāsainu punktu ----------
+// open (zaļš) · closing (oranžs, aizveras ≤ 30 min) · opening (dzeltens, atveras ≤ 60 min)
+// closed (sarkans) · unknown (pelēks — darba laiks nav zināms). Laiki pēc Rīgas laika.
+const PLACE_CLOSING_MIN = 30, PLACE_OPENING_MIN = 60;
+const LV_DAYS_ON = ['svētdien', 'pirmdien', 'otrdien', 'trešdien', 'ceturtdien', 'piektdien', 'sestdien'];
+let placeHmFmt = null, placeDayFmt = null;
+function placeRigaHm(d) {
+  if (!placeHmFmt) placeHmFmt = new Intl.DateTimeFormat('lv-LV', { timeZone: 'Europe/Riga', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  return placeHmFmt.format(d);
+}
+function placeRigaDay(d) {       // [gads-mēnesis-diena, nedēļas diena 0..6]
+  if (!placeDayFmt) placeDayFmt = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Riga', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' });
+  const p = {}; for (const x of placeDayFmt.formatToParts(d)) p[x.type] = x.value;
+  return [p.year + p.month + p.day, ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday)];
+}
+// "08:00" šodien · "rīt 08:00" · "pirmdien 08:00"
+function placeWhen(t, now) {
+  const [d0] = placeRigaDay(now), [d1, dow] = placeRigaDay(t), [dTom] = placeRigaDay(new Date(now.getTime() + 864e5));
+  const hm = placeRigaHm(t);
+  if (d1 === d0) return hm;
+  if (d1 === dTom) return 'rīt ' + hm;
+  return LV_DAYS_ON[dow] + ' ' + hm;
+}
+function placeMinutes(ms) {
+  const m = Math.max(1, Math.round(ms / 60000));
+  return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + (m % 60) + ' min' : '');
+}
+// Nākamā statusa maiņa (līdz 8 dienām uz priekšu): ar 5 min soli, tad precīzi līdz minūtei.
+function placeNextChange(test, now, isOpen) {
+  const t0 = Math.floor(now.getTime() / 60000) * 60000, STEP = 5 * 60000, END = t0 + 8 * 864e5;
+  for (let t = t0 + STEP; t <= END; t += STEP) {
+    if (!!test(new Date(t)) !== isOpen) {
+      let a = t - STEP;                                   // a — vēl vecais statuss, t — jau jaunais
+      while (t - a > 60000) { const m = a + 60000; if (!!test(new Date(m)) !== isOpen) { t = m; break; } a = m; }
+      return new Date(t);
+    }
+  }
+  return null;
+}
+function placeStatus(oh, now, parse) {
+  if (!oh) return { state: 'unknown', text: '' };
+  if (/^\s*24\/7\s*$/.test(oh)) return { state: 'open', text: 'atvērts visu diennakti' };
+  let c = null;
+  try { c = typeof parse === 'function' ? parse(oh) : null; } catch { c = null; }
+  if (!c || !c.known) return { state: 'unknown', text: '' };
+  const isOpen = !!c.test(now);
+  const next = placeNextChange(c.test, now, isOpen);
+  if (isOpen) {
+    if (!next) return { state: 'open', text: 'atvērts visu diennakti' };
+    const left = next - now;
+    if (left <= PLACE_CLOSING_MIN * 60000) return { state: 'closing', text: 'aizveras pēc ' + placeMinutes(left) };
+    return { state: 'open', text: 'atvērts līdz ' + placeWhen(next, now) };
+  }
+  if (!next) return { state: 'closed', text: 'slēgts' };
+  const wait = next - now;
+  if (wait <= PLACE_OPENING_MIN * 60000) return { state: 'opening', text: 'atveras pēc ' + placeMinutes(wait) };
+  return { state: 'closed', text: 'slēgts · atveras ' + placeWhen(next, now) };
+}
+
 // Overpass elementi → vietu saraksts (pēc attāluma, bez dublikātiem).
 function parsePlaces(elements, catId, lat, lng, now = new Date(), parse = null) {
   const c = PLACE_BY_ID[catId];
@@ -183,5 +242,5 @@ function mergePlaceDetails(places, elements, now = new Date(), parse = null) {
 
 if (typeof module !== 'undefined') {
   module.exports = { PLACE_CATEGORIES, PLACE_PHOTON_TAGS, buildPlacesQuery, parsePlaces, placeOpenNow, placeIconSvg,
-    buildPhotonPlacesUrl, parsePhotonPlaces, buildPlaceDetailsQuery, mergePlaceDetails, parseTilePlaces, resortPlaces, PLACE_TILE_SUBCLASS };
+    buildPhotonPlacesUrl, parsePhotonPlaces, buildPlaceDetailsQuery, mergePlaceDetails, parseTilePlaces, resortPlaces, PLACE_TILE_SUBCLASS, placeStatus };
 }

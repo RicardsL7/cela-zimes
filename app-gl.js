@@ -1636,6 +1636,12 @@ function openPlaces() {
   showPlaceCats();
   $('placesSheet').hidden = false;
 }
+// Kamēr saraksts atvērts, statusi ("aizveras pēc 12 min") atjaunojas katru minūti
+setInterval(() => {
+  if ($('placesSheet').hidden || $('placeResults').hidden || !lastPlacesRender) return;
+  const { places, catId, c } = lastPlacesRender;
+  renderPlaces(places, catId, c, false);
+}, 60000);
 function closePlaces() {
   $('placesSheet').hidden = true;
   placeSeq++;
@@ -1649,9 +1655,9 @@ function showPlaceCats() {
   $('placeResults').hidden = true;
   $('placeCats').hidden = false;
 }
-function placeSub(p) {
+function placeSub(p, st) {
   const bits = [navDist(p.d)];
-  if (p.open === true) bits.push('atvērts'); else if (p.open === false) bits.push('slēgts');
+  if (st && st.text) bits.push(st.text);
   if (p.addr) bits.push(p.addr);
   bits.push(...p.extra);
   return bits.join(' · ');
@@ -1704,22 +1710,33 @@ function placesStatusText(places, c) {
     ? (state.me ? 'Tuvākās no tavas atrašanās vietas' : 'Tuvākās no kartes centra') + ' · dati: OpenStreetMap'
     : 'Tuvumā nekas netika atrasts.';
 }
+const PLACE_DOT_TITLE = { open: 'Atvērts', closing: 'Drīz aizvērsies', opening: 'Drīz atvērsies', closed: 'Slēgts', unknown: 'Darba laiks nav zināms' };
+let lastPlacesRender = null;
 function renderPlaces(places, catId, c, fit) {
+  lastPlacesRender = { places, catId, c };
   const ul = $('placeList');
   ul.textContent = '';
   clearPlaceMarkers();
+  const now = new Date();
   for (const p of places) {
+    const st = placeStatus(p.oh, now, parseCondition);
     const li = document.createElement('li');
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'place-item';
-    b.innerHTML = placeIconSvg(catId, 34) + '<span class="pl-text"><strong></strong><span class="pl-sub"></span></span><span class="pl-go">Braukt</span>';
+    b.innerHTML = placeIconSvg(catId, 34) + '<span class="pl-text"><span class="pl-name"><span class="pl-dot"></span><strong></strong></span><span class="pl-sub"></span></span><span class="pl-go">Braukt</span>';
+    const dot = b.querySelector('.pl-dot');
+    dot.classList.add('st-' + st.state); dot.title = PLACE_DOT_TITLE[st.state];
     b.querySelector('strong').textContent = p.name;
-    b.querySelector('.pl-sub').textContent = placeSub(p);
+    b.querySelector('.pl-sub').innerHTML = '';
+    const sub = b.querySelector('.pl-sub');
+    const bits = placeSub(p, null);
+    if (st.text) { const em = document.createElement('span'); em.className = 'pl-st st-' + st.state; em.textContent = st.text; sub.append(navDist(p.d) + ' · ', em); const rest = bits.slice(navDist(p.d).length); if (rest) sub.append(rest); }
+    else sub.textContent = bits;
     b.addEventListener('click', () => goToPlace(p));
     li.appendChild(b); ul.appendChild(li);
     const el = document.createElement('button');
-    el.type = 'button'; el.className = 'place-marker'; el.title = p.name;
-    el.innerHTML = placeIconSvg(catId, 30);
+    el.type = 'button'; el.className = 'place-marker'; el.title = p.name + (st.text ? ' — ' + st.text : '');
+    el.innerHTML = placeIconSvg(catId, 30) + '<span class="pm-dot st-' + st.state + '"></span>';
     el.addEventListener('click', ev => { ev.stopPropagation(); goToPlace(p); });
     placeMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map));
   }

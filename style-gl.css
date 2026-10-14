@@ -386,3 +386,15 @@ html:not(.navigating):not(.previewing) .loader { top: calc(env(safe-area-inset-t
 .pl-go { flex: none; font: 700 13px var(--font-body); color: var(--accent); padding: 6px 10px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .place-status { margin: 4px 0 2px; }
 .place-marker { border: 0; padding: 0; background: none; cursor: pointer; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .3)); display: grid; }
+
+/* ---- Darba laika statuss: krāsains punkts ---- */
+.pl-name { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.pl-name strong { min-width: 0; }
+.pl-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: #adb5bd; box-shadow: 0 0 0 2px var(--panel); }
+.st-open { --st: #2f9e44; } .st-closing { --st: #f76707; } .st-opening { --st: #f2b705; } .st-closed { --st: #e03131; } .st-unknown { --st: #adb5bd; }
+.pl-dot, .pm-dot { background: var(--st); }
+.pl-st { color: var(--st); font-weight: 700; }
+.pl-st.st-opening { color: #b08400; }
+.pm-dot { position: absolute; top: -2px; right: -2px; width: 11px; height: 11px; border-radius: 50%; border: 2px solid #fff; box-sizing: border-box; }
+.pm-dot.st-unknown { display: none; }
+.place-marker { position: relative; }
