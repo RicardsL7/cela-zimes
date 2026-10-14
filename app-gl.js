@@ -815,15 +815,30 @@ let meMarker = null, meTween = null;
 function createMeMarker(lng, lat) {
   const el = document.createElement('div');
   el.className = 'me-icon';
-  el.innerHTML = `<div class="me-halo"></div>
-    <svg class="me-puck" viewBox="0 0 48 48" aria-hidden="true">
-      <defs><linearGradient id="meGrad" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#5aa0ff"/><stop offset="1" stop-color="#1a5ad8"/>
-      </linearGradient></defs>
-      <circle cx="24" cy="24" r="20" fill="#fff"/>
-      <circle cx="24" cy="24" r="16.5" fill="url(#meGrad)"/>
-      <path class="me-chevron" d="M24 11.5 33 33 24 28.2 15 33Z" fill="#fff" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>
-      <circle class="me-center" cx="24" cy="24" r="5.5" fill="#fff"/>
+  // 3D bulta: gaišā un tumšā šķautne, balta mala, "biezums" un mīksta ēna uz kartes.
+  // Kamēr braukšanas virziens nav zināms — maza spīdīga lodīte (bez apļa apkārt).
+  el.innerHTML = `<svg class="me-arrow" viewBox="0 0 64 64" aria-hidden="true">
+      <defs>
+        <linearGradient id="meL" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8cc4ff"/><stop offset=".55" stop-color="#3b8bff"/><stop offset="1" stop-color="#2563eb"/></linearGradient>
+        <linearGradient id="meR" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f6fe8"/><stop offset=".6" stop-color="#1747b8"/><stop offset="1" stop-color="#0f2f86"/></linearGradient>
+        <filter id="meBlur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2.6"/></filter>
+        <radialGradient id="meBall" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="#9fd0ff"/><stop offset=".45" stop-color="#3b8bff"/><stop offset="1" stop-color="#123e9e"/></radialGradient>
+      </defs>
+      <g class="me-chevron">
+        <path d="M32 8 52 54 32 44 12 54Z" fill="rgba(4,18,52,.42)" filter="url(#meBlur)" transform="translate(0 5)"/>
+        <path d="M32 8 52 54 32 44 12 54Z" fill="#0b2a6e" transform="translate(0 2.6)"/>
+        <path d="M32 8 52 54 32 44 12 54Z" fill="none" stroke="#fff" stroke-width="4.2" stroke-linejoin="round"/>
+        <path d="M32 8 32 44 12 54Z" fill="url(#meL)"/>
+        <path d="M32 8 52 54 32 44Z" fill="url(#meR)"/>
+        <path d="M31 12.5 15.2 49.6" stroke="rgba(255,255,255,.55)" stroke-width="1.4" stroke-linecap="round"/>
+        <path d="M32 9.5 32 43" stroke="rgba(255,255,255,.28)" stroke-width="1"/>
+      </g>
+      <g class="me-ball">
+        <ellipse cx="32" cy="36.5" rx="10" ry="4" fill="rgba(4,18,52,.35)" filter="url(#meBlur)"/>
+        <circle cx="32" cy="32" r="11" fill="#fff"/>
+        <circle cx="32" cy="32" r="8.6" fill="url(#meBall)"/>
+        <ellipse cx="29.2" cy="28.6" rx="3.2" ry="2.1" fill="rgba(255,255,255,.75)"/>
+      </g>
     </svg>`;
   meMarker = new maplibregl.Marker({ element: el, rotationAlignment: 'map', pitchAlignment: 'map' })
     .setLngLat([lng, lat]).addTo(map);

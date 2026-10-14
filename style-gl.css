@@ -287,20 +287,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .switch:checked::after { transform: translateX(18px); }
 
 /* ---- "Tu esi šeit" ---- */
-.me-icon { width: 48px; height: 48px; position: relative; }
-.me-puck {
-  position: absolute; inset: 0; width: 48px; height: 48px;
-  filter: drop-shadow(0 3px 6px rgba(10, 30, 70, .35));
-}
-.me-halo {
-  position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; margin: -38px 0 0 -38px;
-  border-radius: 50%; background: rgba(47, 124, 246, .18); border: 1px solid rgba(47, 124, 246, .35);
-  animation: me-pulse 2.4s ease-out infinite;
-}
-@keyframes me-pulse { 0% { transform: scale(.55); opacity: .9; } 100% { transform: scale(1.15); opacity: 0; } }
+.me-icon { width: 58px; height: 58px; position: relative; pointer-events: none; }
+.me-arrow { position: absolute; inset: 0; width: 58px; height: 58px; overflow: visible; }
 .me-chevron { display: none; }
 .has-heading .me-chevron { display: inline; }
-.has-heading .me-center { display: none; }
+.has-heading .me-ball { display: none; }
 
 /* Galamērķa adata */
 .dest-pin { width: 36px; height: 46px; filter: drop-shadow(0 4px 6px rgba(0,0,0,.3)); }
