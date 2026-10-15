@@ -561,15 +561,20 @@ test('S. Balss norādes: latviski, katrs posms vienreiz, pareizā attālumā', (
   eq(vd(1500), 'Pēc pusotra kilometra'); eq(vd(3200), 'Pēc trim kilometriem'); eq(vd(250), 'Pēc divsimt piecdesmit metriem');
   eq(dur(60 * 12), 'divpadsmit minūtes'); eq(dur(60 * 21), 'divdesmit viena minūte'); eq(dur(3600 + 300), 'viena stunda piecas minūtes');
   const right = { maneuver: { type: 'turn', modifier: 'right' }, name: 'Brīvības iela' };
+  const left = { maneuver: { type: 'turn', modifier: 'left' }, name: 'Tērbatas iela' };
   const said = new Set();
-  eq(vm_(3, right, 800, 50, said), null, 'par tālu');
-  eq(vm_(3, right, 480, 50, said).text, 'Pēc piecsimt metriem pagriezies pa labi, Brīvības iela', 'iepriekš');
-  eq(vm_(3, right, 470, 50, said), null, 'neatkārto');
-  eq(vm_(3, right, 150, 50, said).text, 'Pēc simt piecdesmit metriem pagriezies pa labi, Brīvības iela', 'tuvu');
-  eq(vm_(3, right, 30, 50, said).text, 'Pagriezies pa labi, Brīvības iela', 'tagad');
-  eq(vm_(3, right, 10, 50, said), null, 'tagad tikai vienreiz');
-  eq(vm_(4, { maneuver: { type: 'new name', modifier: 'straight' }, name: 'X' }, 100, 50, new Set()), null, 'nosaukuma maiņu nesaka');
-  eq(vm_(5, { maneuver: { type: 'arrive' } }, 100, 40, new Set()).text, 'Pēc simt metriem galamērķis');
+  eq(vm_(3, right, 400, 40, said), null, 'par tālu — klusē');
+  eq(vm_(3, right, 150, 40, said).text, 'Pēc simt piecdesmit metriem pagriezies pa labi', 'viens īss teikums, bez ielas');
+  eq(vm_(3, right, 100, 40, said), null, 'neatkārto');
+  eq(vm_(3, right, 20, 40, said), null, 'arī "tagad" vairs nesaka');
+  // Zigzags: pa kreisi un tūlīt pa labi — vienā teikumā, otro atsevišķi nesaka
+  const z = new Set();
+  eq(vm_(5, left, 150, 40, z, right, 60).text, 'Pēc simt piecdesmit metriem pagriezies pa kreisi, tad pa labi');
+  eq(vm_(6, right, 60, 40, z), null, 'otrais jau pateikts');
+  eq(vm_(7, { maneuver: { type: 'turn', modifier: 'right' } }, 400, 90, new Set()).text, 'Pēc četrsimt metriem pagriezies pa labi', 'uz šosejas agrāk');
+  eq(vm_(4, { maneuver: { type: 'new name', modifier: 'straight' }, name: 'X' }, 100, 40, new Set()), null, 'nosaukuma maiņu nesaka');
+  eq(vm_(8, { maneuver: { type: 'roundabout', exit: 2 } }, 120, 40, new Set()).text, 'Pēc simt metriem aplī brauc otrajā izbrauktuvē');
+  eq(vm_(9, { maneuver: { type: 'arrive' } }, 100, 40, new Set()).text, 'Pēc simt metriem galamērķis');
   const s2 = new Set();
   eq(va('cam1', 'Ātruma kamera', 300, 50, s2).text, 'Uzmanību! Ātruma kamera, pēc trīssimt metriem');
   eq(va('cam1', 'Ātruma kamera', 200, 50, s2), null, 'brīdinājums vienreiz');
