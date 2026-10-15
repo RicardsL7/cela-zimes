@@ -439,6 +439,18 @@ test('K. Maršruta līnija: paliek tikai nenobrauktā daļa (arī līkumos), bez
   eq(Math.round(routePointAt(R, 250).bearing), 270, 'virziens pēdējā posmā');
 });
 
+test('T. Virzienus nosaka tikai vajadzīgajām zīmēm', () => {
+  const f = G('signNeedsDirection');
+  eq(f({ cat: 'speed', value: 'regulatory--maximum-speed-limit-50--g1' }), true);
+  eq(f({ cat: 'camera' }), true);
+  eq(f({ cat: 'rail' }), true);
+  eq(f({ cat: 'signals' }), true);
+  eq(f({ cat: 'warning', value: 'warning--children--g2' }), true);
+  eq(f({ cat: 'info', value: 'information--parking--g1' }), false);
+  eq(f({ cat: 'regulatory', value: 'regulatory--keep-right--g1' }), false);
+  eq(f({ cat: 'regulatory', value: 'regulatory--no-parking--g1', timeRule: { cond: {} } }), true);
+});
+
 // Brīdinājumi (kā Waze)
 test('L. Brīdinājumi: kartē tikai noteiktās kategorijas; laikapstākļi tikai no datiem; ziņojumi noveco', () => {
   const alertTypeForSign = G('alertTypeForSign'), alertTypeForOsm = G('alertTypeForOsm'), weatherAlerts = G('weatherAlerts');
