@@ -557,21 +557,21 @@ test('R. Darba laika punkts: zaļš / oranžs / dzeltens / sarkans / pelēks ar 
 
 test('S. Balss norādes: latviski, katrs posms vienreiz, pareizā attālumā', () => {
   const vd = G('voiceDistance'), vm_ = G('voiceForManeuver'), va = G('voiceForAlert'), dur = G('voiceDuration');
-  eq(vd(300), 'Pēc 300 metriem'); eq(vd(80), 'Pēc 80 metriem'); eq(vd(1000), 'Pēc 1 kilometra');
-  eq(vd(1500), 'Pēc pusotra kilometra'); eq(vd(3200), 'Pēc 3 kilometriem');
-  eq(dur(60 * 12), '12 minūtes'); eq(dur(60 * 21), '21 minūte'); eq(dur(3600 + 300), '1 stunda 5 minūtes');
+  eq(vd(300), 'Pēc trīssimt metriem'); eq(vd(80), 'Pēc astoņdesmit metriem'); eq(vd(1000), 'Pēc viena kilometra');
+  eq(vd(1500), 'Pēc pusotra kilometra'); eq(vd(3200), 'Pēc trim kilometriem'); eq(vd(250), 'Pēc divsimt piecdesmit metriem');
+  eq(dur(60 * 12), 'divpadsmit minūtes'); eq(dur(60 * 21), 'divdesmit viena minūte'); eq(dur(3600 + 300), 'viena stunda piecas minūtes');
   const right = { maneuver: { type: 'turn', modifier: 'right' }, name: 'Brīvības iela' };
   const said = new Set();
   eq(vm_(3, right, 800, 50, said), null, 'par tālu');
-  eq(vm_(3, right, 480, 50, said).text, 'Pēc 500 metriem pagriezies pa labi, Brīvības iela', 'iepriekš');
+  eq(vm_(3, right, 480, 50, said).text, 'Pēc piecsimt metriem pagriezies pa labi, Brīvības iela', 'iepriekš');
   eq(vm_(3, right, 470, 50, said), null, 'neatkārto');
-  eq(vm_(3, right, 150, 50, said).text, 'Pēc 150 metriem pagriezies pa labi, Brīvības iela', 'tuvu');
+  eq(vm_(3, right, 150, 50, said).text, 'Pēc simt piecdesmit metriem pagriezies pa labi, Brīvības iela', 'tuvu');
   eq(vm_(3, right, 30, 50, said).text, 'Pagriezies pa labi, Brīvības iela', 'tagad');
   eq(vm_(3, right, 10, 50, said), null, 'tagad tikai vienreiz');
   eq(vm_(4, { maneuver: { type: 'new name', modifier: 'straight' }, name: 'X' }, 100, 50, new Set()), null, 'nosaukuma maiņu nesaka');
-  eq(vm_(5, { maneuver: { type: 'arrive' } }, 100, 40, new Set()).text, 'Pēc 100 metriem galamērķis');
+  eq(vm_(5, { maneuver: { type: 'arrive' } }, 100, 40, new Set()).text, 'Pēc simt metriem galamērķis');
   const s2 = new Set();
-  eq(va('cam1', 'Ātruma kamera', 300, 50, s2).text, 'Uzmanību! Ātruma kamera, pēc 300 metriem');
+  eq(va('cam1', 'Ātruma kamera', 300, 50, s2).text, 'Uzmanību! Ātruma kamera, pēc trīssimt metriem');
   eq(va('cam1', 'Ātruma kamera', 200, 50, s2), null, 'brīdinājums vienreiz');
   eq(va('cam2', 'Ātruma kamera', 900, 50, s2), null, 'par tālu');
 });
