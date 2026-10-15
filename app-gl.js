@@ -1201,7 +1201,8 @@ async function loadNeuralVoice(download) {
     if (kind !== voiceKind) return;
     voice.neural = neuralVoice;
     voiceNote(`Dabiskā balss "${NEURAL_VOICES[kind].label}" ir gatava (darbojas arī bez interneta).`);
-    neuralVoice.prefetch(['Esi ieradies galamērķī', 'Maršruts pārrēķināts', 'galamērķis', ...voiceDistancePhrases()]);
+    neuralVoice.prefetch(['Esi ieradies galamērķī', 'Maršruts pārrēķināts', 'galamērķis', ...voiceDistancePhrases(),
+      'pagriezies pa labi', 'pagriezies pa kreisi', 'nogriezies pa labi', 'nogriezies pa kreisi']);
   } catch (err) {
     console.warn('Dabiskā balss nav ielādēta', err);
     voice.neural = null;
@@ -1213,31 +1214,24 @@ let voiceSaid = new Set();
 document.addEventListener('visibilitychange', () => screenAwake.resume());
 function voiceSay(item, urgent) { if (item) voice.say(item.text, urgent, item.parts); }
 let voicePrefetched = -1;
-// Par nākamo manevru (posmi: iepriekš / tuvu / tagad) un brīdinājums sākumā.
+// Par katru manevru — viens īss teikums īsi pirms tā (bez ielas nosaukuma, bez atkārtojumiem).
 function voiceNav(p) {
   const route = state.nav.route;
   const id = route.steps.indexOf(p.next);
   const v = state.me ? state.me.speedKmh : 0;
-  if (state.nav.voiceStart) {
-    state.nav.voiceStart = false;
-    const parts = ['Dodamies ceļā. Brauciens ' + voiceDuration(p.timeLeft) + '.'];
-    if (voiceWorthy(p.next) && p.toNext > voiceThresholds(v).now) {
-      parts.push(voiceDistance(p.toNext), lowerFirst(maneuverTextForVoice(p.next)) + '.');
-      voiceSaid.add(id + ':early');
-      if (p.toNext <= voiceThresholds(v).near + 40) voiceSaid.add(id + ':near');
-    }
-    return voice.say(parts.join(' '), false, parts);
-  }
-  // Dabiskā balss: nākamo manevru teikumus sagatavo jau tagad, lai pēc tam runātu bez aizkaves
+  const after = route.steps[id + 1] || null;
+  const gapAfter = after ? route.cum[after._start] - route.cum[p.next._start] : Infinity;
+  // Dabiskā balss: nākamā manevra teikumu sagatavo jau tagad, lai pēc tam runātu bez aizkaves
   if (voice.neural && voicePrefetched !== id) {
     voicePrefetched = id;
-    const texts = [];
-    for (const st of route.steps.slice(id, id + 2)) if (voiceWorthy(st)) { const t = maneuverTextForVoice(st); texts.push(t, lowerFirst(t)); }
-    voice.neural.prefetch(texts);
+    if (voiceWorthy(p.next)) {
+      let w = voiceManeuverShort(p.next);
+      if (after && voiceWorthy(after) && gapAfter < 120) w += ', tad ' + voiceThen(after);
+      voice.neural.prefetch([w, lowerFirstUp(w)]);
+    }
   }
-  const item = voiceForManeuver(id, p.next, p.toNext, v, voiceSaid);
-  if (item && /:now$/.test(item.key) && p.next.maneuver && p.next.maneuver.type === 'arrive') voiceSaid.add('arrived');   // nesaka divreiz
-  if (item) voiceSay(item, /:now$/.test(item.key));
+  const item = voiceForManeuver(id, p.next, p.toNext, v, voiceSaid, after, gapAfter);
+  if (item) voiceSay(item, false);
 }
 function voiceAlert(key, label, d) {
   if (!state.me || ((state.me.speedKmh ?? 0) < 8 && !state.nav.active)) return;
@@ -1250,7 +1244,6 @@ function startNav() {
   screenAwake.on();                  // ekrāns neizslēdzas, kamēr navigē
   if (voice.enabled && !voice.neural && NEURAL_VOICES[voiceKind]) loadNeuralVoice(true);   // pirmajā reizē lejupielādē
   voiceSaid = new Set(); voicePrefetched = -1;
-  state.nav.voiceStart = true;
   state.nav.active = true;
   state.nav.offCount = 0;
   document.documentElement.classList.add('navigating');
@@ -1302,7 +1295,7 @@ function updateNav() {
     $('navIcon').innerHTML = maneuverIcon({ maneuver: { type: 'arrive' } });
     $('navDist').textContent = 'Esi klāt!';
     $('navInstr').textContent = state.nav.dest ? state.nav.dest.name : 'Galamērķis sasniegts';
-    if (!voiceSaid.has('arrived')) { voiceSaid.add('arrived'); voice.say('Esi ieradies galamērķī', true); }
+    if (!voiceSaid.has('arrived')) { voiceSaid.add('arrived'); voice.say('Esi ieradies galamērķī'); }
     stopSimulation();
     clearTimeout(updateNav._end);
     updateNav._end = setTimeout(endNav, 6000);
@@ -1687,7 +1680,7 @@ function wireUi() {
     voice.enabled = e.target.checked; store.set('voiceOn', voice.enabled);
     if (!voice.enabled) voice.stop();
   });
-  const sample = ['Pēc trīssimt metriem', 'pagriezies pa labi, Brīvības iela.', 'Uzmanību! Ātruma kamera,', 'pēc divsimt metriem.'];
+  const sample = ['Pēc simt piecdesmit metriem', 'pagriezies pa kreisi'];
   $('voiceKind').value = voiceKind;
   $('voiceKind').addEventListener('change', e => {
     voiceKind = e.target.value; store.set('voiceKind', voiceKind);

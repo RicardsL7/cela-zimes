@@ -99,7 +99,8 @@ class NeuralVoice {
       const out = await this.session.run({
         input: new ort.Tensor('int64', BigInt64Array.from(ids.map(BigInt)), [1, ids.length]),
         input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)]), [1]),
-        scales: new ort.Tensor('float32', Float32Array.from([inf.noise_scale, inf.length_scale * 0.95, inf.noise_w]), [3]),
+        // lēnāk (×1,2) un skaidrāk (mazāk "trokšņa" izrunā)
+        scales: new ort.Tensor('float32', Float32Array.from([inf.noise_scale * 0.75, inf.length_scale * 1.2, inf.noise_w * 0.7]), [3]),
       });
       const pcm = out.output.data, rate = this.cfg.audio.sample_rate;
       if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -133,8 +134,10 @@ class NeuralVoice {
     try {
       const bufs = await Promise.all(job.parts.map(t => this.synth(t)));
       if (this.ctx.state === 'suspended') await this.ctx.resume();
-      for (const b of bufs) {
+      for (let i = 0; i < bufs.length; i++) {
+        const b = bufs[i];
         if (job.cancelled) break;
+        if (i) await new Promise(r => setTimeout(r, 120));      // īsa pauze starp daļām
         await new Promise(res => {
           const s = this.ctx.createBufferSource();
           s.buffer = b; s.connect(this.ctx.destination);

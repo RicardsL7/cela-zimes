@@ -45,40 +45,61 @@ function voiceWorthy(step) {
   return true;
 }
 
-// Attālumi (m), kuros runāt, atkarībā no ātruma.
-function voiceThresholds(speedKmh) {
-  const v = speedKmh || 0;
-  return {
-    early: v >= 75 ? 1000 : v >= 45 ? 500 : 300,
-    near: v >= 75 ? 300 : 120,
-    now: Math.max(25, (v / 3.6) * 3),            // ~3 s līdz manevram
-  };
+// Īss manevrs runai (bez ielas nosaukuma): "pagriezies pa labi", "aplī brauc otrajā izbrauktuvē".
+const LV_ORD_LOC = ['', 'pirmajā', 'otrajā', 'trešajā', 'ceturtajā', 'piektajā', 'sestajā', 'septītajā', 'astotajā'];
+function voiceManeuverShort(step) {
+  const m = (step && step.maneuver) || {}, type = m.type, mod = m.modifier || '';
+  const side = /left/.test(mod) ? 'pa kreisi' : /right/.test(mod) ? 'pa labi' : '';
+  switch (type) {
+    case 'arrive': return 'galamērķis';
+    case 'roundabout': case 'rotary': case 'exit roundabout': case 'exit rotary':
+      return m.exit && LV_ORD_LOC[m.exit] ? `aplī brauc ${LV_ORD_LOC[m.exit]} izbrauktuvē` : 'brauc pa apli';
+    case 'merge': return 'iekļaujies satiksmē' + (side ? ' ' + side : '');
+    case 'on ramp': return 'brauc uzbrauktuvē' + (side ? ' ' + side : '');
+    case 'off ramp': return 'nobrauc' + (side ? ' ' + side : '');
+    case 'fork': return 'turies ' + (side || 'taisni');
+    case 'end of road': return 'ceļa galā pagriezies ' + side;
+  }
+  if (mod === 'uturn') return 'apgriezies';
+  if (!side) return 'turpini taisni';
+  if (mod.startsWith('slight')) return 'nogriezies ' + side;
+  if (mod.startsWith('sharp')) return 'strauji pagriezies ' + side;
+  return 'pagriezies ' + side;
+}
+// Ķēdē pievieno tikai virzienu: "…, tad pa labi"
+function voiceThen(step) {
+  const t = voiceManeuverShort(step);
+  return /^pagriezies /.test(t) ? t.replace(/^pagriezies /, '') : t;
 }
 
-// Ko teikt tagad par nākamo manevru. said — Set ar jau pateiktajiem posmiem šim manevram.
-// Atgriež { key, text } vai null.
-function voiceForManeuver(stepId, step, toNext, speedKmh, said) {
-  if (!voiceWorthy(step)) return null;
-  const th = voiceThresholds(speedKmh);
-  const arrive = step.maneuver && step.maneuver.type === 'arrive';
-  if (toNext <= th.now) {
-    if (said.has(stepId + ':now')) return null;
-    said.add(stepId + ':now'); said.add(stepId + ':near'); said.add(stepId + ':early');
-    const t = arrive ? 'Esi ieradies galamērķī' : maneuverTextForVoice(step);
-    return { key: stepId + ':now', text: t, parts: [t] };
-  }
-  if (toNext <= th.near + 40) {
-    if (said.has(stepId + ':near')) return null;
-    said.add(stepId + ':near'); said.add(stepId + ':early');
-    return withParts(stepId + ':near', voiceDistance(toNext), arrive ? 'galamērķis' : lowerFirst(maneuverTextForVoice(step)));
-  }
-  if (toNext <= th.early && toNext > th.near + 120) {
-    if (said.has(stepId + ':early')) return null;
-    said.add(stepId + ':early');
-    return withParts(stepId + ':early', voiceDistance(toNext), arrive ? 'galamērķis' : lowerFirst(maneuverTextForVoice(step)));
-  }
-  return null;
+// Kad runāt: vienreiz par katru manevru, šajā attālumā (atkarībā no ātruma).
+function voiceThresholds(speedKmh) {
+  const v = speedKmh || 0;
+  return { near: v >= 75 ? 500 : v >= 45 ? 250 : 150 };
 }
+
+// Viens īss teikums par manevru: "Pēc simt piecdesmit metriem pagriezies pa kreisi".
+// Ja nākamais manevrs seko tūlīt (< 120 m), to pievieno tajā pašā teikumā ("…, tad pa labi")
+// un vēlāk par to vairs nerunā. said — Set ar jau pateiktajiem manevriem.
+function voiceForManeuver(stepId, step, toNext, speedKmh, said, after = null, gapAfter = Infinity) {
+  if (!voiceWorthy(step) || said.has(stepId + ':said')) return null;
+  if (toNext > voiceThresholds(speedKmh).near + 20) return null;
+  said.add(stepId + ':said');
+  const arrive = step.maneuver && step.maneuver.type === 'arrive';
+  if (arrive) {
+    said.add('arrived');
+    return { key: stepId + ':said', text: toNext < 40 ? 'Esi ieradies galamērķī' : voiceDistance(toNext) + ' galamērķis',
+      parts: toNext < 40 ? ['Esi ieradies galamērķī'] : [voiceDistance(toNext), 'galamērķis'] };
+  }
+  let what = voiceManeuverShort(step);
+  if (after && voiceWorthy(after) && gapAfter < 120 && !(after.maneuver && after.maneuver.type === 'arrive')) {
+    what += ', tad ' + voiceThen(after);
+    said.add((stepId + 1) + ':said');
+  }
+  if (toNext < 40) return { key: stepId + ':said', text: lowerFirstUp(what), parts: [lowerFirstUp(what)] };
+  return withParts(stepId + ':said', voiceDistance(toNext), what);
+}
+function lowerFirstUp(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
 // Teikums no divām daļām: attālums + darbība. Daļas balss sagatavo atsevišķi un iepriekš.
 function withParts(key, a, b) { return { key, text: a + ' ' + b, parts: [a, b] }; }
@@ -175,5 +196,5 @@ class ScreenAwake {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { lvNumber, voiceDistancePhrases, withParts, lowerFirst, maneuverTextForVoice, voiceDistance, voiceForManeuver, voiceForAlert, voiceDuration, voiceThresholds, voiceWorthy, Voice, ScreenAwake };
+  module.exports = { voiceManeuverShort, lvNumber, voiceDistancePhrases, withParts, lowerFirst, maneuverTextForVoice, voiceDistance, voiceForManeuver, voiceForAlert, voiceDuration, voiceThresholds, voiceWorthy, Voice, ScreenAwake };
 }
