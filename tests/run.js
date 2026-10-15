@@ -7,7 +7,7 @@ const vm = require('vm');
 
 const ctx = vm.createContext({ console, Intl, Date, Math, Map, Set, JSON, Number, String, Array, Object, isNaN, setTimeout, clearTimeout,
   signSvg: () => '<svg/>', encodeURIComponent });
-for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'nav.js', 'alerts.js', 'places.js', 'cache.js', 'voice.js']) {
+for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'nav.js', 'alerts.js', 'places.js', 'cache.js', 'voice.js', 'recorded-voice.js']) {
   // Klases un const deklarācijas padara pieejamas testam.
   const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/if \(typeof module[\s\S]*?\n}\n?$/m, '');
   vm.runInContext(src + '\n;globalThis.__exp = (globalThis.__exp || {});', ctx, { filename: f });
@@ -585,12 +585,82 @@ test('S. Balss norādes: latviski, katrs posms vienreiz, pareizā attālumā', (
   eq(vm_(6, right, 60, 40, z), null, 'otrais jau pateikts');
   eq(vm_(7, { maneuver: { type: 'turn', modifier: 'right' } }, 400, 90, new Set()).text, 'Pēc četrsimt metriem pagriezies pa labi', 'uz šosejas agrāk');
   eq(vm_(4, { maneuver: { type: 'new name', modifier: 'straight' }, name: 'X' }, 100, 40, new Set()), null, 'nosaukuma maiņu nesaka');
-  eq(vm_(8, { maneuver: { type: 'roundabout', exit: 2 } }, 120, 40, new Set()).text, 'Pēc simt metriem aplī brauc otrajā izbrauktuvē');
+  eq(vm_(8, { maneuver: { type: 'roundabout', exit: 2 } }, 120, 40, new Set()).text, 'Pēc simt metriem aplī izbrauc pa otro izbrauktuvi');
   eq(vm_(9, { maneuver: { type: 'arrive' } }, 100, 40, new Set()).text, 'Pēc simt metriem galamērķis');
   const s2 = new Set();
-  eq(va('cam1', 'Ātruma kamera', 300, 50, s2).text, 'Uzmanību! Ātruma kamera, pēc trīssimt metriem');
+  eq(va('cam1', 'Ātruma kamera', 300, 50, s2).text, 'Uzmanību, ātruma kamera, pēc trīssimt metriem');
   eq(va('cam1', 'Ātruma kamera', 200, 50, s2), null, 'brīdinājums vienreiz');
   eq(va('cam2', 'Ātruma kamera', 900, 50, s2), null, 'par tālu');
+});
+
+test('U. Balss: frāžu bibliotēka aptver visu, ko navigācija var pateikt', () => {
+  const lib = G('voicePhraseLibrary(Object.values(ALERT_TYPES).map(a => a.label))');
+  const key = G('voiceClipKey'), vm_ = G('voiceForManeuver'), va = G('voiceForAlert'), samples = G('voiceManeuverSamples')();
+  const keys = new Set(lib.map(key));
+  eq(keys.size, lib.length, 'atslēgas unikālas');
+  const missing = new Set();
+  const check = it => { if (it) for (const p of it.parts) if (!keys.has(key(p))) missing.add(p); };
+  for (const s of samples) for (const a of [null, ...samples]) for (const d of [12, 35, 55, 95, 149, 150, 260, 520, 930]) for (const v of [30, 60, 100])
+    check(vm_(1, s, d, v, new Set(), a, 60));
+  for (const l of Object.values(G('ALERT_TYPES')).map(a => a.label)) for (const d of [20, 70, 140, 399, 690]) check(va('x', l, d, 90, new Set()));
+  check({ parts: ['Esi ieradies galamērķī'] }); check({ parts: ['Maršruts pārrēķināts'] });
+  eq([...missing].join(' | '), '', 'nav ierakstu šīm frāzēm');
+  ok(lib.length < 200, 'neliels frāžu skaits (' + lib.length + ')');
+});
+
+test('V. Balss: teikumi, garumzīmes, normalizācija, kļūdaini dati', () => {
+  const vm_ = G('voiceForManeuver'), va = G('voiceForAlert'), key = G('voiceClipKey'), norm = G('voiceNormalize'), sh = G('voiceManeuverShort');
+  eq(vm_(1, { maneuver: { type: 'turn', modifier: 'sharp left' } }, 150, 30, new Set()).text, 'Pēc simt piecdesmit metriem strauji pagriezies pa kreisi');
+  eq(vm_(1, { maneuver: { type: 'turn', modifier: 'slight right' } }, 150, 30, new Set()).text, 'Pēc simt piecdesmit metriem nogriezies pa labi');
+  eq(vm_(1, { maneuver: { type: 'fork', modifier: 'slight left' } }, 500, 100, new Set()).text, 'Pēc piecsimt metriem turies pa kreisi');
+  eq(vm_(1, { maneuver: { type: 'off ramp', modifier: 'right' } }, 500, 100, new Set()).text, 'Pēc piecsimt metriem nobrauc no šosejas pa labi');
+  eq(vm_(1, { maneuver: { type: 'turn', modifier: 'uturn' } }, 150, 30, new Set()).text, 'Pēc simt piecdesmit metriem apgriezies');
+  eq(vm_(1, { maneuver: { type: 'arrive', modifier: 'right' } }, 100, 30, new Set()).text, 'Pēc simt metriem galamērķis būs pa labi');
+  eq(vm_(1, { maneuver: { type: 'arrive' } }, 20, 30, new Set()).text, 'Esi ieradies galamērķī');
+  eq(vm_(1, { maneuver: { type: 'turn', modifier: 'left' } }, 30, 30, new Set()).text, 'Pagriezies pa kreisi', 'tuvu — bez attāluma');
+  eq(vm_(1, { maneuver: { type: 'exit roundabout', modifier: 'right' } }, 100, 30, new Set()), null, 'izbraucot no apļa klusē');
+  eq(vm_(1, { maneuver: { type: 'continue', modifier: 'straight' } }, 100, 30, new Set()), null, 'taisni — klusē');
+  eq(vm_(1, { maneuver: { type: 'turn', modifier: 'right' } }, 150, 30, new Set(), { maneuver: { type: 'roundabout', exit: 3 } }, 80).parts.join(' | '),
+     'Pēc simt piecdesmit metriem | pagriezies pa labi | tad aplī izbrauc pa trešo izbrauktuvi');
+  // kļūdaini / trūkstoši dati — nekrīt un klusē
+  eq(vm_(1, undefined, 100, 30, new Set()), null); eq(vm_(1, {}, 100, 30, new Set()), null);
+  eq(vm_(1, { maneuver: { type: 'turn', modifier: 'left' } }, NaN, 30, new Set()), null);
+  eq(va('a', '', 100, 30, new Set()), null); eq(va('a', 'Policija', NaN, 30, new Set()), null);
+  eq(sh({ maneuver: { type: 'roundabout', exit: 12 } }), 'iebrauc aplī', 'nezināma izbrauktuve');
+  eq(va('p', 'Sastrēgums / lēna satiksme', 30, 30, new Set()).text, 'Uzmanību, sastrēgums, tūlīt');
+  // garumzīmes un mīkstinājumi paliek (neaizvieto ar "angliskiem" burtiem)
+  eq(key('Pēc ČETRSIMT metriem, šķērslis ģērbtuvē ļoti ņiķīgs!'), 'pēc četrsimt metriem šķērslis ģērbtuvē ļoti ņiķīgs');
+  eq(norm('Uz A1 pēc 200 m'), 'Uz A viens pēc divsimt metri');
+  eq(norm('P120 3 km'), 'P simt divdesmit trīs kilometri');
+  eq(norm('Ātrums 90 km/h'), 'Ātrums deviņdesmit kilometri stundā');
+  eq(norm('Brīvības iela 75'), 'Brīvības iela septiņdesmit pieci');
+});
+
+test('W. Balss: ieraksti, rezerves balss, dublikāti, pārtraukšana', () => {
+  const files = G('recordedFilesFor'), RV = G('RecordedVoice'), Voice = G('Voice');
+  const man = { clips: { 'pēc simt metriem': 'a.mp3', 'pagriezies pa labi': 'b.mp3' } };
+  eq(JSON.stringify(files(man, ['Pēc simt metriem', 'Pagriezies pa labi.'], 'v/')), '["v/a.mp3","v/b.mp3"]');
+  eq(files(man, ['Pēc simt metriem', 'apgriezies']), null, 'trūkst — null (runās cita balss)');
+  eq(files(null, ['x']), null); eq(files(man, []), null);
+  // Ierakstu rinda: tas pats teikums divreiz netiek likts rindā; urgent notīra rindu
+  const r = new RV('v/'); r.manifest = man; let started = 0; r._next = function () { started++; this.playing = this.queue.shift() || null; };
+  eq(r.say(['apgriezies']), false, 'nav ieraksta');
+  ok(r.say(['Pēc simt metriem', 'pagriezies pa labi'])); eq(started, 1);
+  r.say(['Pēc simt metriem', 'pagriezies pa labi']); eq(r.queue.length, 0, 'dublikāts nav rindā');
+  r.say(['pagriezies pa labi']); eq(r.queue.length, 1);
+  const playing = r.playing; r.say(['Pēc simt metriem'], true);
+  ok(playing.cancelled, 'urgent pārtrauc veco'); eq(r.queue.filter(j => j.cancelled).length, 0);
+  // Ķēde: ieraksti → Piper → telefons
+  const log = [];
+  const v = new Voice();
+  v.recorded = { ready: true, say: (p, u) => { log.push('rec:' + p.join('+') + (u ? '!' : '')); return p.length < 3; }, stop: () => log.push('rec-stop'), unlock() {} };
+  v.neural = { ready: true, say: p => log.push('neural:' + p.join('+')), stop: () => log.push('n-stop'), prefetch() {}, unlock() {} };
+  v.say('A B', false, ['A', 'B']);
+  v.say('A B', false, ['A', 'B']);                       // dublikāts 4 s laikā — klusē
+  v.say('A B C', false, ['A', 'B', 'C']);                // ierakstos nav → Piper
+  v.say('Maršruts pārrēķināts', true, ['Maršruts pārrēķināts']);
+  eq(log.join(' '), 'rec:A+B rec:A+B+C neural:A+B+C rec-stop n-stop rec:Maršruts pārrēķināts!');
+  v.enabled = false; v.say('X'); eq(log.length, 6, 'izslēgta — klusē');
 });
 
 Promise.all(pending).then(() => {
