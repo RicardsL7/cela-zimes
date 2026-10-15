@@ -1184,10 +1184,35 @@ async function previewRoute() {
 // ---------- Balss norādes un ekrāns ----------
 const voice = new Voice();
 voice.enabled = store.get('voiceOn', true);
+// Dabiskā balss (neironu tīkls telefonā): Rūdolfs / Aivars; "system" — telefona iebūvētā balss.
+const neuralVoice = typeof NeuralVoice !== 'undefined' ? new NeuralVoice() : null;
+let voiceKind = store.get('voiceKind', 'rudolfs');
+function voiceNote(text) { const el = $('voiceNote'); if (el) el.textContent = text; }
+// Ielādē dabisko balsi. download=false — tikai, ja jau ir telefonā (nekad nelejupielādē klusi).
+async function loadNeuralVoice(download) {
+  if (!neuralVoice || !NEURAL_VOICES[voiceKind]) { voice.neural = null; return; }
+  const kind = voiceKind;
+  if (!download && !(await neuralVoice.isDownloaded(kind))) {
+    voiceNote('Dabiskā balss vēl nav telefonā (~63 MB, vienreiz). Tā lejupielādēsies, nospiežot "Pārbaudīt" vai sākot navigāciju — ieteicams Wi-Fi.');
+    return;
+  }
+  try {
+    await neuralVoice.load(kind, p => voiceNote(`Lejupielādē balsi "${NEURAL_VOICES[kind].label}"… ${Math.round(p * 100)}%`));
+    if (kind !== voiceKind) return;
+    voice.neural = neuralVoice;
+    voiceNote(`Dabiskā balss "${NEURAL_VOICES[kind].label}" ir gatava (darbojas arī bez interneta).`);
+    neuralVoice.prefetch(['Esi ieradies galamērķī', 'Maršruts pārrēķināts', 'galamērķis', ...voiceDistancePhrases()]);
+  } catch (err) {
+    console.warn('Dabiskā balss nav ielādēta', err);
+    voice.neural = null;
+    voiceNote('Neizdevās ielādēt dabisko balsi — runās telefona balss.');
+  }
+}
 const screenAwake = new ScreenAwake();
 let voiceSaid = new Set();
 document.addEventListener('visibilitychange', () => screenAwake.resume());
-function voiceSay(item, urgent) { if (item) voice.say(item.text, urgent); }
+function voiceSay(item, urgent) { if (item) voice.say(item.text, urgent, item.parts); }
+let voicePrefetched = -1;
 // Par nākamo manevru (posmi: iepriekš / tuvu / tagad) un brīdinājums sākumā.
 function voiceNav(p) {
   const route = state.nav.route;
@@ -1195,13 +1220,20 @@ function voiceNav(p) {
   const v = state.me ? state.me.speedKmh : 0;
   if (state.nav.voiceStart) {
     state.nav.voiceStart = false;
-    let txt = 'Dodamies ceļā. Brauciens ' + voiceDuration(p.timeLeft) + '.';
+    const parts = ['Dodamies ceļā. Brauciens ' + voiceDuration(p.timeLeft) + '.'];
     if (voiceWorthy(p.next) && p.toNext > voiceThresholds(v).now) {
-      txt += ' ' + voiceDistance(p.toNext) + ' ' + lowerFirst(maneuverTextForVoice(p.next)) + '.';
+      parts.push(voiceDistance(p.toNext), lowerFirst(maneuverTextForVoice(p.next)) + '.');
       voiceSaid.add(id + ':early');
       if (p.toNext <= voiceThresholds(v).near + 40) voiceSaid.add(id + ':near');
     }
-    return voice.say(txt);
+    return voice.say(parts.join(' '), false, parts);
+  }
+  // Dabiskā balss: nākamo manevru teikumus sagatavo jau tagad, lai pēc tam runātu bez aizkaves
+  if (voice.neural && voicePrefetched !== id) {
+    voicePrefetched = id;
+    const texts = [];
+    for (const st of route.steps.slice(id, id + 2)) if (voiceWorthy(st)) { const t = maneuverTextForVoice(st); texts.push(t, lowerFirst(t)); }
+    voice.neural.prefetch(texts);
   }
   const item = voiceForManeuver(id, p.next, p.toNext, v, voiceSaid);
   if (item && /:now$/.test(item.key) && p.next.maneuver && p.next.maneuver.type === 'arrive') voiceSaid.add('arrived');   // nesaka divreiz
@@ -1216,7 +1248,8 @@ function startNav() {
   if (!state.nav.route) return;
   voice.unlock();                    // telefoni atļauj runāt tikai pēc pieskāriena
   screenAwake.on();                  // ekrāns neizslēdzas, kamēr navigē
-  voiceSaid = new Set();
+  if (voice.enabled && !voice.neural && NEURAL_VOICES[voiceKind]) loadNeuralVoice(true);   // pirmajā reizē lejupielādē
+  voiceSaid = new Set(); voicePrefetched = -1;
   state.nav.voiceStart = true;
   state.nav.active = true;
   state.nav.offCount = 0;
@@ -1371,7 +1404,7 @@ async function reroute() {
     state.nav.along = null;
     resetNavProgress();              // jauns maršruts sākas no manis — līnija no jauna
     voiceSaid = new Set([...voiceSaid].filter(k => k.startsWith('alert:')));   // manevri no jauna, brīdinājumi ne
-    voice.say('Maršruts pārrēķināts');
+    voice.say('Maršruts pārrēķināts'); voicePrefetched = -1;
     drawRoute(route);
     signs.setRoute(route);
     prepareRoute(route);
@@ -1654,14 +1687,24 @@ function wireUi() {
     voice.enabled = e.target.checked; store.set('voiceOn', voice.enabled);
     if (!voice.enabled) voice.stop();
   });
-  $('voiceTest').addEventListener('click', () => {
+  const sample = ['Pēc trīssimt metriem', 'pagriezies pa labi, Brīvības iela.', 'Uzmanību! Ātruma kamera,', 'pēc divsimt metriem.'];
+  $('voiceKind').value = voiceKind;
+  $('voiceKind').addEventListener('change', e => {
+    voiceKind = e.target.value; store.set('voiceKind', voiceKind);
+    voice.stop(); voice.neural = null;
+    if (NEURAL_VOICES[voiceKind]) loadNeuralVoice(false);
+    else voiceNote(!voice.ok ? 'Šis pārlūks nemāk runāt.' : voice.hasLatvian ? 'Runās telefona latviešu balss.' : 'Telefonā nav latviešu balss — runās cita balss ar akcentu.');
+  });
+  $('voiceTest').addEventListener('click', async () => {
     voice.unlock();
     const was = voice.enabled; voice.enabled = true;
-    voice.say('Pēc 300 metriem pagriezies pa labi. Uzmanību! Ātruma kamera, pēc 200 metriem.', true);
+    if (NEURAL_VOICES[voiceKind] && !voice.neural) {
+      await loadNeuralVoice(true);
+    }
+    voice.say(sample.join(' '), true, sample);
     voice.enabled = was;
-    $('voiceNote').textContent = !voice.ok ? 'Šis pārlūks nemāk runāt.' :
-      voice.hasLatvian ? 'Runā latviešu balss.' : 'Šajā ierīcē nav atrasta latviešu balss — runās noklusējuma balss. Telefona iestatījumos var lejupielādēt latviešu runas sintēzi.';
   });
+  if (NEURAL_VOICES[voiceKind]) loadNeuralVoice(false);
   $('warnSwitch').checked = state.warn;
   $('warnSwitch').addEventListener('change', e => { state.warn = e.target.checked; store.set('warn', state.warn); updateLimit(); });
   $('testSwitch').addEventListener('change', e => {
