@@ -99,8 +99,8 @@ class NeuralVoice {
       const out = await this.session.run({
         input: new ort.Tensor('int64', BigInt64Array.from(ids.map(BigInt)), [1, ids.length]),
         input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)]), [1]),
-        // lēnāk (×1,2) un skaidrāk (mazāk "trokšņa" izrunā)
-        scales: new ort.Tensor('float32', Float32Array.from([inf.noise_scale * 0.75, inf.length_scale * 1.2, inf.noise_w * 0.7]), [3]),
+        // lēnāk (×1,3) un skaidrāk (mazāk "trokšņa" izrunā)
+        scales: new ort.Tensor('float32', Float32Array.from([inf.noise_scale * 0.75, inf.length_scale * 1.3, inf.noise_w * 0.7]), [3]),
       });
       const pcm = out.output.data, rate = this.cfg.audio.sample_rate;
       if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
