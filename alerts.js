@@ -110,6 +110,17 @@ function alertTypeForSign(s, now = new Date()) {
   return null;
 }
 
+// Kurām zīmēm vajag noteikt virzienu (Mapillary ir lēns, tāpēc tikai tām, ko aplikācija
+// tiešām izmanto): ātruma ierobežojumi (rāda pašreizējo atļauto ātrumu), kameras, dzelzceļa
+// pārbrauktuves, luksofori, bērni/skola un zīmes ar laika nosacījumu. Pārējās (stāvvieta,
+// informācija, virzieni u.c.) brīdinājumu režīmā netiek rādītas — tām virzienu nemeklē.
+function signNeedsDirection(s) {
+  if (!s) return false;
+  if (s.cat === 'speed' || s.cat === 'camera' || s.cat === 'rail' || s.cat === 'signals') return true;
+  if (/^warning--(children|school)|school-zone/.test(s.value || '')) return true;
+  return !!(s.timeRule && s.timeRule.cond);
+}
+
 // OSM hazard=* → brīdinājuma veids
 const OSM_HAZARD = {
   school_zone: 'school', children: 'school', ice: 'ice', icy_road: 'ice', slippery: 'ice', flooding: 'flood',
@@ -194,5 +205,5 @@ function alertInfo(it, now = Date.now()) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { ALERT_TYPES, REPORT_GROUPS, alertSvg, alertTypeForSign, alertTypeForOsm, weatherAlerts, AlertStore, makeReport, alertInfo };
+  module.exports = { ALERT_TYPES, REPORT_GROUPS, alertSvg, alertTypeForSign, signNeedsDirection, alertTypeForOsm, weatherAlerts, AlertStore, makeReport, alertInfo };
 }

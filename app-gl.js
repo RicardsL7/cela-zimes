@@ -720,7 +720,7 @@ async function loadMapillaryForView() {
 async function loadDirectionsBox(s, w, n, e) {
   const counts = new Map(), asked = [];
   signs.eachInBox(s, w, n, e, x => {
-    if (!x.value || x.face != null) return;
+    if (!x.value || x.face != null || !signNeedsDirection(x)) return;   // liekās zīmes izlaiž
     const k = faceKey(x.value, x.lat, x.lng);
     if (noDirCache.has(k)) return;               // jau zināms, ka virziena nav
     asked.push(x);
