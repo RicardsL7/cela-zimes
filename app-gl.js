@@ -1204,6 +1204,7 @@ function voiceNav(p) {
     return voice.say(txt);
   }
   const item = voiceForManeuver(id, p.next, p.toNext, v, voiceSaid);
+  if (item && /:now$/.test(item.key) && p.next.maneuver && p.next.maneuver.type === 'arrive') voiceSaid.add('arrived');   // nesaka divreiz
   if (item) voiceSay(item, /:now$/.test(item.key));
 }
 function voiceAlert(key, label, d) {
