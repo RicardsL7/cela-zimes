@@ -1181,8 +1181,42 @@ async function previewRoute() {
   }
 }
 
+// ---------- Balss norādes un ekrāns ----------
+const voice = new Voice();
+voice.enabled = store.get('voiceOn', true);
+const screenAwake = new ScreenAwake();
+let voiceSaid = new Set();
+document.addEventListener('visibilitychange', () => screenAwake.resume());
+function voiceSay(item, urgent) { if (item) voice.say(item.text, urgent); }
+// Par nākamo manevru (posmi: iepriekš / tuvu / tagad) un brīdinājums sākumā.
+function voiceNav(p) {
+  const route = state.nav.route;
+  const id = route.steps.indexOf(p.next);
+  const v = state.me ? state.me.speedKmh : 0;
+  if (state.nav.voiceStart) {
+    state.nav.voiceStart = false;
+    let txt = 'Dodamies ceļā. Brauciens ' + voiceDuration(p.timeLeft) + '.';
+    if (voiceWorthy(p.next) && p.toNext > voiceThresholds(v).now) {
+      txt += ' ' + voiceDistance(p.toNext) + ' ' + lowerFirst(maneuverTextForVoice(p.next)) + '.';
+      voiceSaid.add(id + ':early');
+      if (p.toNext <= voiceThresholds(v).near + 40) voiceSaid.add(id + ':near');
+    }
+    return voice.say(txt);
+  }
+  const item = voiceForManeuver(id, p.next, p.toNext, v, voiceSaid);
+  if (item) voiceSay(item, /:now$/.test(item.key));
+}
+function voiceAlert(key, label, d) {
+  if (!state.me || ((state.me.speedKmh ?? 0) < 8 && !state.nav.active)) return;
+  voiceSay(voiceForAlert(key, label, d, state.me.speedKmh, voiceSaid), false);
+}
+
 function startNav() {
   if (!state.nav.route) return;
+  voice.unlock();                    // telefoni atļauj runāt tikai pēc pieskāriena
+  screenAwake.on();                  // ekrāns neizslēdzas, kamēr navigē
+  voiceSaid = new Set();
+  state.nav.voiceStart = true;
   state.nav.active = true;
   state.nav.offCount = 0;
   document.documentElement.classList.add('navigating');
@@ -1202,6 +1236,8 @@ function startNav() {
 }
 
 function endNav() {
+  screenAwake.off();
+  voice.stop();
   stopSimulation();
   resetNavProgress();
   routePrepId++;
@@ -1232,6 +1268,7 @@ function updateNav() {
     $('navIcon').innerHTML = maneuverIcon({ maneuver: { type: 'arrive' } });
     $('navDist').textContent = 'Esi klāt!';
     $('navInstr').textContent = state.nav.dest ? state.nav.dest.name : 'Galamērķis sasniegts';
+    if (!voiceSaid.has('arrived')) { voiceSaid.add('arrived'); voice.say('Esi ieradies galamērķī', true); }
     stopSimulation();
     clearTimeout(updateNav._end);
     updateNav._end = setTimeout(endNav, 6000);
@@ -1242,6 +1279,7 @@ function updateNav() {
   $('navInstr').textContent = maneuverText(p.next);
   $('etaTime').textContent = clockIn(p.timeLeft);
   $('etaMeta').textContent = `${navTime(p.timeLeft)} · ${navDist(p.remaining)}`;
+  if (state.gpsQuality !== 'poor' && p.loc.off < 50) voiceNav(p);
   const goodFix = state.gpsQuality !== 'poor';    // vājš GPS — progresu un nobraukšanu nevērtē
   if (goodFix && p.loc.off < 50) {
     state.nav.along = p.loc.along;
@@ -1281,6 +1319,7 @@ function updateNextSign() {
     if (a && (!next || a.dist < d)) {
       next = null; d = a.dist;
       setNextCard(alertDataUrl(a.it.type), d, ALERT_TYPES[a.it.type].label + (a.it.source === 'user' ? ' (tavs ziņojums)' : ''));
+      voiceAlert(a.it.id, ALERT_TYPES[a.it.type].label, d);
       return;
     }
   }
@@ -1288,6 +1327,7 @@ function updateNextSign() {
   if (alertsMode) {
     const t = alertTypeForSign(next.s);
     const ti = signTimeInfo(next.s);
+    if (t !== 'traffic-light' && next.status !== 'probable' && !(ti && ti.off)) voiceAlert(next.s.uid, ALERT_TYPES[t].label, d);
     setNextCard(alertDataUrl(t), d, (t === 'restriction' ? describeRestriction(next.s.title, next.s.restriction) : ALERT_TYPES[t].label) +
       (next.status === 'probable' ? (next.reason === 'after-junction' ? ' (ja brauksi taisni)' : ' (virziens nav apstiprināts)') : '') +
       (ti && ti.off ? ' (tagad nav spēkā)' : ''));
@@ -1329,6 +1369,8 @@ async function reroute() {
     state.nav.route = route;
     state.nav.along = null;
     resetNavProgress();              // jauns maršruts sākas no manis — līnija no jauna
+    voiceSaid = new Set([...voiceSaid].filter(k => k.startsWith('alert:')));   // manevri no jauna, brīdinājumi ne
+    voice.say('Maršruts pārrēķināts');
     drawRoute(route);
     signs.setRoute(route);
     prepareRoute(route);
@@ -1604,6 +1646,20 @@ function wireUi() {
   });
   $('masterSwitch').addEventListener('change', e => {
     state.signsOn = e.target.checked; store.set('signsOn', state.signsOn); applySignVisibility();
+  });
+  // Balss norādes
+  $('voiceSwitch').checked = voice.enabled;
+  $('voiceSwitch').addEventListener('change', e => {
+    voice.enabled = e.target.checked; store.set('voiceOn', voice.enabled);
+    if (!voice.enabled) voice.stop();
+  });
+  $('voiceTest').addEventListener('click', () => {
+    voice.unlock();
+    const was = voice.enabled; voice.enabled = true;
+    voice.say('Pēc 300 metriem pagriezies pa labi. Uzmanību! Ātruma kamera, pēc 200 metriem.', true);
+    voice.enabled = was;
+    $('voiceNote').textContent = !voice.ok ? 'Šis pārlūks nemāk runāt.' :
+      voice.hasLatvian ? 'Runā latviešu balss.' : 'Šajā ierīcē nav atrasta latviešu balss — runās noklusējuma balss. Telefona iestatījumos var lejupielādēt latviešu runas sintēzi.';
   });
   $('warnSwitch').checked = state.warn;
   $('warnSwitch').addEventListener('change', e => { state.warn = e.target.checked; store.set('warn', state.warn); updateLimit(); });

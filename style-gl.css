@@ -412,3 +412,8 @@ html:not(.navigating):not(.previewing) .loader { top: calc(env(safe-area-inset-t
 }
 .color-swatch:active { transform: scale(.92); }
 .color-swatch[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--panel), 0 0 0 5px var(--sw), 0 2px 6px rgba(0, 0, 0, .25); }
+
+/* ---- Balss norādes ---- */
+.voice-row label { flex: 1; cursor: pointer; }
+.voice-note:empty { display: none; }
+.voice-note { margin: 4px 2px 8px; }

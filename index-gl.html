@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=36">
+  <link rel="stylesheet" href="style-gl.css?v=37">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -159,6 +159,12 @@
       <input type="checkbox" id="masterSwitch" class="switch" checked>
     </label>
     <div id="catList" class="cat-list"></div>
+    <div class="row voice-row">
+      <label for="voiceSwitch">Balss norādes</label>
+      <button id="voiceTest" type="button" class="link-btn">Pārbaudīt</button>
+      <input type="checkbox" id="voiceSwitch" class="switch" checked>
+    </div>
+    <p id="voiceNote" class="fine voice-note"></p>
     <label class="row">
       <span>Brīdināt, ja pārsniedz ātrumu</span>
       <input type="checkbox" id="warnSwitch" class="switch" checked>
@@ -187,17 +193,18 @@
   </section>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script src="cache.js?v=36"></script>
-  <script src="signs.js?v=36"></script>
-  <script src="mapillary.js?v=36"></script>
-  <script src="roads-gl.js?v=36"></script>
-  <script src="basemap-gl.js?v=36"></script>
-  <script src="signs-gl.js?v=36"></script>
-  <script src="nav.js?v=36"></script>
-  <script src="times.js?v=36"></script>
-  <script src="alerts.js?v=36"></script>
-  <script src="places.js?v=36"></script>
-  <script src="model.js?v=36"></script>
-  <script src="app-gl.js?v=36"></script>
+  <script src="cache.js?v=37"></script>
+  <script src="signs.js?v=37"></script>
+  <script src="mapillary.js?v=37"></script>
+  <script src="roads-gl.js?v=37"></script>
+  <script src="basemap-gl.js?v=37"></script>
+  <script src="signs-gl.js?v=37"></script>
+  <script src="nav.js?v=37"></script>
+  <script src="times.js?v=37"></script>
+  <script src="alerts.js?v=37"></script>
+  <script src="places.js?v=37"></script>
+  <script src="voice.js?v=37"></script>
+  <script src="model.js?v=37"></script>
+  <script src="app-gl.js?v=37"></script>
 </body>
 </html>
