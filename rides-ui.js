@@ -151,7 +151,6 @@ function ridesNotify(first) {
   let msg = null;
   if (fresh.some(s => s.startsWith('t:') && s.endsWith(':arrived'))) {
     msg = 'Šoferis ir klāt!';
-    try { voice.say('Šoferis ir klāt', true); } catch { /* */ }
   }
   else if (fresh.some(s => s.startsWith('t:') && s.endsWith(':coming'))) msg = 'Šoferis dodas pie tevis — redzi viņu kartē.';
   else if (fresh.some(s => s.startsWith('t:') && s.endsWith(':onboard'))) msg = 'Brauciens sācies — maršruts redzams kartē.';

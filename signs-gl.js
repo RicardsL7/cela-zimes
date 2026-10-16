@@ -515,16 +515,18 @@ class SignStore {
     if (this.loading.has(id) || this.map.hasImage(id)) return;
     this.loading.add(id);
     const url = this.iconUrl.get(id) || svgDataUrl({ kind: 'other' });
+    // Brīdinājumu ikonas — 4× izšķirtspējā (asas arī telefonu ekrānos ar augstu blīvumu).
+    const hi = /^alert:/.test(id), PX = hi ? SIGN_IMG_PX * 2 : SIGN_IMG_PX;
     const done = (img) => {
       this.loading.delete(id);
       if (this.map.hasImage(id)) return;
-      const c = document.createElement('canvas'); c.width = c.height = SIGN_IMG_PX;
+      const c = document.createElement('canvas'); c.width = c.height = PX;
       const g = c.getContext('2d');
-      const w = img.naturalWidth || SIGN_IMG_PX, h = img.naturalHeight || SIGN_IMG_PX;
-      const k = Math.min(SIGN_IMG_PX / w, SIGN_IMG_PX / h);
+      const w = img.naturalWidth || PX, h = img.naturalHeight || PX;
+      const k = Math.min(PX / w, PX / h);
       try {
-        g.drawImage(img, (SIGN_IMG_PX - w * k) / 2, (SIGN_IMG_PX - h * k) / 2, w * k, h * k);
-        this.map.addImage(id, g.getImageData(0, 0, SIGN_IMG_PX, SIGN_IMG_PX), { pixelRatio: 2 });
+        g.drawImage(img, (PX - w * k) / 2, (PX - h * k) / 2, w * k, h * k);
+        this.map.addImage(id, g.getImageData(0, 0, PX, PX), { pixelRatio: hi ? 4 : 2 });
       } catch { return fallback(); }
       this.refresh();
     };

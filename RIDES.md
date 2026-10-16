@@ -28,7 +28,7 @@ Naudu aplikācija neapstrādā. Izmaksas var sadalīt savā starpā (pārvadāju
 * **Šofera soļi**: "Braukt pakaļ" (sāk navigāciju līdz pasažierim un dalās ar savu atrašanās vietu) →
   "Esmu klāt" → "Pasažieris iekāpa" (navigācija uz pasažiera galamērķi) → "Brauciens pabeigts".
 * **Pasažieris** redz statusu ("Šoferis brauc pie tevis · 1,2 km · ~4 min", "Šoferis ir klāt!" — telefons
-  novibrē un balss to pasaka) un kartē zaļu auto. Redzams arī maršruts: kamēr šoferis brauc pakaļ — līdz
+  novibrē) un kartē zaļu auto. Redzams arī maršruts: kamēr šoferis brauc pakaļ — līdz
   pasažierim, pēc tam — līdz galamērķim, ar ierašanās laiku.
 * **Šoferis** kartē redz, kur pasažieris gaida (ja pasažieris dalās ar atrašanās vietu).
 * Atrašanās vietas tiek sūtītas tikai pieņemtam braucienam: šoferim ik ~5 s pēc "Braukt pakaļ",

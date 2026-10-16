@@ -1181,100 +1181,32 @@ async function previewRoute() {
   }
 }
 
-// ---------- Balss norādes un ekrāns ----------
-const voice = new Voice();
-voice.enabled = store.get('voiceOn', true);
-// Dabiskā balss (neironu tīkls telefonā): Rūdolfs / Aivars; "system" — telefona iebūvētā balss.
-const neuralVoice = typeof NeuralVoice !== 'undefined' ? new NeuralVoice() : null;
-// Ierakstītā Google balss (ja lapā ir voice/lv/manifest.json) — pēc noklusējuma, kad pieejama.
-const recordedVoice = typeof RecordedVoice !== 'undefined' ? new RecordedVoice() : null;
-if (recordedVoice) recordedVoice.onFail = parts => voice._fallback(parts.join(' '), parts, false);
-let voiceKind = store.get('voiceKind', null) || 'rudolfs';
-const voiceKindChosen = !!store.get('voiceKind', null);
-async function loadRecordedVoice() {
-  if (!recordedVoice || !(await recordedVoice.load())) {
-    if (voiceKind === 'google') {          // ieraksti vairs nav pieejami → dabiskā balss
-      voiceKind = 'rudolfs'; if ($('voiceKind')) $('voiceKind').value = voiceKind;
-      voice.recorded = null; loadNeuralVoice(false);
-    }
-    return false;
+// ---------- Ekrāns neizslēdzas navigācijas laikā (Screen Wake Lock) ----------
+class ScreenAwake {
+  constructor() { this.lock = null; this.want = false; this.ok = typeof navigator !== 'undefined' && 'wakeLock' in navigator; }
+  async on() {
+    this.want = true;
+    if (!this.ok || this.lock) return;
+    try {
+      this.lock = await navigator.wakeLock.request('screen');
+      this.lock.addEventListener('release', () => { this.lock = null; });
+    } catch { this.lock = null; }
   }
-  const sel = $('voiceKind');
-  if (sel && !sel.querySelector('option[value="google"]')) {
-    const o = document.createElement('option');
-    o.value = 'google'; o.textContent = `${recordedVoice.label} (ieraksti)`;
-    sel.insertBefore(o, sel.firstChild);
+  async off() {
+    this.want = false;
+    if (this.lock) { try { await this.lock.release(); } catch { /* */ } this.lock = null; }
   }
-  // Pirmo reizi, kad ieraksti parādās, pārslēdz uz tiem (vēlāk lietotāja izvēle tiek ievērota).
-  if (!voiceKindChosen || !store.get('voiceGoogleOffered', false)) { voiceKind = 'google'; store.set('voiceKind', voiceKind); }
-  store.set('voiceGoogleOffered', true);
-  if (sel) sel.value = voiceKind;
-  applyVoiceKind();
-  recordedVoice.warm();          // saglabā telefonā fonā (~2–3 MB), lai strādā bez interneta
-  return true;
-}
-// Izvēlētā balss → kura balss runā pirmā (pārējās paliek rezervē).
-function applyVoiceKind() {
-  voice.recorded = voiceKind === 'google' && recordedVoice && recordedVoice.ready ? recordedVoice : null;
-  if (voice.recorded) voiceNote(`Balss "${recordedVoice.label}" ir gatava (ieraksti saglabāti telefonā, darbojas arī bez interneta).`);
-}
-function voiceNote(text) { const el = $('voiceNote'); if (el) el.textContent = text; }
-// Ielādē dabisko balsi. download=false — tikai, ja jau ir telefonā (nekad nelejupielādē klusi).
-async function loadNeuralVoice(download) {
-  if (!neuralVoice || !NEURAL_VOICES[voiceKind]) { voice.neural = null; return; }
-  const kind = voiceKind;
-  if (!download && !(await neuralVoice.isDownloaded(kind))) {
-    voiceNote('Dabiskā balss vēl nav telefonā (~63 MB, vienreiz). Tā lejupielādēsies, nospiežot "Pārbaudīt" vai sākot navigāciju — ieteicams Wi-Fi.');
-    return;
-  }
-  try {
-    await neuralVoice.load(kind, p => voiceNote(`Lejupielādē balsi "${NEURAL_VOICES[kind].label}"… ${Math.round(p * 100)}%`));
-    if (kind !== voiceKind) return;
-    voice.neural = neuralVoice;
-    voiceNote(`Dabiskā balss "${NEURAL_VOICES[kind].label}" ir gatava (darbojas arī bez interneta).`);
-    setTimeout(() => neuralVoice.prefetch(['Esi ieradies galamērķī', 'Maršruts pārrēķināts', 'galamērķis', ...voiceDistancePhrases(),
-      'pagriezies pa labi', 'pagriezies pa kreisi', 'nogriezies pa labi', 'nogriezies pa kreisi']), 3000);
-  } catch (err) {
-    console.warn('Dabiskā balss nav ielādēta', err);
-    voice.neural = null;
-    voiceNote('Neizdevās ielādēt dabisko balsi — runās telefona balss.');
-  }
+  // Pēc atgriešanās lietotnē pārlūks atbrīvo bloķējumu — to atjauno.
+  resume() { if (this.want && !this.lock && document.visibilityState === 'visible') this.on(); }
 }
 const screenAwake = new ScreenAwake();
-let voiceSaid = new Set();
 document.addEventListener('visibilitychange', () => screenAwake.resume());
-function voiceSay(item, urgent) { if (item) voice.say(item.text, urgent, item.parts); }
-let voicePrefetched = -1;
-// Par katru manevru — viens īss teikums īsi pirms tā (bez ielas nosaukuma, bez atkārtojumiem).
-function voiceNav(p) {
-  const route = state.nav.route;
-  const id = route.steps.indexOf(p.next);
-  const v = state.me ? state.me.speedKmh : 0;
-  const after = route.steps[id + 1] || null;
-  const gapAfter = after ? route.cum[after._start] - route.cum[p.next._start] : Infinity;
-  // Dabiskā balss: nākamā manevra teikumu sagatavo jau tagad, lai pēc tam runātu bez aizkaves
-  if (voicePrefetched !== id) {
-    voicePrefetched = id;
-    if (voiceWorthy(p.next)) {
-      const w = [voiceManeuverShort(p.next)];
-      if (after && voiceWorthy(after) && gapAfter < 120) w.push(voiceThen(after));
-      voice.prefetch([...w, upperFirst(w[0]), voiceDistance(voiceThresholds(v).near)]);
-    }
-  }
-  const item = voiceForManeuver(id, p.next, p.toNext, v, voiceSaid, after, gapAfter);
-  if (item) voiceSay(item, false);
-}
-function voiceAlert(key, label, d) {
-  if (!state.me || ((state.me.speedKmh ?? 0) < 8 && !state.nav.active)) return;
-  voiceSay(voiceForAlert(key, label, d, state.me.speedKmh, voiceSaid), false);
-}
+// Balss funkcija noņemta: izdzēš telefonā agrāk saglabātos balss failus (līdz ~65 MB).
+try { if (window.caches) for (const c of ['cz-voice-v1', 'cz-voice-rec-v1']) caches.delete(c).catch(() => {}); } catch { /* */ }
 
 function startNav() {
   if (!state.nav.route) return;
-  voice.unlock();                    // telefoni atļauj runāt tikai pēc pieskāriena
   screenAwake.on();                  // ekrāns neizslēdzas, kamēr navigē
-  if (voice.enabled && !voice.neural && !voice.recorded && NEURAL_VOICES[voiceKind]) loadNeuralVoice(true);   // pirmajā reizē lejupielādē
-  voiceSaid = new Set(); voicePrefetched = -1;
   state.nav.active = true;
   state.nav.offCount = 0;
   document.documentElement.classList.add('navigating');
@@ -1295,7 +1227,6 @@ function startNav() {
 
 function endNav() {
   screenAwake.off();
-  voice.stop();
   stopSimulation();
   resetNavProgress();
   routePrepId++;
@@ -1326,7 +1257,6 @@ function updateNav() {
     $('navIcon').innerHTML = maneuverIcon({ maneuver: { type: 'arrive' } });
     $('navDist').textContent = 'Esi klāt!';
     $('navInstr').textContent = state.nav.dest ? state.nav.dest.name : 'Galamērķis sasniegts';
-    if (!voiceSaid.has('arrived')) { voiceSaid.add('arrived'); voice.say('Esi ieradies galamērķī', false, ['Esi ieradies galamērķī']); }
     stopSimulation();
     clearTimeout(updateNav._end);
     updateNav._end = setTimeout(endNav, 6000);
@@ -1337,7 +1267,6 @@ function updateNav() {
   $('navInstr').textContent = maneuverText(p.next);
   $('etaTime').textContent = clockIn(p.timeLeft);
   $('etaMeta').textContent = `${navTime(p.timeLeft)} · ${navDist(p.remaining)}`;
-  if (state.gpsQuality !== 'poor' && p.loc.off < 50) voiceNav(p);
   const goodFix = state.gpsQuality !== 'poor';    // vājš GPS — progresu un nobraukšanu nevērtē
   if (goodFix && p.loc.off < 50) {
     state.nav.along = p.loc.along;
@@ -1377,7 +1306,6 @@ function updateNextSign() {
     if (a && (!next || a.dist < d)) {
       next = null; d = a.dist;
       setNextCard(alertDataUrl(a.it.type), d, ALERT_TYPES[a.it.type].label + (a.it.source === 'user' ? ' (tavs ziņojums)' : ''));
-      voiceAlert(a.it.id, ALERT_TYPES[a.it.type].label, d);
       return;
     }
   }
@@ -1385,7 +1313,6 @@ function updateNextSign() {
   if (alertsMode) {
     const t = alertTypeForSign(next.s);
     const ti = signTimeInfo(next.s);
-    if (t !== 'traffic-light' && next.status !== 'probable' && !(ti && ti.off)) voiceAlert(next.s.uid, ALERT_TYPES[t].label, d);
     setNextCard(alertDataUrl(t), d, (t === 'restriction' ? describeRestriction(next.s.title, next.s.restriction) : ALERT_TYPES[t].label) +
       (next.status === 'probable' ? (next.reason === 'after-junction' ? ' (ja brauksi taisni)' : ' (virziens nav apstiprināts)') : '') +
       (ti && ti.off ? ' (tagad nav spēkā)' : ''));
@@ -1427,8 +1354,6 @@ async function reroute() {
     state.nav.route = route;
     state.nav.along = null;
     resetNavProgress();              // jauns maršruts sākas no manis — līnija no jauna
-    voiceSaid = new Set([...voiceSaid].filter(k => k.startsWith('alert:')));   // manevri no jauna, brīdinājumi ne
-    voice.say('Maršruts pārrēķināts', true, ['Maršruts pārrēķināts']); voicePrefetched = -1;   // urgent: vecās norādes vairs neder
     drawRoute(route);
     signs.setRoute(route);
     prepareRoute(route);
@@ -1706,34 +1631,6 @@ function wireUi() {
   $('masterSwitch').addEventListener('change', e => {
     state.signsOn = e.target.checked; store.set('signsOn', state.signsOn); applySignVisibility();
   });
-  // Balss norādes
-  $('voiceSwitch').checked = voice.enabled;
-  $('voiceSwitch').addEventListener('change', e => {
-    voice.enabled = e.target.checked; store.set('voiceOn', voice.enabled);
-    if (!voice.enabled) voice.stop();
-  });
-  const sample = ['Pēc simt piecdesmit metriem', 'pagriezies pa kreisi'];
-  $('voiceKind').value = voiceKind;
-  $('voiceKind').addEventListener('change', e => {
-    voiceKind = e.target.value; store.set('voiceKind', voiceKind);
-    voice.stop(); voice.neural = null;
-    applyVoiceKind();
-    if (voiceKind === 'google') return;
-    if (NEURAL_VOICES[voiceKind]) loadNeuralVoice(false);
-    else voiceNote(!voice.ok ? 'Šis pārlūks nemāk runāt.' : voice.hasLatvian ? 'Runās telefona latviešu balss.' : 'Telefonā nav latviešu balss — runās cita balss ar akcentu.');
-  });
-  $('voiceTest').addEventListener('click', async () => {
-    voice.unlock();
-    const was = voice.enabled; voice.enabled = true;
-    if (voiceKind === 'google' && !voice.recorded) await loadRecordedVoice();
-    if (NEURAL_VOICES[voiceKind] && !voice.neural) {
-      await loadNeuralVoice(true);
-    }
-    voice.say(sample.join(' '), true, sample);
-    voice.enabled = was;
-  });
-  if (NEURAL_VOICES[voiceKind]) loadNeuralVoice(false);
-  loadRecordedVoice();
   $('warnSwitch').checked = state.warn;
   $('warnSwitch').addEventListener('change', e => { state.warn = e.target.checked; store.set('warn', state.warn); updateLimit(); });
   $('testSwitch').addEventListener('change', e => {
