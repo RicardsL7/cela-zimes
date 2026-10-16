@@ -1417,7 +1417,7 @@ function installAlertLayer() {
     minzoom: 9,                        // ļoti attālinātā kartē brīdinājumus nerāda (tikai bremzētu)
     layout: {
       'icon-image': ['get', 'icon'],
-      'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.55, 16, 0.85, 18.5, 1.1],
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.6, 16, 1, 18.5, 1.25],
       'icon-allow-overlap': true,
       'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
       'symbol-sort-key': ['get', 'prio'],
