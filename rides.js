@@ -207,8 +207,12 @@ class SupabaseRideStore {
     this.url = cfg.url.replace(/\/$/, ''); this.key = cfg.anonKey; this.storage = storage;
     this.demo = false; this.session = null; this.id = null;
   }
+  // Jaunās "publishable" atslēgas nav JWT — Authorization galveni sūta tikai ar lietotāja sesiju.
   _h(extra = {}) {
-    return { apikey: this.key, Authorization: 'Bearer ' + (this.session ? this.session.access_token : this.key), 'content-type': 'application/json', ...extra };
+    const h = { apikey: this.key, 'content-type': 'application/json', ...extra };
+    if (this.session && !('Authorization' in extra)) h.Authorization = 'Bearer ' + this.session.access_token;
+    if (h.Authorization === undefined) delete h.Authorization;
+    return h;
   }
   _keep(s) {
     this.session = { access_token: s.access_token, refresh_token: s.refresh_token, expires_at: Date.now() + (s.expires_in || 3600) * 1000, user_id: s.user.id };
@@ -223,19 +227,20 @@ class SupabaseRideStore {
   async _ensure() {
     if (this.session && this.session.expires_at - Date.now() > 60000) return;
     if (this.session && this.session.refresh_token) {
-      const r = await fetch(this.url + '/auth/v1/token?grant_type=refresh_token', { method: 'POST', headers: this._h({ Authorization: 'Bearer ' + this.key }), body: JSON.stringify({ refresh_token: this.session.refresh_token }) });
+      const r = await fetch(this.url + '/auth/v1/token?grant_type=refresh_token', { method: 'POST', headers: this._h({ Authorization: undefined }), body: JSON.stringify({ refresh_token: this.session.refresh_token }) });
       if (r.ok) return this._keep(await r.json());
     }
     // Anonīms konts (bez e-pasta/paroles) — Supabase iestatījumos jāieslēdz "Anonymous sign-ins".
-    const r = await fetch(this.url + '/auth/v1/signup', { method: 'POST', headers: this._h({ Authorization: 'Bearer ' + this.key }), body: JSON.stringify({ data: {} }) });
+    const r = await fetch(this.url + '/auth/v1/signup', { method: 'POST', headers: this._h({ Authorization: undefined }), body: JSON.stringify({ data: {} }) });
     if (!r.ok) throw new Error('Pieteikšanās neizdevās (' + r.status + ')');
     this._keep(await r.json());
   }
   async _rest(path, opts = {}) {
     await this._ensure();
     const r = await fetch(this.url + '/rest/v1/' + path, { ...opts, headers: this._h(opts.headers || {}) });
-    if (!r.ok) throw new Error('Datubāze: ' + r.status + ' ' + (await r.text()).slice(0, 200));
-    return r.status === 204 ? null : r.json();
+    const txt = await r.text();
+    if (!r.ok) throw new Error('Datubāze: ' + r.status + ' ' + txt.slice(0, 200));
+    return txt ? JSON.parse(txt) : null;
   }
   async profile() {
     const [p] = await this._rest(`profiles?id=eq.${this.id}&select=id,name,car`);
