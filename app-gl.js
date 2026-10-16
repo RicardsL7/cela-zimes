@@ -1094,7 +1094,7 @@ function navShow(target, dur) {
     const p = routePointAt(route, a);
     if (meMarker) meMarker.setLngLat([p.lng, p.lat]); else createMeMarker(p.lng, p.lat);
     const now = performance.now();
-    if (force || now - lastRouteDraw > 80) { lastRouteDraw = now; drawRoute(route, a); }   // ~12 reizes sekundē
+    if (force || now - lastRouteDraw > 200) { lastRouteDraw = now; drawRoute(route, a); }   // ~5 reizes sekundē (vieglāk telefonam)
   };
   if (!dur || Math.abs(target - from) > 400) return place(target, true);
   const t0 = performance.now();
@@ -1232,8 +1232,8 @@ async function loadNeuralVoice(download) {
     if (kind !== voiceKind) return;
     voice.neural = neuralVoice;
     voiceNote(`Dabiskā balss "${NEURAL_VOICES[kind].label}" ir gatava (darbojas arī bez interneta).`);
-    neuralVoice.prefetch(['Esi ieradies galamērķī', 'Maršruts pārrēķināts', 'galamērķis', ...voiceDistancePhrases(),
-      'pagriezies pa labi', 'pagriezies pa kreisi', 'nogriezies pa labi', 'nogriezies pa kreisi']);
+    setTimeout(() => neuralVoice.prefetch(['Esi ieradies galamērķī', 'Maršruts pārrēķināts', 'galamērķis', ...voiceDistancePhrases(),
+      'pagriezies pa labi', 'pagriezies pa kreisi', 'nogriezies pa labi', 'nogriezies pa kreisi']), 3000);
   } catch (err) {
     console.warn('Dabiskā balss nav ielādēta', err);
     voice.neural = null;

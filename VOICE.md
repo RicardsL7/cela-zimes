@@ -43,7 +43,22 @@ Izvēlējos Google Chirp 3 HD:
 **Konkrēto balsi (no 30) vēl neesmu izvēlējies.** Es tās nevaru noklausīties, tāpēc izvēle notiek ar
 paraugiem (skat. zemāk). Ierakstus neesmu ģenerējis, un to skanējumu neesmu pārbaudījis.
 
-## Iestatīšana (vienreiz, tavā datorā)
+## Izvēlētā balss: ElevenLabs "Ilze" (Eleven v4)
+
+Balsi izvēlējās lietotājs, noklausoties ElevenLabs: **Ilze – Calm, Warm, Unhurried**.
+Balss ID ir `4nP0MRk3S5Qj1fGfXf51`, modelis `eleven_v4` (atbalsta latviešu valodu `lv`).
+
+1. ElevenLabs → Settings → API Keys → izveido atslēgu. Pietiek ar tiesībām "Text to Speech".
+2. Projekta mapē palaid:
+   ```
+   set ELEVENLABS_API_KEY=tava-atslēga        (cmd)
+   node tools/gen-voice.mjs ilze
+   ```
+   Tas izveido `voice/lv/` (131 frāze, ≈ 3 300 rakstzīmes). Ja temps šķiet par ātru, palaid
+   `node tools/gen-voice.mjs ilze --rate 0.92`.
+3. Augšupielādē `voice/lv/`. Aplikācija pati pārslēgsies uz "Ilze (ieraksti)".
+
+## Iestatīšana ar Google (alternatīva)
 
 1. Uzinstalē **Node.js 18+** (nodejs.org).
 2. Atver Google Cloud Console un izveido projektu (vai izmanto esošu). Tad:

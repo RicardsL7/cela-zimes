@@ -12,6 +12,7 @@ const NV_ORT_WASM = 'https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.18
 const NV_PHONEMIZE = 'https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.4/dist/piper-o91UDS6e.js/+esm';
 const NV_PHON_WASM = 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize';
 const NV_CACHE = 'cz-voice-v1';
+const NV_WORKER_URL = 'neural-worker.js?v=44';
 
 class NeuralVoice {
   constructor() {
@@ -19,6 +20,7 @@ class NeuralVoice {
     this.ctx = null; this.clips = new Map();      // teksts → AudioBuffer (gatavie teikumi)
     this.pending = new Map();                    // teksts → Promise<AudioBuffer>
     this.queue = []; this.playing = null; this.loading = null; this.progress = 0;
+    this.worker = null; this.jobs = new Map(); this.jobId = 0;   // ģenerēšana fonā (Web Worker)
   }
   get ready() { return !!this.session; }
 
@@ -50,16 +52,47 @@ class NeuralVoice {
     this.id = id; this.session = null; this.clips.clear(); this.pending.clear();
     const v = NEURAL_VOICES[id];
     this.loading = (async () => {
+      this.cfg = JSON.parse(new TextDecoder().decode(await this._fetchCached(v.url + '.json')));
+      const model = await this._fetchCached(v.url, p => { this.progress = p; if (onProgress) onProgress(p); });
+      // Vispirms fonā (lapa neraustās). Ja pārlūks to neprot — vecais veids lapas pavedienā.
+      if (await this._startWorker(model, this.cfg)) { if (this.id === id) this.session = 'worker'; return; }
+      const local = await this._fetchCached(v.url);       // modelis nodots fonam — paņem vēlreiz no krātuves
       const [ort, ph] = await Promise.all([import(NV_ORT), import(NV_PHONEMIZE)]);
       ort.env.wasm.wasmPaths = NV_ORT_WASM;
       ort.env.wasm.numThreads = 1;
       this.ort = ort; this.createPhonemize = ph.createPiperPhonemize;
-      this.cfg = JSON.parse(new TextDecoder().decode(await this._fetchCached(v.url + '.json')));
-      const model = await this._fetchCached(v.url, p => { this.progress = p; if (onProgress) onProgress(p); });
-      const session = await ort.InferenceSession.create(model);
+      const session = await ort.InferenceSession.create(local);
       if (this.id === id) this.session = session;
     })().finally(() => { this.loading = null; });
     return this.loading;
+  }
+  _startWorker(model, cfg) {
+    if (this.worker) { this.worker.terminate(); this.worker = null; }
+    if (typeof Worker === 'undefined') return Promise.resolve(false);
+    let w;
+    try { w = new Worker(NV_WORKER_URL, { type: 'module' }); } catch { return Promise.resolve(false); }
+    return new Promise(resolve => {
+      const done = ok => { clearTimeout(timer); if (!ok) w.terminate(); else this.worker = w; resolve(ok); };
+      const timer = setTimeout(() => done(false), 90000);
+      w.onerror = () => done(false);
+      w.onmessage = e => {
+        const m = e.data;
+        if (m.type === 'ready') return done(true);
+        if (m.type === 'fail') { console.warn('Balss fonā nestrādā:', m.msg); return done(false); }
+        const job = this.jobs.get(m.id);
+        if (!job) return;
+        this.jobs.delete(m.id);
+        if (m.type === 'audio') job.ok(m); else job.bad(new Error(m.msg));
+      };
+      w.postMessage({ type: 'init', model, cfg }, [model]);
+    });
+  }
+  _workerSynth(text) {
+    return new Promise((ok, bad) => {
+      const id = ++this.jobId;
+      this.jobs.set(id, { ok, bad });
+      this.worker.postMessage({ type: 'synth', id, text });
+    });
   }
   // Pārlūks atļauj skaņu tikai pēc pieskāriena — izsauc pogas klikšķī.
   unlock() {
@@ -90,6 +123,15 @@ class NeuralVoice {
     if (this.pending.has(text)) return this.pending.get(text);
     const p = (async () => {
       if (!this.session) throw new Error('voice not ready');
+      if (this.worker) {
+        const r = await this._workerSynth(text);
+        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const wb = this.ctx.createBuffer(1, r.pcm.length, r.rate);
+        wb.copyToChannel(r.pcm, 0);
+        if (this.clips.size > 150) this.clips.delete(this.clips.keys().next().value);
+        this.clips.set(text, wb);
+        return wb;
+      }
       const ph = await this._phonemes(text);
       const map = this.cfg.phoneme_id_map, id = x => map[x][0];
       const ids = [id('^'), id('_')];
@@ -116,7 +158,13 @@ class NeuralVoice {
   // Iepriekš sagatavo teikumus (fonā), lai runājot nebūtu aizkaves.
   prefetch(texts) {
     if (!this.session) return;
-    (async () => { for (const t of texts) { try { await this.synth(t); } catch { return; } } })();
+    (async () => {
+      for (const t of texts) {
+        try { await this.synth(t); } catch { return; }
+        // Bez fona pavediena katrs teikums aptur lapu — tad starp tiem dod lapai elpot.
+        if (!this.worker) await new Promise(r => setTimeout(r, 400));
+      }
+    })();
   }
   // Runā daļas pēc kārtas (piem. "Pēc trīssimt metriem" + "pagriezies pa labi").
   async say(parts, urgent) {

@@ -295,6 +295,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   position: absolute; left: 50%; top: 50%; width: 92px; height: 92px; margin: -46px 0 0 -46px;
   border-radius: 50%; background: rgba(150, 160, 172, .26); border: 1.5px solid rgba(130, 140, 152, .42);
   animation: me-breathe 2.6s ease-in-out infinite;
+  will-change: transform, opacity;
 }
 @keyframes me-breathe {
   0%, 100% { transform: scale(.82); opacity: 1; }
