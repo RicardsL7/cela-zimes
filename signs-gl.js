@@ -76,6 +76,8 @@ class SignStore {
     this.roads = null;       // roadIndex vai null
     this.enabled = true;
     this.decorate = null;    // s → { time, off, unk, info } (laika ierobežojumi)
+    this.dotFor = null;      // s → punkta krāsa (brīdinājumu režīmā: atzīme ar asti + punkts attālinātā kartē)
+    this.iconScale = 1;      // "izlēciena" animācijai
     this.iconFor = null;     // s → attēla id (brīdinājumu režīmā — vienotas ikonas)
     this.titleFor = null;    // s → nosaukums
     this.iconUrl = new Map(); // attēla id -> adrese
@@ -482,10 +484,8 @@ class SignStore {
       minzoom: SIGNS_MIN_ZOOM,          // attālinātā kartē tūkstošiem zīmju tikai bremzē — tās nerāda
       layout: {
         'icon-image': ['get', 'icon'],
-        'icon-size': ['interpolate', ['linear'], ['zoom'],
-          13, relCase(0.62, 0.42, 0.55),
-          16, relCase(0.95, 0.6, 0.82),
-          18.5, relCase(1.3, 0.8, 1.1)],
+        'icon-size': signsIconSize(1),
+        'icon-anchor': ['case', ['has', 'pin'], 'bottom', 'center'],
         'symbol-sort-key': ['get', 'prio'],
         'icon-padding': 1,
         'icon-pitch-alignment': 'viewport',
@@ -501,13 +501,23 @@ class SignStore {
       },
       paint: {
         // Ja aizliegums tagad nav spēkā — zīme blāva.
-        'icon-opacity': ['case', ['boolean', ['get', 'off'], false], 0.45, relCase(1, 0.4, 1)],
+        // Atzīmes parādās tikai no ALERT_POP_ZOOM (zemāk — punkti), pārējās zīmes kā līdz šim.
+        'icon-opacity': ['interpolate', ['linear'], ['zoom'],
+          ALERT_POP_ZOOM - 0.35, ['case', ['has', 'pin'], 0, ['boolean', ['get', 'off'], false], 0.45, relCase(1, 0.4, 1)],
+          ALERT_POP_ZOOM, ['case', ['boolean', ['get', 'off'], false], 0.45, relCase(1, 0.4, 1)]],
+        'text-opacity': ['interpolate', ['linear'], ['zoom'], ALERT_POP_ZOOM - 0.35, ['case', ['has', 'pin'], 0, 1], ALERT_POP_ZOOM, 1],
         'text-color': ['case', ['any', ['boolean', ['get', 'off'], false], ['boolean', ['get', 'unk'], false]], '#5f6b7a', '#c62828'],
         'text-halo-color': '#ffffff',
         'text-halo-width': 2.2,
       },
     }, beforeId);
     this.refresh(true);
+  }
+
+  // Atzīmju "izlēciena" animācija: maina ikonu izmēru (k = 0…1,1…1).
+  setIconScale(k) {
+    this.iconScale = k;
+    if (this.map.getLayer('signs')) this.map.setLayoutProperty('signs', 'icon-size', signsIconSize(k));
   }
 
   // Karte prasa attēlu, kura vēl nav: ielādē to un uzzīmē 64×64.
@@ -565,6 +575,18 @@ class SignStore {
     if (!this.enabled) { src.setData({ type: 'FeatureCollection', features: [] }); return; }
     // Attālinātā kartē zīmes nerāda un nerēķina (tas bija galvenais bremzētājs, attālinot karti).
     if (map.getZoom() < SIGNS_MIN_ZOOM) {
+      // Brīdinājumu režīmā — tikai krāsaini punkti (bez piesaistes ceļam: ātri, arī ja to ir tūkstošiem).
+      if (this.dotFor && map.getZoom() >= SIGN_DOTS_MIN_ZOOM) {
+        const b = map.getBounds(), feats = [];
+        this.eachInBox(b.getSouth(), b.getWest(), b.getNorth(), b.getEast(), s => {
+          if (feats.length >= 4000 || !this.filter(s)) return;
+          const col = this.dotFor(s);
+          if (col) feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [s.lng, s.lat] }, properties: { col } });
+        });
+        src.setData({ type: 'FeatureCollection', features: feats });
+        this._emptyShown = false;
+        return;
+      }
       if (!this._emptyShown) { src.setData({ type: 'FeatureCollection', features: [] }); this._emptyShown = true; }
       return;
     }
@@ -619,13 +641,23 @@ class SignStore {
           s.mid ? { mid: s.mid } : null,
           s._m && s._m.quality === 'uncertain' ? { unsure: s._m.reason || 'piesaiste nav droša' } : null,
           s.conflict ? { conflict: true } : null,
-          this.decorate ? this.decorate(s) : null),
+          this.decorate ? this.decorate(s) : null,
+          this.dotFor ? { col: this.dotFor(s), pin: 1 } : null),
       })),
     });
   }
 }
 
 const SIGNS_MIN_ZOOM = 12;
+const SIGN_DOTS_MIN_ZOOM = 9;   // no šī tuvinājuma brīdinājumi redzami kā punkti
+const ALERT_POP_ZOOM = 13;      // no šī tuvinājuma punkti "izlec" par ikonām
+function signsIconSize(k) {
+  const relCase = (mine, other, unknown) => ['match', ['get', 'rel'], 'mine', mine * k, 'other', other * k, unknown * k];
+  return ['interpolate', ['linear'], ['zoom'],
+    13, relCase(0.62, 0.42, 0.55),
+    16, relCase(0.95, 0.6, 0.82),
+    18.5, relCase(1.3, 0.8, 1.1)];
+}
 
 // Pārvērš mūsu SVG ikonu par attēla adresi (vienreiz katram veidam).
 const svgUrlCache = new Map();

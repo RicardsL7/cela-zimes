@@ -1409,21 +1409,69 @@ function readOsmAlert(el) {
   refreshAlertsSoon();
 }
 
+function alertIconSize(k) { return ['interpolate', ['linear'], ['zoom'], 12, 0.6 * k, 16, 1 * k, 18.5, 1.25 * k]; }
 function installAlertLayer() {
   if (map.getSource('alerts')) return;
   map.addSource('alerts', { type: 'geojson', data: EMPTY_FC });
+  // Attālinātā kartē (9…13) — spīdīgi krāsaini punkti; tuvinot tie "izlec" par atzīmēm.
+  installAlertDots('alerts');
+  installAlertDots('signs');
   map.addLayer({
     id: 'alerts', type: 'symbol', source: 'alerts',
-    minzoom: 9,                        // ļoti attālinātā kartē brīdinājumus nerāda (tikai bremzētu)
+    minzoom: ALERT_POP_ZOOM - 0.35,
     layout: {
       'icon-image': ['get', 'icon'],
-      'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.6, 16, 1, 18.5, 1.25],
+      'icon-size': alertIconSize(1),
+      'icon-anchor': 'bottom',
       'icon-allow-overlap': true,
       'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
       'symbol-sort-key': ['get', 'prio'],
     },
+    paint: { 'icon-opacity': ['interpolate', ['linear'], ['zoom'], ALERT_POP_ZOOM - 0.35, 0, ALERT_POP_ZOOM, 1] },
   });
   refreshAlerts();
+}
+function installAlertDots(source) {
+  if (!map.getSource(source) || map.getLayer(source + '-dots')) return;
+  const fade = (v) => ['interpolate', ['linear'], ['zoom'], ALERT_POP_ZOOM - 0.35, v, ALERT_POP_ZOOM, 0];
+  const r = (a, b) => ['interpolate', ['linear'], ['zoom'], SIGN_DOTS_MIN_ZOOM, a, ALERT_POP_ZOOM, b];
+  const base = { source, minzoom: SIGN_DOTS_MIN_ZOOM, maxzoom: ALERT_POP_ZOOM + 0.1, filter: ['has', 'col'] };
+  const before = map.getLayer('signs') ? 'signs' : undefined;
+  map.addLayer(Object.assign({ id: source + '-dots-glow', type: 'circle', paint: {
+    'circle-color': ['get', 'col'], 'circle-radius': r(7, 13), 'circle-blur': 1, 'circle-opacity': fade(0.55),
+    'circle-pitch-alignment': 'map' } }, base), before);
+  map.addLayer(Object.assign({ id: source + '-dots', type: 'circle', paint: {
+    'circle-color': ['get', 'col'], 'circle-radius': r(3.2, 5.6),
+    'circle-stroke-color': '#ffffff', 'circle-stroke-width': r(1.2, 1.8),
+    'circle-opacity': fade(1), 'circle-stroke-opacity': fade(1) } }, base), before);
+  // Mazs spīdums (atspīdums augšā pa kreisi) — punkti izskatās kā stikla pērlītes
+  map.addLayer(Object.assign({ id: source + '-dots-shine', type: 'circle', paint: {
+    'circle-color': '#ffffff', 'circle-radius': r(1, 1.8), 'circle-translate': [-1, -1.2],
+    'circle-opacity': fade(0.75) } }, base), before);
+}
+// Kad tuvinot pārsniedz ALERT_POP_ZOOM, atzīmes "izlec" (palielinās ar nelielu atsitienu).
+let alertPopZ = null, alertPopRaf = 0;
+function watchAlertPop() {
+  map.on('zoom', () => {
+    const z = map.getZoom();
+    if (alertPopZ != null && alertPopZ < ALERT_POP_ZOOM - 0.2 && z >= ALERT_POP_ZOOM - 0.2 && state.mapMode === 'alerts' && state.signsOn) popAlerts();
+    alertPopZ = z;
+  });
+}
+function popAlerts() {
+  cancelAnimationFrame(alertPopRaf);
+  const t0 = performance.now(), D = 480;
+  const back = t => { const c = 1.9, u = t - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
+  const apply = k => {
+    if (map.getLayer('alerts')) map.setLayoutProperty('alerts', 'icon-size', alertIconSize(k));
+    signs.setIconScale(k);
+  };
+  const step = now => {
+    const t = Math.min(1, (now - t0) / D);
+    apply(0.15 + 0.85 * back(t));
+    if (t < 1) alertPopRaf = requestAnimationFrame(step); else apply(1);
+  };
+  alertPopRaf = requestAnimationFrame(step);
 }
 let alertsTimer = null;
 function refreshAlertsSoon() { clearTimeout(alertsTimer); alertsTimer = setTimeout(refreshAlerts, 200); }
@@ -1434,7 +1482,7 @@ function refreshAlerts() {
   const list = show ? alerts.list() : [];
   src.setData({ type: 'FeatureCollection', features: list.map(it => ({
     type: 'Feature', geometry: { type: 'Point', coordinates: [it.lng, it.lat] },
-    properties: { id: it.id, icon: 'alert:' + it.type, prio: it.source === 'user' ? 0 : 5 },
+    properties: { id: it.id, icon: 'alert:' + it.type, col: alertDotColor(it.type), prio: it.source === 'user' ? 0 : 5 },
   })) });
 }
 
@@ -1575,10 +1623,12 @@ function applySignVisibility() {
     signs.setFilter(s => !!alertTypeForSign(s) && signFitsProfile(s, state.profile));
     signs.iconFor = s => 'alert:' + (alertTypeForSign(s) || 'hazard');
     signs.titleFor = s => { const t = alertTypeForSign(s); return t ? ALERT_TYPES[t].label : s.title; };
+    signs.dotFor = s => alertDotColor(alertTypeForSign(s) || 'hazard');
   } else {
     signs.setFilter(s => state.cats[s.cat] && signFitsProfile(s, state.profile));
     signs.iconFor = null;
     signs.titleFor = null;
+    signs.dotFor = null;
   }
   signs.refresh();
   refreshAlerts();
@@ -1955,6 +2005,7 @@ async function init() {
   alerts = new AlertStore({ load: () => store.get('reports', []), save: list => store.set('reports', list) });
   setInterval(() => { if (alerts.prune()) refreshAlerts(); }, 30000);   // novecojušos ziņojumus noņem
   setInterval(() => { signs.refresh(); updateLimit(); }, 60000); // laika ierobežojumi mainās
+  watchAlertPop();
 
   map.on('style.load', () => {
     installRouteLayers();

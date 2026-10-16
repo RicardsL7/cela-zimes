@@ -216,27 +216,53 @@ function alertMix(hex, to, k) {
   const c = [n >> 16, (n >> 8) & 255, n & 255].map(v => Math.round(v + (t - v) * k));
   return '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
 }
+// ---------- Ikona = burbulis ar asti (kā kartes atzīme), iekšā — priekšmets vai simbols ----------
+// bg — burbuļa krāsa; dark — gaišs burbulis, tāpēc simbols tiek zīmēts tumšs; obj — kuru priekšmetu likt iekšā.
+const ALERT_PIN_STYLE = {
+  'police': { bg: '#3b82f6' }, 'police-hidden': { bg: '#3b82f6' },
+  'camera-mobile': { bg: '#dfe8f3', obj: 'camera-mobile' }, 'camera-fixed': { bg: '#334155', obj: 'camera-fixed' },
+  'accident': { bg: '#ef4444' }, 'jam': { bg: '#e11d48' },
+  'roadworks': { bg: '#ffc61a', obj: 'roadworks' }, 'closure': { bg: '#ff8a3d', obj: 'obstacle' },
+  'lane-closed': { bg: '#ff8a3d' }, 'obstacle': { bg: '#ff8a3d', obj: 'obstacle' },
+  'object': { bg: '#ffc21a', dark: true }, 'pothole': { bg: '#ffc21a', dark: true }, 'stopped-vehicle': { bg: '#ffc21a', dark: true },
+  'signal-broken': { bg: '#ffc21a', dark: true }, 'hazard': { bg: '#ffc21a', dark: true },
+  'weather': { bg: '#0ea5e9' }, 'fog': { bg: '#64748b' }, 'flood': { bg: '#0284c7' }, 'ice': { bg: '#38bdf8' },
+  'rain': { bg: '#0ea5e9' }, 'snow': { bg: '#38bdf8' },
+  'rail': { bg: '#3b4351', obj: 'rail' }, 'traffic-light': { bg: '#e6ebf1', obj: 'traffic-light' },
+  'school': { bg: '#22c55e', obj: 'school' }, 'restriction': { bg: '#8b5cf6' },
+};
+// Punkta krāsa attālinātā kartē (spīdīgie punkti).
+function alertDotColor(type) {
+  const st = ALERT_PIN_STYLE[type];
+  const c = st ? st.bg : '#ffc21a';
+  return { '#e6ebf1': '#94a3b8', '#dfe8f3': '#60a5fa', '#334155': '#facc15', '#3b4351': '#ef4444' }[c] || c;
+}
+// Priekšmetiem burbulī — bez baltās kontūras, tikai maiga ēna.
+const ALERT_PIN_OBJ_DEFS = `<filter id="o" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur in="SourceAlpha" stdDeviation="1.2"/>` +
+  `<feOffset dy="1.4"/><feComponentTransfer><feFuncA type="linear" slope=".35"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+const ALERT_PIN_PATH = 'M32 2A25 25 0 0 1 41.2 50.25L32 61.5 22.8 50.25A25 25 0 0 1 32 2Z';
 function alertSvg(type, size = 64) {
-  if (ALERT_OBJECTS[type]) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 64 64"><defs>${ALERT_OBJ_DEFS}</defs><g transform="translate(4.5 4.5) scale(.86)">${ALERT_OBJECTS[type]}</g></svg>`;
+  const st = ALERT_PIN_STYLE[type] || ALERT_PIN_STYLE.hazard;
+  const bg = st.bg, hi = alertMix(bg, 'w', 0.3), lo = alertMix(bg, 'k', 0.14);
+  let inner;
+  if (st.obj && ALERT_OBJECTS[st.obj]) {
+    inner = `<g transform="translate(14.7 9.7) scale(.54)">${ALERT_OBJECTS[st.obj]}</g>`;
+  } else {
+    let g = (ALERT_GLYPHS[type] || ALERT_GLYPHS.hazard)(st.dark ? bg : alertMix(bg, 'k', 0.1));
+    if (st.dark) g = g.split(ALERT_W).join('#1f2937');
+    inner = `<g filter="url(#d)" transform="translate(17.6 12.6) scale(1.2)">${g}</g>`;
   }
-  const t = ALERT_TYPES[type] || ALERT_TYPES.hazard;
-  const color = ALERT_GROUP_COLORS[t.group] || '#475569';
-  const glyph = (ALERT_GLYPHS[type] || ALERT_GLYPHS.hazard)(color);
-  const hi = alertMix(color, 'w', 0.28), lo = alertMix(color, 'k', 0.22);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 64 64">` +
-    `<defs><linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset=".55" stop-color="${color}"/><stop offset="1" stop-color="${lo}"/></linearGradient>` +
-    `<linearGradient id="r" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#dfe3ea"/></linearGradient>` +
-    `<linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".42"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
-    `<filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2.2"/></filter>` +
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 64 64"><defs>${ALERT_PIN_OBJ_DEFS}` +
+    `<linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset=".6" stop-color="${bg}"/><stop offset="1" stop-color="${lo}"/></linearGradient>` +
+    `<linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".5"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
+    `<filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="1.6"/></filter>` +
     `<filter id="d" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur in="SourceAlpha" stdDeviation=".5"/><feOffset dy=".6"/>` +
-    `<feComponentTransfer><feFuncA type="linear" slope=".35"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>` +
-    `<ellipse cx="32" cy="35" rx="26" ry="25" fill="#000" opacity=".38" filter="url(#s)"/>` +
-    `<circle cx="32" cy="31" r="28" fill="url(#r)"/>` +
-    `<circle cx="32" cy="31" r="24.2" fill="url(#f)"/>` +
-    `<circle cx="32" cy="31" r="24.2" fill="none" stroke="${lo}" stroke-width=".8" opacity=".6"/>` +
-    `<path d="M10.4 27.5A22 22 0 0 1 53.6 27.5C47 23 39.8 21.8 32 21.8S17 23 10.4 27.5Z" fill="url(#g)"/>` +
-    `<g filter="url(#d)" transform="translate(16.4 15.4) scale(1.3)">${glyph}</g></svg>`;
+    `<feComponentTransfer><feFuncA type="linear" slope=".3"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>` +
+    `<path d="${ALERT_PIN_PATH}" fill="#000" opacity=".4" filter="url(#s)" transform="translate(0 1.4)"/>` +
+    `<path d="${ALERT_PIN_PATH}" fill="#fff"/>` +
+    `<circle cx="32" cy="27" r="21.8" fill="url(#f)"/>` +
+    `<path d="M13.4 22A19.5 19.5 0 0 1 50.6 22C45 18.6 39 17.4 32 17.4S19 18.6 13.4 22Z" fill="url(#g)"/>` +
+    inner + `</svg>`;
 }
 const alertUrlCache = new Map();
 function alertDataUrl(type) {
@@ -352,5 +378,5 @@ function alertInfo(it, now = Date.now()) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { ALERT_TYPES, REPORT_GROUPS, alertSvg, alertTypeForSign, signNeedsDirection, alertTypeForOsm, weatherAlerts, AlertStore, makeReport, alertInfo };
+  module.exports = { ALERT_TYPES, REPORT_GROUPS, alertSvg, alertDotColor, alertTypeForSign, signNeedsDirection, alertTypeForOsm, weatherAlerts, AlertStore, makeReport, alertInfo };
 }
