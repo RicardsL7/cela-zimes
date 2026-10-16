@@ -106,6 +106,49 @@ function rideTimeText(iso, now = Date.now()) {
 function rideDistText(m) { return m < 1000 ? `${Math.round(m / 50) * 50 || 50} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0).replace('.', ',')} km`; }
 const RIDE_OFFER_STATUS = { pending: 'Gaida atbildi', accepted: 'Pieņemts', declined: 'Noraidīts', cancelled: 'Atcelts' };
 
+// ---------- Brauciena gaita ----------
+// Posms: pending · matched (pieņemts) · coming (šoferis brauc pakaļ) · arrived (ir klāt) · onboard (ceļā) · done
+function rideStage(o) {
+  if (!o) return null;
+  if (o.status !== 'accepted') return o.status;
+  return o.trip || 'matched';
+}
+function rideFresh(at, now = Date.now(), maxMs = 120000) { const t = Date.parse(at); return Number.isFinite(t) && now - t < maxMs; }
+// Aptuvenais laiks minūtēs pa pilsētas ceļiem (taisnā līnija × 1,3; ~25 km/h).
+function rideEtaMinutes(m) { return Math.max(1, Math.round(m * 1.3 / 7 / 60)); }
+// Pasažierim: ko šoferis dara un cik tālu ir.
+function ridePassengerStatus(o, req, now = Date.now()) {
+  const st = rideStage(o);
+  if (st === 'matched') return 'Šoferis drīz dosies pie tevis.';
+  if (st === 'coming') {
+    if (o.drv_lat != null && rideFresh(o.drv_at, now) && req) {
+      const d = rideDist(o.drv_lat, o.drv_lng, req.from_lat, req.from_lng);
+      return d < 80 ? 'Šoferis ir gandrīz klāt.' : `Šoferis brauc pie tevis · ${rideDistText(d)} · ~${rideEtaMinutes(d)} min`;
+    }
+    return 'Šoferis brauc pie tevis.';
+  }
+  if (st === 'arrived') return 'Šoferis ir klāt! Dodies pie auto.';
+  if (st === 'onboard') return 'Ceļā uz galamērķi.';
+  if (st === 'done') return 'Brauciens pabeigts.';
+  return '';
+}
+// Šoferim: kur gaida pasažieris.
+function rideDriverStatus(o, me, now = Date.now()) {
+  const st = rideStage(o), r = o && o.request;
+  if (!r) return '';
+  const fresh = o.pas_lat != null && rideFresh(o.pas_at, now, 180000);
+  const where = fresh ? { lat: o.pas_lat, lng: o.pas_lng } : { lat: r.from_lat, lng: r.from_lng };
+  const d = me ? rideDist(me.lat, me.lng, where.lat, where.lng) : null;
+  if (st === 'matched') return 'Pasažieris gaida, kad dosies pakaļ.';
+  if (st === 'coming') return d == null ? 'Brauc pie pasažiera.' : `Līdz pasažierim ${rideDistText(d)} · ~${rideEtaMinutes(d)} min` + (fresh ? '' : ' (pēc adreses)');
+  if (st === 'arrived') return 'Esi klāt — pasažieris nāk.';
+  if (st === 'onboard') return 'Ceļā uz galamērķi: ' + (r.to_name || '');
+  return '';
+}
+// Nelasītās ziņas (no otra cilvēka, jaunākas par redzēto).
+function rideUnread(msgs, myId, seenId = 0) { return (msgs || []).filter(m => m.id > seenId && m.sender !== myId).length; }
+function rideMsgTime(iso) { const d = new Date(iso); return Number.isFinite(d.getTime()) ? String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') : ''; }
+
 function rideUuid() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); });
@@ -185,6 +228,28 @@ class LocalRideStore {
     const req = d.requests.find(r => r.id === o.request_id);
     if (o.status === 'accepted' && req && req.status === 'matched') req.status = 'open';
     o.status = 'cancelled'; this._save(d);
+  }
+  async messages(offerId, afterId = 0) {
+    const d = this._load();
+    return (d.messages || []).filter(m => m.offer_id === offerId && m.id > afterId);
+  }
+  async send(offerId, body) {
+    const d = this._load(); d.messages = d.messages || [];
+    d.messages.push({ id: (d.messages.at(-1) || { id: 0 }).id + 1, offer_id: offerId, sender: this.id, body, created_at: new Date().toISOString() });
+    this._save(d);
+  }
+  async driverUpdate(offerId, u) {
+    const d = this._load(); const o = d.offers.find(x => x.id === offerId && x.driver_id === this.id && x.status === 'accepted');
+    if (!o) return;
+    if (u.trip != null) o.trip = u.trip;
+    if (u.lat != null) { o.drv_lat = u.lat; o.drv_lng = u.lng; o.drv_heading = u.heading ?? null; o.drv_at = new Date().toISOString(); }
+    if (u.trip === 'done') { const r = d.requests.find(x => x.id === o.request_id); if (r) r.status = 'done'; }
+    this._save(d);
+  }
+  async passengerUpdate(offerId, lat, lng) {
+    const d = this._load(); const o = d.offers.find(x => x.id === offerId && x.status === 'accepted');
+    if (!o) return;
+    o.pas_lat = lat; o.pas_lng = lng; o.pas_at = new Date().toISOString(); this._save(d);
   }
   // Tikai demo: izdomāts pasažieris tuvumā, lai var izmēģināt šofera pusi.
   async addDemoPassenger(near, to) {
@@ -298,6 +363,20 @@ class SupabaseRideStore {
   }
 }
 
+// Čats un brauciena gaita (Supabase)
+SupabaseRideStore.prototype.messages = function (offerId, afterId = 0) {
+  return this._rest(`ride_messages?offer_id=eq.${offerId}&id=gt.${afterId}&order=id&limit=300&select=id,offer_id,sender,body,created_at`);
+};
+SupabaseRideStore.prototype.send = function (offerId, body) {
+  return this._rest('ride_messages', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ offer_id: offerId, sender: this.id, body }) });
+};
+SupabaseRideStore.prototype.driverUpdate = function (offerId, u) {
+  return this._rest('rpc/ride_driver_update', { method: 'POST', body: JSON.stringify({ oid: offerId, p_trip: u.trip ?? null, p_lat: u.lat ?? null, p_lng: u.lng ?? null, p_heading: u.heading ?? null }) });
+};
+SupabaseRideStore.prototype.passengerUpdate = function (offerId, lat, lng) {
+  return this._rest('rpc/ride_passenger_update', { method: 'POST', body: JSON.stringify({ oid: offerId, p_lat: lat, p_lng: lng }) });
+};
+
 function createRideStore(cfg) {
   if (cfg && cfg.url && cfg.anonKey) return new SupabaseRideStore(cfg);
   return new LocalRideStore();
@@ -305,5 +384,5 @@ function createRideStore(cfg) {
 
 if (typeof module !== 'undefined') {
   module.exports = { rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
-    rideTimeText, rideDistText, LocalRideStore, SupabaseRideStore, createRideStore, RIDE_OFFER_STATUS };
+    rideTimeText, rideDistText, rideStage, rideFresh, rideEtaMinutes, ridePassengerStatus, rideDriverStatus, rideUnread, rideMsgTime, LocalRideStore, SupabaseRideStore, createRideStore, RIDE_OFFER_STATUS };
 }

@@ -20,6 +20,23 @@ parādās sarkans punkts un telefons novibrē.
 
 Naudu aplikācija neapstrādā. Izmaksas var sadalīt savā starpā (pārvadājumiem par maksu vajag licenci).
 
+## Čats un brauciena gaita
+
+* **Čats**: pie katra piedāvājuma (gan gaidoša, gan pieņemta) ir poga "Čats" ar nelasīto ziņu skaitu. Ir
+  ātrās atbildes ("Esmu ceļā", "Esmu klāt" …). Ziņas redz tikai abi dalībnieki. Jaunas ziņas tiek
+  pārbaudītas ik 4–5 s.
+* **Šofera soļi**: "Braukt pakaļ" (sāk navigāciju līdz pasažierim un dalās ar savu atrašanās vietu) →
+  "Esmu klāt" → "Pasažieris iekāpa" (navigācija uz pasažiera galamērķi) → "Brauciens pabeigts".
+* **Pasažieris** redz statusu ("Šoferis brauc pie tevis · 1,2 km · ~4 min", "Šoferis ir klāt!" — telefons
+  novibrē un balss to pasaka) un kartē zaļu auto. Redzams arī maršruts: kamēr šoferis brauc pakaļ — līdz
+  pasažierim, pēc tam — līdz galamērķim, ar ierašanās laiku.
+* **Šoferis** kartē redz, kur pasažieris gaida (ja pasažieris dalās ar atrašanās vietu).
+* Atrašanās vietas tiek sūtītas tikai pieņemtam braucienam: šoferim ik ~5 s pēc "Braukt pakaļ",
+  pasažierim ik ~15 s, līdz viņš iekāpj.
+
+Datubāzes daļa: `supabase/rides-2-chat-trip.sql`. Brauciena gaitu var mainīt tikai šoferis, un tikai caur
+drošām funkcijām.
+
 ## Serveris (Supabase)
 
 Kamēr `rides-config.js` ir tukšs, viss darbojas **demo režīmā**: dati glabājas tikai šajā ierīcē, un
