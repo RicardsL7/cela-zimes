@@ -2037,6 +2037,7 @@ function wirePlaces() {
   $('placesBtn').addEventListener('click', openPlaces);
   $('placesBack').addEventListener('click', showPlaceCats);
   $('closePlaces').addEventListener('click', closePlaces);
+  if (typeof ridesInit === 'function') ridesInit();      // kopbraucieni (rides-ui.js)
 }
 
 // ---------- Starts ----------

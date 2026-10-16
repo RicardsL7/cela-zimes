@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=44">
+  <link rel="stylesheet" href="style-gl.css?v=45">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -67,6 +67,10 @@
 
   <!-- Pogas labajā pusē -->
   <nav class="fab-stack" aria-label="Kartes vadība">
+    <button id="ridesBtn" class="fab rides-fab" title="Braukt kopā — atrodi šoferi vai paņem pasažieri" aria-controls="ridesSheet">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="8.5" cy="7.5" r="3" fill="currentColor"/><circle cx="16" cy="8.5" r="2.5" fill="currentColor" opacity=".75"/><path d="M2.5 19c.5-3.8 2.9-6 6-6s5.5 2.2 6 6Z" fill="currentColor"/><path d="M15.2 12.6c2.8 0 5 1.9 5.6 5.4h-4.7c-.2-2-1-3.8-2.4-5.2.5-.1 1-.2 1.5-.2Z" fill="currentColor" opacity=".75"/></svg>
+      <span class="fab-label">Kopā</span>
+    </button>
     <button id="toggleSigns" class="fab" aria-pressed="true" title="Ieslēgt / izslēgt ceļa zīmes">
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5v6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16.6" r="1.3" fill="currentColor"/></svg>
       <span class="fab-label" id="toggleSignsLabel">Zīmes</span>
@@ -148,6 +152,23 @@
     </div>
   </section>
 
+  <!-- Braukt kopā (kopbraucieni) -->
+  <section id="ridesSheet" class="sheet rides-sheet" hidden aria-labelledby="ridesTitle">
+    <div class="sheet-head">
+      <h2 id="ridesTitle">Braukt kopā</h2>
+      <button id="closeRides" class="link-btn" type="button">Aizvērt</button>
+    </div>
+    <p id="ridesDemo" class="rides-demo" hidden>Demo režīms: pieprasījumi redzami tikai šajā ierīcē.
+      <button id="ridesDemoAdd" class="link-btn" type="button">+ testa pasažieris</button></p>
+    <div class="seg" role="tablist" aria-label="Kas tu esi šajā braucienā">
+      <button id="tabNeed" role="tab" type="button" aria-selected="true">Man vajag aizbraukt</button>
+      <button id="tabDrive" role="tab" type="button" aria-selected="false">Es braucu, varu paņemt</button>
+    </div>
+    <div id="ridesBody" class="rides-body"></div>
+    <p class="fine rides-rules">Brauciena izmaksas (piem. degvielu) varat sadalīt savā starpā. Tālrunis redzams tikai tam,
+      ar kuru brauciens ir saskaņots. Nekāp auto, ja tas neatbilst aprakstam.</p>
+  </section>
+
   <!-- Iestatījumu panelis -->
   <section id="settings" class="sheet" hidden aria-labelledby="settingsTitle">
     <div class="sheet-head">
@@ -201,20 +222,23 @@
   </section>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script src="cache.js?v=44"></script>
-  <script src="signs.js?v=44"></script>
-  <script src="mapillary.js?v=44"></script>
-  <script src="roads-gl.js?v=44"></script>
-  <script src="basemap-gl.js?v=44"></script>
-  <script src="signs-gl.js?v=44"></script>
-  <script src="nav.js?v=44"></script>
-  <script src="times.js?v=44"></script>
-  <script src="alerts.js?v=44"></script>
-  <script src="places.js?v=44"></script>
-  <script src="voice.js?v=44"></script>
-  <script src="neural-voice.js?v=44"></script>
-  <script src="recorded-voice.js?v=44"></script>
-  <script src="model.js?v=44"></script>
-  <script src="app-gl.js?v=44"></script>
+  <script src="cache.js?v=45"></script>
+  <script src="signs.js?v=45"></script>
+  <script src="mapillary.js?v=45"></script>
+  <script src="roads-gl.js?v=45"></script>
+  <script src="basemap-gl.js?v=45"></script>
+  <script src="signs-gl.js?v=45"></script>
+  <script src="nav.js?v=45"></script>
+  <script src="times.js?v=45"></script>
+  <script src="alerts.js?v=45"></script>
+  <script src="places.js?v=45"></script>
+  <script src="voice.js?v=45"></script>
+  <script src="neural-voice.js?v=45"></script>
+  <script src="recorded-voice.js?v=45"></script>
+  <script src="model.js?v=45"></script>
+  <script src="rides-config.js?v=45"></script>
+  <script src="rides.js?v=45"></script>
+  <script src="app-gl.js?v=45"></script>
+  <script src="rides-ui.js?v=45"></script>
 </body>
 </html>
