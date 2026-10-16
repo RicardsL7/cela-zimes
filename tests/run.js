@@ -7,7 +7,7 @@ const vm = require('vm');
 
 const ctx = vm.createContext({ console, Intl, Date, Math, Map, Set, JSON, Number, String, Array, Object, isNaN, setTimeout, clearTimeout,
   signSvg: () => '<svg/>', encodeURIComponent });
-for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'nav.js', 'alerts.js', 'places.js', 'cache.js', 'voice.js', 'recorded-voice.js']) {
+for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'nav.js', 'alerts.js', 'places.js', 'cache.js', 'voice.js', 'recorded-voice.js', 'rides.js']) {
   // Klases un const deklarācijas padara pieejamas testam.
   const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/if \(typeof module[\s\S]*?\n}\n?$/m, '');
   vm.runInContext(src + '\n;globalThis.__exp = (globalThis.__exp || {});', ctx, { filename: f });
@@ -661,6 +661,54 @@ test('W. Balss: ieraksti, rezerves balss, dublikāti, pārtraukšana', () => {
   v.say('Maršruts pārrēķināts', true, ['Maršruts pārrēķināts']);
   eq(log.join(' '), 'rec:A+B rec:A+B+C neural:A+B+C rec-stop n-stop rec:Maršruts pārrēķināts!');
   v.enabled = false; v.say('X'); eq(log.length, 6, 'izslēgta — klusē');
+});
+
+test('X. Kopbraucieni: saskaņošana ar maršrutu, pārbaudes, demo krātuve', async () => {
+  const match = G('rideMatchRoute'), list = G('rideListForDriver'), val = G('rideValidate'), pv = G('rideProfileValid'), tt = G('rideTimeText');
+  // Taisns maršruts uz austrumiem: 0..~6,1 km (24.10 → 24.20, 56.95)
+  const coords = []; for (let i = 0; i <= 10; i++) coords.push([24.10 + i * 0.01, 56.95]);
+  const cum = [0]; for (let i = 1; i < coords.length; i++) cum.push(cum[i - 1] + G('rideDist')(coords[i - 1][1], coords[i - 1][0], coords[i][1], coords[i][0]));
+  const route = { coords, cum };
+  const now = Date.parse('2026-10-16T12:00:00Z');
+  const req = (o = {}) => ({ id: 'r', user_id: 'p', status: 'open', depart_at: new Date(now + 600000).toISOString(),
+    from_lat: 56.951, from_lng: 24.12, to_lat: 56.949, to_lng: 24.17, seats: 1, ...o });
+  const m = match(req(), route, 0);
+  ok(m && m.pick < m.drop, 'pa ceļam'); ok(m.detourMin >= 1 && m.detourMin <= 3, 'neliels apkārtceļš ' + m.detourMin);
+  eq(match(req({ from_lng: 24.17, to_lng: 24.12 }), route, 0), null, 'pretējā virzienā — neder');
+  eq(match(req({ from_lat: 56.97 }), route, 0), null, 'sākums par tālu no maršruta (~2 km)');
+  eq(match(req(), route, 2500), null, 'jau pabraukts garām');
+  const L = list([req({ id: 'a', from_lng: 24.15, to_lng: 24.19 }), req({ id: 'b' }), req({ id: 'c', status: 'matched' }),
+    req({ id: 'd', depart_at: new Date(now - 3600000).toISOString() }), req({ id: 'e', user_id: 'me' })], { route, along: 0, myId: 'me', now });
+  eq(L.map(x => x.req.id).join(','), 'b,a', 'pēc kārtas pa ceļam; bez saskaņotiem, novecojušiem un saviem');
+  const N = list([req({ id: 'near' }), req({ id: 'far', from_lat: 57.2 })], { me: { lat: 56.95, lng: 24.11 }, now });
+  eq(N.map(x => x.req.id).join(','), 'near', 'bez maršruta — tuvumā');
+  eq(val(req(), now), null);
+  ok(/pārāk tuvu/.test(val(req({ to_lat: 56.951, to_lng: 24.1205 }), now)));
+  ok(/pagājis/.test(val(req({ depart_at: new Date(now - 3600000).toISOString() }), now)));
+  ok(/1 līdz 4/.test(val(req({ seats: 7 }), now)));
+  ok(/uz kurieni/.test(val(req({ to_lat: undefined }), now)));
+  eq(pv({ name: 'Ilze', phone: '+371 2612 3456' }), null); ok(/vārdu/.test(pv({ name: ' ' }))); ok(/nepareizs/.test(pv({ name: 'Ilze', phone: '12ab' })));
+  eq(tt(new Date(now + 60000).toISOString(), now), 'tagad'); eq(tt(new Date(now + 20 * 60000).toISOString(), now), 'pēc 20 min');
+  // Demo krātuve: pasažieris → šoferis piedāvā → pasažieris pieņem → abi redz tālruni
+  const mem = { d: {}, getItem(k) { return this.d[k] ?? null; }, setItem(k, v) { this.d[k] = v; } };
+  const S = G('LocalRideStore');
+  const pas = new S(mem, 'k');
+  await pas.saveProfile({ name: 'Anna', phone: '+37120000001' });
+  const r = await pas.createRequest({ from_lat: 56.95, from_lng: 24.1, from_name: 'A', to_lat: 56.96, to_lng: 24.2, to_name: 'B', depart_at: new Date().toISOString(), seats: 1, note: '' });
+  const drvMem = { d: { k: mem.d.k }, getItem(k) { return mem.d[k] ?? null; }, setItem(k, v) { mem.d[k] = v; } };
+  const drv = new S(drvMem, 'k'); drv.id = 'driver-1';
+  await drv.saveProfile({ name: 'Jānis', phone: '+37120000002', car: 'Zils VW Golf' });
+  eq((await drv.openRequests()).length, 1);
+  await drv.offer(r.id, { eta_min: 5 }); await drv.offer(r.id, { eta_min: 5 });
+  const offs = await pas.offersFor(r.id);
+  eq(offs.length, 1, 'viens piedāvājums (dublikāts nav)'); eq(offs[0].phone, '', 'tālrunis vēl slēpts'); eq(offs[0].driver.car, 'Zils VW Golf');
+  await pas.respond(offs[0].id, 'accepted');
+  eq((await pas.offersFor(r.id))[0].phone, '+37120000002', 'pēc pieņemšanas pasažieris redz šofera tālruni');
+  const mine = await drv.myOffers();
+  eq(mine[0].status, 'accepted'); eq(mine[0].phone, '+37120000001', 'šoferis redz pasažiera tālruni');
+  eq((await drv.openRequests()).length, 0, 'saskaņots vairs nav atvērto sarakstā');
+  await drv.cancelOffer(mine[0].id);
+  eq((await drv.openRequests()).length, 1, 'šoferis atcēla — pieprasījums atkal atvērts');
 });
 
 Promise.all(pending).then(() => {
