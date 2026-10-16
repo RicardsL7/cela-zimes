@@ -112,7 +112,7 @@ create policy offers_driver_update on public.ride_offers for update to authentic
   using (driver_id = auth.uid()) with check (driver_id = auth.uid() and status = 'cancelled');
 drop policy if exists offers_owner_update on public.ride_offers;
 create policy offers_owner_update on public.ride_offers for update to authenticated
-  using (public.is_request_owner(request_id)) with check (status in ('accepted', 'declined'));
+  using (public.is_request_owner(request_id)) with check (public.is_request_owner(request_id) and status in ('accepted', 'declined'));
 
 -- Ja šoferis atceļ pieņemtu piedāvājumu, pieprasījums atkal kļūst atvērts.
 create or replace function public.reopen_on_cancel() returns trigger
