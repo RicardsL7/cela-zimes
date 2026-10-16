@@ -1,6 +1,12 @@
 #!/usr/bin/env node
-// Ceļa Zīmes — navigācijas balss ierakstu ģenerēšana ar Google Cloud Text-to-Speech (Chirp 3 HD, lv-LV).
+// Ceļa Zīmes — navigācijas balss ierakstu ģenerēšana: ElevenLabs (Ilze, Eleven v4) vai Google Chirp 3 HD.
 //
+// ElevenLabs (izvēlētā balss — Ilze):
+//   set ELEVENLABS_API_KEY=...          (Windows cmd;  PowerShell: $env:ELEVENLABS_API_KEY="...")
+//   node tools/gen-voice.mjs ilze       — visas navigācijas frāzes ar Ilzes balsi → voice/lv/
+//   node tools/gen-voice.mjs build --provider elevenlabs --voice <voice_id> --label "Vārds" [--model eleven_v4]
+//
+// Google:
 // Palaiž TAVĀ datorā (API atslēga paliek tikai tur, lapā tā nenonāk). Vajag Node.js 18+.
 //
 //   node tools/gen-voice.mjs voices                       — kuras latviešu balsis ir pieejamas
@@ -27,6 +33,9 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const API = 'https://texttospeech.googleapis.com/v1';
 const LANG = 'lv-LV';
+const XI_API = 'https://api.elevenlabs.io/v1';
+// Izvēlētā balss: "Ilze - Calm, Warm, Unhurried" (ElevenLabs balsu bibliotēka), modelis Eleven v4 (atbalsta latviešu "lv").
+const ILZE = { provider: 'elevenlabs', voice: '4nP0MRk3S5Qj1fGfXf51', label: 'Ilze', model: 'eleven_v4' };
 
 // ---------- Frāzes no aplikācijas koda (tās pašas, ko navigācija runā) ----------
 function loadApp() {
@@ -88,6 +97,29 @@ async function synth(text, voice, rate) {
   if (!j.audioContent) throw new Error('Tukša atbilde: ' + text);
   return Buffer.from(j.audioContent, 'base64');
 }
+// ---------- ElevenLabs ----------
+let xiLangOk = true;   // ja modelis nepieņem language_code, nākamos pieprasījumus sūta bez tā
+async function synthEleven(text, voiceId, opts) {
+  const key = process.env.ELEVENLABS_API_KEY;
+  if (!key) throw new Error('Iestati ElevenLabs API atslēgu: set ELEVENLABS_API_KEY=... (tā paliek tikai tavā datorā)');
+  for (let attempt = 0; ; attempt++) {
+    const body = {
+      text, model_id: opts.model || 'eleven_v4',
+      voice_settings: { stability: +opts.stability || 0.5, similarity_boost: +opts.similarity || 0.75, ...(opts.rate ? { speed: +opts.rate } : {}) },
+      seed: 1234,                                   // vienmērīgāks skanējums starp frāzēm
+    };
+    if (xiLangOk) body.language_code = 'lv';
+    const res = await fetch(`${XI_API}/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`, {
+      method: 'POST', headers: { 'xi-api-key': key, 'content-type': 'application/json', accept: 'audio/mpeg' }, body: JSON.stringify(body),
+    });
+    if (res.ok) return Buffer.from(await res.arrayBuffer());
+    const msg = await res.text();
+    if (res.status === 400 && xiLangOk && /language/i.test(msg)) { xiLangOk = false; continue; }
+    if ((res.status === 429 || res.status >= 500) && attempt < 6) { await new Promise(r => setTimeout(r, 1500 * 2 ** attempt)); continue; }
+    throw new Error(`ElevenLabs ${res.status}: ${msg.slice(0, 400)}`);
+  }
+}
+
 async function pool(items, n, fn) {
   let i = 0;
   await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) { const k = i++; await fn(items[k], k); } }));
@@ -146,7 +178,10 @@ ${rows.map(r => `<tr><td><b>${esc(r.v)}</b></td>${r.files.map(f => `<td><audio c
 
 export async function cmdBuild(opts) {
   if (!opts.voice) throw new Error('Norādi balsi: build --voice Charon (saraksts: node tools/gen-voice.mjs voices)');
-  const voice = voiceName(opts.voice), rate = +opts.rate || 1.0;
+  const eleven = opts.provider === 'elevenlabs';
+  const voice = eleven ? opts.voice : voiceName(opts.voice), rate = +opts.rate || 1.0;
+  const tag = eleven ? `xi|${opts.model || 'eleven_v4'}|${voice}` : voice;
+  const speak = (text) => eleven ? synthEleven(text, voice, opts) : synth(text, voice, rate);
   const dir = path.join(ROOT, 'voice', 'lv');
   fs.mkdirSync(dir, { recursive: true });
   const phrases = phraseList();
@@ -155,13 +190,13 @@ export async function cmdBuild(opts) {
   for (const p of phrases) {
     const key = app.voiceClipKey(p);
     const text = ttsText(p);
-    const file = crypto.createHash('sha1').update(`${voice}|${rate}|${text}`).digest('hex').slice(0, 12) + '.mp3';
+    const file = crypto.createHash('sha1').update(`${tag}|${rate}|${text}`).digest('hex').slice(0, 12) + '.mp3';
     clips[key] = file;
     if (!fs.existsSync(path.join(dir, file))) jobs.push({ text, file });
   }
   let done = 0, chars = 0;
-  await pool(jobs, 4, async j => {
-    fs.writeFileSync(path.join(dir, j.file), await synth(j.text, voice, rate));
+  await pool(jobs, eleven ? 2 : 4, async j => {
+    fs.writeFileSync(path.join(dir, j.file), await speak(j.text));
     chars += j.text.length;
     process.stdout.write(`\r${++done}/${jobs.length}  ${j.text.padEnd(50)}`);
   });
@@ -169,7 +204,7 @@ export async function cmdBuild(opts) {
   const keep = new Set(Object.values(clips));
   for (const f of fs.readdirSync(dir)) if (f.endsWith('.mp3') && !keep.has(f)) fs.unlinkSync(path.join(dir, f));
   const short = voice.replace(/^lv-LV-Chirp3-HD-/i, '');
-  const manifest = { label: opts.label || `Google ${short}`, voice, rate, engine: 'google-chirp3-hd', generated: new Date().toISOString(), count: Object.keys(clips).length, clips };
+  const manifest = { label: opts.label || (eleven ? 'ElevenLabs' : `Google ${short}`), voice, rate, engine: eleven ? 'elevenlabs-' + (opts.model || 'eleven_v4') : 'google-chirp3-hd', generated: new Date().toISOString(), count: Object.keys(clips).length, clips };
   fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 1));
   const bytes = [...keep].reduce((s, f) => s + fs.statSync(path.join(dir, f)).size, 0);
   console.log(`\nGatavs: ${manifest.count} frāzes, ${(bytes / 1024 / 1024).toFixed(1)} MB, jaunas ${jobs.length} (${chars} rakstzīmes) → ${dir}`);
@@ -187,7 +222,7 @@ function parseArgs(argv) {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const opts = parseArgs(process.argv.slice(2));
   const cmd = opts._[0];
-  const run = { voices: cmdVoices, samples: cmdSamples, build: cmdBuild, phrases: async () => { for (const p of phraseList()) console.log(ttsText(p)); } }[cmd];
-  if (!run) { console.log('Komandas: voices | samples [--voices A,B] [--rate 1.0] | build --voice NAME [--rate 1.0] [--label "…"] | phrases'); process.exit(1); }
+  const run = { voices: cmdVoices, samples: cmdSamples, build: cmdBuild, ilze: o => cmdBuild({ ...ILZE, ...o }), phrases: async () => { for (const p of phraseList()) console.log(ttsText(p)); } }[cmd];
+  if (!run) { console.log('Komandas: ilze | voices | samples [--voices A,B] [--rate 1.0] | build --voice NAME [--rate 1.0] [--label "…"] | phrases'); process.exit(1); }
   run(opts).catch(e => { console.error('\n' + e.message); process.exit(1); });
 }
