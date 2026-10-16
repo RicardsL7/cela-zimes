@@ -59,7 +59,7 @@ function ridesTab(tab) {
   rides.tab = tab; store.set('ridesTab', tab);
   $('tabNeed').setAttribute('aria-selected', tab === 'need');
   $('tabDrive').setAttribute('aria-selected', tab === 'drive');
-  ridesRender();
+  ridesRender(true);
 }
 
 // Datu atjaunošana (arī fonā ik 15 s, ja ir aktīvi braucieni). first — bez paziņojumiem.
@@ -104,9 +104,25 @@ function ridesBox() {
 }
 
 // ---------- Zīmēšana ----------
-function ridesRender() {
+// Ko logs pašlaik rāda — ja pēc datu atjaunošanas nekas nav mainījies, logu NEpārzīmē
+// (citādi pazustu tas, ko cilvēks pašlaik raksta laukos).
+function ridesViewSig() {
+  return JSON.stringify([rides.ready, rides.tab, rides.profile ? rides.profile.name + '|' + rides.profile.phone + '|' + rides.profile.car : null,
+    rides.extraForm,
+    rides.myReqs.map(r => r.id + r.status + (rides.offers[r.id] || []).map(o => o.id + o.status + o.phone).join()),
+    rides.myOffers.map(o => o.id + o.status + o.phone + (o.request && o.request.status)),
+    rides.tab === 'drive' ? rides.openList.map(r => r.id + r.status) : null]);
+}
+function ridesRender(force = false) {
   if (!rides.open) return;
   const body = $('ridesBody');
+  const sig = ridesViewSig();
+  if (!force && sig === rides.renderedSig && body.childNodes.length) return;
+  // Kamēr cilvēks raksta kādā laukā, nepārzīmē, ja vien nav mainījies kas būtisks (piem. atnācis piedāvājums).
+  const typing = body.contains(document.activeElement) && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
+  if (!force && typing && rides.renderedSig && JSON.parse(sig)[3] === JSON.parse(rides.renderedSig)[3]
+      && JSON.parse(sig)[4] === JSON.parse(rides.renderedSig)[4] && JSON.parse(sig)[2] === JSON.parse(rides.renderedSig)[2]) return;
+  rides.renderedSig = sig;
   body.replaceChildren();
   if (!rides.ready) {
     body.append(rEl('p', { class: 'fine', text: 'Kopbraucieni pašlaik nav pieejami (nav savienojuma ar serveri). Pamēģini vēlāk.' }));
@@ -127,7 +143,7 @@ function ridesProfileForm(editing = false) {
     const v = { name: name.value, phone: phone.value, car: car.value };
     const e = rideProfileValid(v);
     if (e) { err.textContent = e; err.hidden = false; return; }
-    try { await rides.store.saveProfile(v); await ridesRefresh(true); }
+    try { await rides.store.saveProfile(v); await ridesRefresh(true); ridesRender(true); }
     catch (x) { err.textContent = 'Neizdevās saglabāt. Pamēģini vēlreiz.'; err.hidden = false; console.warn(x); }
   };
   return rEl('div', { class: 'r-form' },
@@ -169,7 +185,8 @@ function ridesNeedView() {
   const wrap = rEl('div');
   for (const r of rides.myReqs) wrap.append(ridesRequestCard(r));
   if (rides.myReqs.length) {
-    wrap.append(rEl('button', { class: 'link-btn r-more', type: 'button', text: '+ Vēl viens brauciens', onclick: e => { e.target.replaceWith(ridesNeedForm()); } }));
+    if (rides.extraForm) wrap.append(ridesNeedForm());
+    else wrap.append(rEl('button', { class: 'link-btn r-more', type: 'button', text: '+ Vēl viens brauciens', onclick: () => { rides.extraForm = true; ridesRender(true); } }));
     return wrap;
   }
   wrap.append(ridesNeedForm());
@@ -194,7 +211,7 @@ function ridesNeedForm() {
       depart_at: depart ? depart.toISOString() : '', seats: +seats.value, note: note.value.trim() };
     const e = rideValidate(req);
     if (e) { err.textContent = e; err.hidden = false; return; }
-    try { await rides.store.createRequest(req); await ridesRefresh(true); setStatus('Pieprasījums publicēts — šoferi to redz.'); }
+    try { await rides.store.createRequest(req); rides.extraForm = false; await ridesRefresh(true); ridesRender(true); setStatus('Pieprasījums publicēts — šoferi to redz.'); }
     catch (x) { err.textContent = 'Neizdevās publicēt. Pamēģini vēlreiz.'; err.hidden = false; console.warn(x); }
   };
   return rEl('div', { class: 'r-form' },
