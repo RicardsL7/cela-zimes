@@ -143,17 +143,27 @@ const ALERT_OBJECTS = {
     `<g><circle cx="32" cy="14.5" r="7" fill="#0b0d10"/><circle cx="32" cy="14.5" r="5.6" fill="url(#lr)"/><path d="M24.2 11.5a7.8 7.8 0 0 1 15.6 0h-2.2a5.6 5.6 0 0 0-11.2 0Z" fill="#05070a" opacity=".85"/>` +
     `<circle cx="32" cy="28" r="7" fill="#0b0d10"/><circle cx="32" cy="28" r="5.6" fill="url(#ly)"/><path d="M24.2 25a7.8 7.8 0 0 1 15.6 0h-2.2a5.6 5.6 0 0 0-11.2 0Z" fill="#05070a" opacity=".85"/>` +
     `<circle cx="32" cy="41.5" r="7" fill="#0b0d10"/><circle cx="32" cy="41.5" r="5.6" fill="url(#lg)"/><path d="M24.2 38.5a7.8 7.8 0 0 1 15.6 0h-2.2a5.6 5.6 0 0 0-11.2 0Z" fill="#05070a" opacity=".85"/></g></g>`,
-  // Stacionārais fotoradars: pelēka kaste uz staba (priekša, sāns, augša), liels objektīvs, zibspuldze
-  'camera-fixed': `<defs><linearGradient id="f" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f8fafc"/><stop offset="1" stop-color="#b8c1cc"/></linearGradient>` +
-    `<linearGradient id="p" x1="0" x2="1"><stop offset="0" stop-color="#9aa4b1"/><stop offset=".5" stop-color="#e5e9ee"/><stop offset="1" stop-color="#7b8592"/></linearGradient>` +
-    `<radialGradient id="l" cx=".35" cy=".32" r=".75"><stop offset="0" stop-color="#9fd3ff"/><stop offset=".35" stop-color="#2563eb"/><stop offset=".75" stop-color="#0b1a3a"/><stop offset="1" stop-color="#05070d"/></radialGradient></defs>` +
-    `<g filter="url(#o)"><rect x="28" y="40" width="7" height="21" rx="2" fill="url(#p)"/>` +
-    `<path d="M14 12 20 6h33l-6 6Z" fill="#eef2f6"/><path d="M47 12l6-6v32l-6 6Z" fill="#8c96a3"/>` +
-    `<rect x="10" y="12" width="37" height="32" rx="3.5" fill="url(#f)"/>` +
-    `<rect x="13" y="15" width="31" height="26" rx="2.5" fill="#1f2937"/>` +
-    `<circle cx="24.5" cy="28" r="9" fill="#0f172a" stroke="#475569" stroke-width="1.6"/><circle cx="24.5" cy="28" r="6.6" fill="url(#l)"/><ellipse cx="22" cy="25" rx="2.2" ry="1.5" fill="#fff" opacity=".85"/>` +
-    `<rect x="36" y="18.5" width="5.5" height="9" rx="1.4" fill="#fde68a" stroke="#f59e0b" stroke-width="1"/><path d="M37.2 20.5h3M37.2 23h3M37.2 25.5h3" stroke="#f59e0b" stroke-width=".8"/>` +
-    `<circle cx="38.7" cy="34" r="2" fill="#ef4444"/><circle cx="38.2" cy="33.4" r=".6" fill="#fff"/></g>`,
+  // Stacionārais fotoradars: dzeltens korpuss uz staba, stikla panelis, liels objektīvs, zibspuldze
+  'camera-fixed': `<defs><linearGradient id="bf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe680"/><stop offset=".45" stop-color="#ffc928"/><stop offset="1" stop-color="#e09a00"/></linearGradient>` +
+    `<linearGradient id="bs" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d99a00"/><stop offset="1" stop-color="#9a6400"/></linearGradient>` +
+    `<linearGradient id="gp" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2b3647"/><stop offset="1" stop-color="#05080e"/></linearGradient>` +
+    `<linearGradient id="pl" x1="0" x2="1"><stop offset="0" stop-color="#6b7480"/><stop offset=".45" stop-color="#e8ecf0"/><stop offset="1" stop-color="#59626d"/></linearGradient>` +
+    `<linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e2e8f0"/><stop offset=".5" stop-color="#64748b"/><stop offset="1" stop-color="#1e293b"/></linearGradient>` +
+    `<radialGradient id="ln" cx=".36" cy=".32" r=".8"><stop offset="0" stop-color="#b9e6ff"/><stop offset=".25" stop-color="#3b82f6"/><stop offset=".6" stop-color="#1e2a78"/><stop offset="1" stop-color="#050816"/></radialGradient>` +
+    `<radialGradient id="fl" cx=".5" cy=".45" r=".65"><stop offset="0" stop-color="#ffffff"/><stop offset=".45" stop-color="#fff3c4"/><stop offset="1" stop-color="#f5b70a"/></radialGradient></defs>` +
+    `<g filter="url(#o)"><rect x="28" y="40" width="8" height="21.5" rx="2" fill="url(#pl)"/><rect x="24.5" y="40" width="15" height="4" rx="1.5" fill="#4b5563"/>` +
+    `<path d="M7 13.5 15.5 6H58l-8.5 7.5Z" fill="#fff1a6"/><path d="M49.5 13.5 58 6v29l-8.5 7.5Z" fill="url(#bs)"/>` +
+    `<rect x="5" y="13.5" width="44.5" height="29" rx="4" fill="url(#bf)"/>` +
+    `<path d="M5 13.5h44.5v3.4H5Z" fill="#ffd84a"/><path d="M5 16.9h44.5v1.4H5Z" fill="#7a4b00" opacity=".25"/>` +
+    `<rect x="8.5" y="19.5" width="37.5" height="20" rx="3" fill="url(#gp)"/>` +
+    `<path d="M8.5 22.5 11.5 19.5h11L13 39.5H8.5Z" fill="#fff" opacity=".09"/>` +
+    `<circle cx="20" cy="29.5" r="8.6" fill="url(#rg)"/><circle cx="20" cy="29.5" r="7" fill="#0a0f1a"/>` +
+    `<circle cx="20" cy="29.5" r="5.6" fill="url(#ln)"/><circle cx="20" cy="29.5" r="2.2" fill="#050816" opacity=".75"/>` +
+    `<ellipse cx="17.6" cy="26.8" rx="2.3" ry="1.5" fill="#fff" opacity=".9" transform="rotate(-30 17.6 26.8)"/><circle cx="22.6" cy="32.3" r=".9" fill="#9fd3ff" opacity=".8"/>` +
+    `<rect x="31.5" y="22" width="11.5" height="8.5" rx="1.6" fill="#3a2c05"/><rect x="32.3" y="22.8" width="9.9" height="6.9" rx="1.1" fill="url(#fl)"/>` +
+    `<path d="M35.6 22.8v6.9M38.9 22.8v6.9M32.3 26.25h9.9" stroke="#e9a800" stroke-width=".5" opacity=".7"/>` +
+    `<circle cx="34" cy="35" r="1.7" fill="#ef4444"/><circle cx="33.5" cy="34.5" r=".55" fill="#fff"/>` +
+    `<circle cx="39.5" cy="35" r="1.9" fill="#111827" stroke="#64748b" stroke-width=".7"/><circle cx="39" cy="34.5" r=".5" fill="#93c5fd"/></g>`,
   // Mobilais radars: kamera uz trijkāja
   'camera-mobile': `<defs><linearGradient id="b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4b5563"/><stop offset="1" stop-color="#111827"/></linearGradient>` +
     `<radialGradient id="l" cx=".35" cy=".32" r=".75"><stop offset="0" stop-color="#9fd3ff"/><stop offset=".4" stop-color="#2563eb"/><stop offset="1" stop-color="#05070d"/></radialGradient></defs>` +
@@ -173,13 +183,19 @@ const ALERT_OBJECTS = {
     `<path d="M2 35 12 20h7L9 35ZM16 35 26 20h7L23 35ZM30 35 40 20h7L37 35ZM44 35 54 20h7L51 35Z" fill="#ea2a1c"/><rect x="5" y="20" width="54" height="15" fill="url(#s)"/></g>` +
     `<rect x="12" y="15.5" width="4" height="5" fill="#374151"/><rect x="48" y="15.5" width="4" height="5" fill="#374151"/>` +
     `<circle cx="14" cy="11" r="6" fill="url(#y)" stroke="#7c4a00" stroke-width="1"/><circle cx="50" cy="11" r="6" fill="url(#y)" stroke="#7c4a00" stroke-width="1"/></g>`,
-  // Remontdarbi: oranžs konuss ar atstarojošām joslām
-  'roadworks': `<defs><linearGradient id="k" x1="0" x2="1"><stop offset="0" stop-color="#ffb066"/><stop offset=".35" stop-color="#ff7a1a"/><stop offset="1" stop-color="#b8420a"/></linearGradient>` +
-    `<linearGradient id="w" x1="0" x2="1"><stop offset="0" stop-color="#fff"/><stop offset=".6" stop-color="#eef1f5"/><stop offset="1" stop-color="#b9c0c9"/></linearGradient></defs>` +
-    `<g filter="url(#o)"><path d="M8 54h48l-3 7H11Z" fill="#1f2937"/><path d="M6 51.5h52v4H6Z" fill="#374151"/>` +
-    `<path d="M28.6 4.6a3.6 3.6 0 0 1 6.8 0L49 52H15Z" fill="url(#k)"/>` +
-    `<path d="M24.6 19h14.8l2.4 8.2H22.2ZM20.3 34h23.4l2.5 8.5H17.8Z" fill="url(#w)"/>` +
-    `<path d="M30 6.5 18.5 50" stroke="#fff" stroke-width="1.6" opacity=".35" stroke-linecap="round"/></g>`,
+  // Remontdarbi: apaļš oranžs konuss uz gumijas pamatnes, izliektas atstarojošas joslas
+  'roadworks': `<defs><linearGradient id="k" x1="0" x2="1"><stop offset="0" stop-color="#a8360c"/><stop offset=".22" stop-color="#f26a1b"/><stop offset=".42" stop-color="#ffb27a"/><stop offset=".6" stop-color="#ff7a1f"/><stop offset="1" stop-color="#8f2d08"/></linearGradient>` +
+    `<linearGradient id="w" x1="0" x2="1"><stop offset="0" stop-color="#aeb7c2"/><stop offset=".4" stop-color="#ffffff"/><stop offset=".65" stop-color="#eef1f5"/><stop offset="1" stop-color="#8d97a3"/></linearGradient>` +
+    `<linearGradient id="bt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5b6573"/><stop offset="1" stop-color="#2a3039"/></linearGradient>` +
+    `<radialGradient id="gl" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ff8a2a" stop-opacity=".35"/><stop offset="1" stop-color="#ff8a2a" stop-opacity="0"/></radialGradient></defs>` +
+    `<g filter="url(#o)"><path d="M5 53.5h54v4.5a2.5 2.5 0 0 1-2.5 2.5h-49A2.5 2.5 0 0 1 5 58Z" fill="#15191f"/>` +
+    `<path d="M10 45.5h44l5 8H5Z" fill="url(#bt)"/><path d="M10.6 46.3h42.8" stroke="#8a94a1" stroke-width=".9" opacity=".7"/>` +
+    `<ellipse cx="32" cy="49.3" rx="17.5" ry="3.4" fill="#000" opacity=".35"/>` +
+    `<path d="M29.3 5.6Q32 2.2 34.7 5.6L48.6 48.6Q32 53.4 15.4 48.6Z" fill="url(#k)"/>` +
+    `<path d="M25.4 18Q32 20.2 38.6 18L41.1 25.4Q32 28.2 22.9 25.4Z" fill="url(#w)"/>` +
+    `<path d="M20.6 32.6Q32 35.6 43.4 32.6L46.1 40.8Q32 44.6 17.9 40.8Z" fill="url(#w)"/>` +
+    `<path d="M30.6 6.2 24.6 46.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" opacity=".38"/>` +
+    `<path d="M31.2 5.4Q32 4.4 32.8 5.4" stroke="#ffd7b8" stroke-width="1.2" fill="none" stroke-linecap="round"/></g>`,
   // Bērni / skola: brīdinājuma zīme (sarkana mala, dzeltens fons) ar diviem bērniem
   'school': `<defs><linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff5a4d"/><stop offset="1" stop-color="#c0150b"/></linearGradient>` +
     `<linearGradient id="u" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff6a8"/><stop offset="1" stop-color="#ffd21a"/></linearGradient></defs>` +
