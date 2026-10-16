@@ -652,11 +652,13 @@ const SIGNS_MIN_ZOOM = 12;
 const SIGN_DOTS_MIN_ZOOM = 9;   // no šī tuvinājuma brīdinājumi redzami kā punkti
 const ALERT_POP_ZOOM = 13;      // no šī tuvinājuma punkti "izlec" par ikonām
 function signsIconSize(k) {
-  const relCase = (mine, other, unknown) => ['match', ['get', 'rel'], 'mine', mine * k, 'other', other * k, unknown * k];
+  // Brīdinājumu atzīmes (pin) — tikpat lielas kā ziņojumu atzīmes; pārējās zīmes pēc piederības ceļam.
+  const relCase = (pin, mine, other, unknown) => ['case', ['has', 'pin'], pin * k,
+    ['match', ['get', 'rel'], 'mine', mine * k, 'other', other * k, unknown * k]];
   return ['interpolate', ['linear'], ['zoom'],
-    13, relCase(0.62, 0.42, 0.55),
-    16, relCase(0.95, 0.6, 0.82),
-    18.5, relCase(1.3, 0.8, 1.1)];
+    13, relCase(0.68, 0.62, 0.42, 0.55),
+    16, relCase(1, 0.95, 0.6, 0.82),
+    18.5, relCase(1.25, 1.3, 0.8, 1.1)];
 }
 
 // Pārvērš mūsu SVG ikonu par attēla adresi (vienreiz katram veidam).
