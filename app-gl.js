@@ -1489,6 +1489,7 @@ function installAlertLayer() {
   map.addSource('alerts', { type: 'geojson', data: EMPTY_FC });
   map.addLayer({
     id: 'alerts', type: 'symbol', source: 'alerts',
+    minzoom: 9,                        // ļoti attālinātā kartē brīdinājumus nerāda (tikai bremzētu)
     layout: {
       'icon-image': ['get', 'icon'],
       'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.55, 16, 0.85, 18.5, 1.1],

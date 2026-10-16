@@ -479,6 +479,7 @@ class SignStore {
     const relCase = (mine, other, unknown) => ['match', ['get', 'rel'], 'mine', mine, 'other', other, unknown];
     map.addLayer({
       id: 'signs', type: 'symbol', source: 'signs',
+      minzoom: SIGNS_MIN_ZOOM,          // attālinātā kartē tūkstošiem zīmju tikai bremzē — tās nerāda
       layout: {
         'icon-image': ['get', 'icon'],
         'icon-size': ['interpolate', ['linear'], ['zoom'],
@@ -560,6 +561,12 @@ class SignStore {
     const map = this.map, src = map.getSource && map.getSource('signs');
     if (!src) return;
     if (!this.enabled) { src.setData({ type: 'FeatureCollection', features: [] }); return; }
+    // Attālinātā kartē zīmes nerāda un nerēķina (tas bija galvenais bremzētājs, attālinot karti).
+    if (map.getZoom() < SIGNS_MIN_ZOOM) {
+      if (!this._emptyShown) { src.setData({ type: 'FeatureCollection', features: [] }); this._emptyShown = true; }
+      return;
+    }
+    this._emptyShown = false;
     const b = map.getBounds();
     const padLat = (b.getNorth() - b.getSouth()) * 0.25, padLng = (b.getEast() - b.getWest()) * 0.25;
     const S = b.getSouth() - padLat, W = b.getWest() - padLng, N = b.getNorth() + padLat, E = b.getEast() + padLng;
@@ -615,6 +622,8 @@ class SignStore {
     });
   }
 }
+
+const SIGNS_MIN_ZOOM = 12;
 
 // Pārvērš mūsu SVG ikonu par attēla adresi (vienreiz katram veidam).
 const svgUrlCache = new Map();
