@@ -511,7 +511,10 @@ function ridesChatUpdate() {
 // šoferis redz, kur gaida pasažieris. Paša navigācija paliek kā ir.
 function ridesLiveText() {
   for (const r of rides.myReqs) for (const o of rides.offers[r.id] || []) {
-    const el = document.getElementById('trip-' + o.id); if (el) el.textContent = ridePassengerStatus(o, r) + (rides.live.route && rides.live.routeFor === o.id && rides.live.route.duration ? ` · ierašanās ~${clockIn(rides.live.route.duration)}` : '');
+    const L = rides.live, st = rideStage(o);
+    const eta = L.route && L.routeFor === o.id && L.routeStage === st && L.route.duration ? clockIn(L.route.duration) : null;
+    const el = document.getElementById('trip-' + o.id);
+    if (el) el.textContent = ridePassengerStatus(o, r) + (eta ? (st === 'coming' ? ` · būs pie tevis ~${eta}` : ` · galamērķī ~${eta}`) : '');
   }
   for (const o of rides.myOffers) { const el = document.getElementById('trip-' + o.id); if (el) el.textContent = rideDriverStatus(o, state.me); }
 }
@@ -564,7 +567,7 @@ async function ridesLiveMap() {
     L.routeKey = key; L.routeAt = Date.now(); L.routeFrom = from;
     try {
       const route = await requestRoute(from, to);
-      L.route = route; L.routeFor = o.id;
+      L.route = route; L.routeFor = o.id; L.routeStage = st;
       ridesEnsureLayer();
       map.getSource('ride-live').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: route.coords }, properties: {} });
       ridesLiveText();
