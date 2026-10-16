@@ -711,6 +711,40 @@ test('X. Kopbraucieni: saskaņošana ar maršrutu, pārbaudes, demo krātuve', a
   eq((await drv.openRequests()).length, 1, 'šoferis atcēla — pieprasījums atkal atvērts');
 });
 
+test('Y. Kopbraucieni: brauciena gaita, statusi, čats', async () => {
+  const stage = G('rideStage'), ps = G('ridePassengerStatus'), ds = G('rideDriverStatus'), un = G('rideUnread');
+  const now = Date.parse('2026-10-16T12:00:00Z'), fresh = new Date(now - 10000).toISOString(), old = new Date(now - 600000).toISOString();
+  const req = { from_lat: 56.95, from_lng: 24.10, to_lat: 56.96, to_lng: 24.20, from_name: 'A', to_name: 'B' };
+  eq(stage({ status: 'pending' }), 'pending'); eq(stage({ status: 'accepted', trip: '' }), 'matched'); eq(stage({ status: 'accepted', trip: 'onboard' }), 'onboard');
+  ok(/drīz/.test(ps({ status: 'accepted', trip: '' }, req, now)));
+  const s = ps({ status: 'accepted', trip: 'coming', drv_lat: 56.95, drv_lng: 24.12, drv_at: fresh }, req, now);
+  ok(/brauc pie tevis · 1,2 km · ~\d+ min/.test(s), s);
+  eq(ps({ status: 'accepted', trip: 'coming', drv_lat: 56.95, drv_lng: 24.12, drv_at: old }, req, now), 'Šoferis brauc pie tevis.', 'veca vieta — bez attāluma');
+  ok(/klāt/.test(ps({ status: 'accepted', trip: 'arrived' }, req, now)));
+  ok(/Līdz pasažierim/.test(ds({ status: 'accepted', trip: 'coming', request: req }, { lat: 56.95, lng: 24.11 }, now)));
+  ok(/pēc adreses/.test(ds({ status: 'accepted', trip: 'coming', request: req, pas_lat: 1, pas_lng: 1, pas_at: old }, { lat: 56.95, lng: 24.11 }, now)));
+  eq(un([{ id: 1, sender: 'me' }, { id: 2, sender: 'x' }, { id: 3, sender: 'x' }], 'me', 2), 1);
+  // Demo krātuve: čats un gaita
+  const mem = { d: {}, getItem(k) { return this.d[k] ?? null; }, setItem(k, v) { this.d[k] = v; } };
+  const S = G('LocalRideStore');
+  const pas = new S(mem, 'k'); await pas.saveProfile({ name: 'Anna' });
+  const r = await pas.createRequest({ ...req, depart_at: new Date().toISOString(), seats: 1, note: '' });
+  const drv = new S(mem, 'k'); drv.id = 'drv'; await drv.saveProfile({ name: 'Jānis' });
+  await drv.offer(r.id, { eta_min: 3 });
+  const o = (await pas.offersFor(r.id))[0];
+  await pas.send(o.id, 'Sveiki!'); await drv.send(o.id, 'Būšu pēc 5 min');
+  eq((await drv.messages(o.id)).map(m => m.body).join('|'), 'Sveiki!|Būšu pēc 5 min');
+  eq((await drv.messages(o.id, 1)).length, 1, 'tikai jaunākās');
+  await drv.driverUpdate(o.id, { trip: 'coming', lat: 1, lng: 2 });
+  ok(!(await pas.offersFor(r.id))[0].trip, 'kamēr nav pieņemts — gaita nemainās');
+  await pas.respond(o.id, 'accepted');
+  await drv.driverUpdate(o.id, { trip: 'coming', lat: 56.951, lng: 24.11 });
+  const o2 = (await pas.offersFor(r.id))[0];
+  eq(o2.trip, 'coming'); ok(o2.drv_at);
+  await drv.driverUpdate(o.id, { trip: 'done' });
+  eq((await pas.myRequests()).length, 0, 'pabeigts brauciens vairs nav aktīvo sarakstā');
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
