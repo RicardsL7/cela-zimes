@@ -24,6 +24,7 @@ const R_PIN = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true
 function rIcon(svg) { const s = document.createElement('span'); s.className = 'r-icon'; s.innerHTML = svg; return s; }
 
 async function ridesInit() {
+  if (rides.store) return;            // jau palaists
   rides.store = createRideStore(typeof RIDES_CONFIG !== 'undefined' ? RIDES_CONFIG : null);
   try { await rides.store.init(); rides.ready = true; }
   catch (err) { console.warn('Kopbraucieni nav pieejami', err); rides.ready = false; }
@@ -342,3 +343,6 @@ async function ridesAddDemo() {
   await rides.store.addDemoPassenger(near, to);
   ridesTab('drive'); ridesRefresh(false);
 }
+
+// Drošībai: ja app-gl.js to vēl nav izsaucis (ielādes secība), palaiž, kad lapa ielādēta.
+window.addEventListener('load', () => { if (!rides.store && document.getElementById('ridesBtn')) ridesInit(); });
