@@ -1127,6 +1127,8 @@ async function selectDestination(place) {
   $('searchInput').blur();
   $('clearSearch').hidden = false;
   state.nav.dest = place;
+  const da = $('destActs');
+  if (da) { da.textContent = ''; const acts = placeActionsEl(place.ct); if (acts) da.append(...acts.childNodes); da.hidden = !acts; }
   if (destMarker) destMarker.remove();
   const el = document.createElement('div');
   el.innerHTML = '<svg class="dest-pin" viewBox="0 0 36 46"><path d="M18 1C8.6 1 1 8.4 1 17.6 1 30.2 18 45 18 45s17-14.8 17-27.4C35 8.4 27.4 1 18 1Z" fill="#e5383b" stroke="#fff" stroke-width="2"/><circle cx="18" cy="17" r="6.5" fill="#fff"/></svg>';
@@ -2080,7 +2082,7 @@ function placeSub(p, st) {
 //  3) tīkls: Photon; ja tas 2,5 s neatbild — paralēli arī Overpass; ņem pirmo atbildi;
 //  4) fonā darba laiki pēc OSM id. Visi pieprasījumi ar laika limitu.
 const PLACES_MAX_AGE = 24 * 3600 * 1000;
-function placesKey(catId, c) { return catId + ':' + Math.round(c.lat / 0.01) + ':' + Math.round(c.lng / 0.01); }
+function placesKey(catId, c) { return 'c2:' + catId + ':' + Math.round(c.lat / 0.01) + ':' + Math.round(c.lng / 0.01); }
 function freshPlaces(list, c) {        // attālumi no tagadējās vietas, "atvērts" pēc tagadējā laika
   const now = new Date();
   return resortPlaces(list, c.lat, c.lng).map(p => Object.assign(p, { open: placeOpenNow(p.oh, now, parseCondition) }));
@@ -2148,6 +2150,34 @@ function placesStatusText(places, c) {
     ? (state.me ? 'Tuvākās no tavas atrašanās vietas' : 'Tuvākās no kartes centra') + ' · dati: OpenStreetMap'
     : 'Tuvumā nekas netika atrasts.';
 }
+// ---------- Vietas darbības: Zvanīt · Mājaslapa · Lietotne ----------
+const PLATFORM = /android/i.test(navigator.userAgent) ? 'android'
+  : (/iphone|ipad|ipod/i.test(navigator.userAgent) || (/macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1)) ? 'ios' : 'desktop';
+const PA_ICON = {
+  call: '<path d="M6.6 3.5 9 3l1.6 4.2-2 1.5a11 11 0 0 0 6.7 6.7l1.5-2L21 15l-.5 2.4a2 2 0 0 1-2 1.6A15.5 15.5 0 0 1 5 5.5a2 2 0 0 1 1.6-2Z" fill="currentColor"/>',
+  web: '<circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M3.6 12h16.8M12 3.4c2.6 2.4 3.6 5.4 3.6 8.6s-1 6.2-3.6 8.6c-2.6-2.4-3.6-5.4-3.6-8.6s1-6.2 3.6-8.6Z" fill="none" stroke="currentColor" stroke-width="1.7"/>',
+  app: '<rect x="6.5" y="2.8" width="11" height="18.4" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M12 7.4v6.4m-2.8-2.8L12 13.8l2.8-2.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.4 18h3.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+};
+function paLink(kind, href, text, title, ext) {
+  const a = document.createElement('a');
+  a.className = 'pa pa-' + kind; a.href = href; a.title = title;
+  if (ext) { a.target = '_blank'; a.rel = 'noopener noreferrer external'; a.referrerPolicy = 'no-referrer'; }
+  a.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">' + PA_ICON[kind] + '</svg><span></span>';
+  a.querySelector('span').textContent = text;
+  a.addEventListener('click', ev => ev.stopPropagation());
+  return a;
+}
+// Atgriež pogu rindu vai null. Saites veidotas tikai no places.js pārbaudītām vērtībām (tel:+cipari, https://domēns).
+function placeActionsEl(ct) {
+  if (!ct) return null;
+  const row = document.createElement('div');
+  row.className = 'place-acts';
+  if (ct.phone && /^tel:\+?\d{7,15}$/.test(ct.phone.tel)) row.append(paLink('call', ct.phone.tel, 'Zvanīt', 'Zvanīt ' + ct.phone.label, false));
+  if (ct.web && /^https:\/\//.test(ct.web.url)) row.append(paLink('web', ct.web.url, ct.web.host, (ct.brandWeb ? 'Tīkla oficiālā mājaslapa: ' : 'Mājaslapa: ') + ct.web.host, true));
+  const store = ct.app && ct.app[PLATFORM];
+  if (store && /^https:\/\/(play\.google\.com|apps\.apple\.com)\//.test(store)) row.append(paLink('app', store, ct.app.name + ' lietotne', (PLATFORM === 'ios' ? 'App Store' : 'Google Play') + ': oficiālā ' + ct.app.name + ' lietotne', true));
+  return row.childNodes.length ? row : null;
+}
 const PLACE_DOT_TITLE = { open: 'Atvērts', closing: 'Drīz aizvērsies', opening: 'Drīz atvērsies', closed: 'Slēgts', unknown: 'Darba laiks nav zināms' };
 let lastPlacesRender = null;
 function renderPlaces(places, catId, c, fit) {
@@ -2171,7 +2201,10 @@ function renderPlaces(places, catId, c, fit) {
     if (st.text) { const em = document.createElement('span'); em.className = 'pl-st st-' + st.state; em.textContent = st.text; sub.append(navDist(p.d) + ' · ', em); const rest = bits.slice(navDist(p.d).length); if (rest) sub.append(rest); }
     else sub.textContent = bits;
     b.addEventListener('click', () => goToPlace(p));
-    li.appendChild(b); ul.appendChild(li);
+    li.appendChild(b);
+    const acts = placeActionsEl(p.ct);
+    if (acts) { li.classList.add('has-acts'); li.appendChild(acts); }
+    ul.appendChild(li);
     const el = document.createElement('button');
     el.type = 'button'; el.className = 'place-marker'; el.title = p.name + (st.text ? ' — ' + st.text : '');
     el.innerHTML = placeIconSvg(catId, 30) + '<span class="pm-dot st-' + st.state + '"></span>';
@@ -2249,7 +2282,7 @@ async function showPlaces(catId) {
 }
 function goToPlace(p) {
   closePlaces();
-  selectDestination({ name: p.name, sub: [p.addr, PLACE_CATEGORIES.find(c => c.id === p.cat).label].filter(Boolean).join(', '), lat: p.lat, lng: p.lng });
+  selectDestination({ name: p.name, sub: [p.addr, PLACE_CATEGORIES.find(c => c.id === p.cat).label].filter(Boolean).join(', '), lat: p.lat, lng: p.lng, ct: p.ct || null });
 }
 function wirePlaces() {
   const icons = $('placesBtnIcons');

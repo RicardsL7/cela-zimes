@@ -493,3 +493,23 @@ html:not(.navigating):not(.previewing) .loader { top: calc(env(safe-area-inset-t
 .ride-car { filter: drop-shadow(0 3px 5px rgba(0, 0, 0, .35)); display: grid; }
 .ride-dest { display: grid; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .3)); }
 .ride-pas-live { background: #1e5bb8; box-shadow: 0 0 0 6px color-mix(in srgb, #1e5bb8 30%, transparent), 0 2px 6px rgba(0, 0, 0, .35); }
+
+/* Vietas darbības: Zvanīt · Mājaslapa · Lietotne */
+#placeList li.has-acts { border-bottom: 1px solid var(--line); }
+#placeList li.has-acts .place-item { padding-bottom: 6px; border-bottom: 0; }
+.place-acts { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 4px 12px 52px; }
+.place-acts .pa {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; max-width: 100%;
+  padding: 0 13px; border-radius: 999px; text-decoration: none;
+  font: 600 13.5px var(--font-body); color: var(--fg);
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--muted) 22%, transparent);
+  -webkit-tap-highlight-color: transparent; transition: transform .12s, background .12s;
+}
+.place-acts .pa span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px; }
+.place-acts .pa svg { flex: none; }
+.place-acts .pa:active { transform: scale(.96); }
+.place-acts .pa-call { color: #fff; background: var(--go); border-color: var(--go); }
+.place-acts .pa-web svg { color: var(--accent); }
+.place-acts .pa-app svg { color: #6c5cf2; }
+.dest-acts { padding: 4px 0 2px; }

@@ -168,12 +168,86 @@ function parsePlaces(elements, catId, lat, lng, now = new Date(), parse = null) 
       id: el.type + el.id, cat: catId, name, lat: plat, lng: plng,
       d: placeDistM(lat, lng, plat, plng),
       addr, extra, oh: t.opening_hours || '', open: placeOpenNow(t.opening_hours, now, parse),
+      ct: placeContacts(t, name),
     });
   }
   out.sort((a, b) => a.d - b.d);
   const kept = [];
   for (const p of out) if (!kept.some(k => k.name === p.name && placeDistM(k.lat, k.lng, p.lat, p.lng) < 60)) kept.push(p);
   return kept;
+}
+
+// ---------- Kontakti: Zvanīt / Mājaslapa / Lietotne ----------
+// Drošība: tālrunis tikai cipari un "+"; mājaslapa tikai http(s) → vienmēr https, bez lietotājvārda/paroles,
+// bez IP un dīvainām rakstzīmēm; lietotnes — TIKAI pārbaudīti oficiālie veikalu ieraksti (nekādu lejupielāžu).
+const PLACE_BRANDS = [
+  // [atpazīšana pēc nosaukuma/zīmola, nosaukums, oficiālā vietne, { android: Google Play id, ios: App Store id }]
+  [/circle\s*k/i, 'Circle K', 'https://www.circlek.lv/', {}],
+  [/\bneste\b/i, 'Neste', 'https://www.neste.lv/', { ios: '535050119' }],
+  [/vir[sš]i/i, 'Virši', 'https://www.virsi.lv/', {}],
+  [/\bviada\b/i, 'Viada', 'https://www.viada.lv/', {}],
+  [/\brimi\b/i, 'Rimi', 'https://www.rimi.lv/', { android: 'lv.rimi.card' }],
+  [/\bmaxima\b/i, 'Maxima', 'https://www.maxima.lv/', {}],
+  [/\blidl\b/i, 'Lidl', 'https://www.lidl.lv/', { android: 'com.lidl.eci.lidlplus', ios: '1238611143' }],
+  [/\belvi\b/i, 'Elvi', 'https://www.elvi.lv/', {}],
+  [/\bmego\b/i, 'Mego', 'https://www.mego.lv/', {}],
+  [/\bnarvesen\b/i, 'Narvesen', 'https://www.narvesen.lv/', {}],
+  [/\bbenu\b/i, 'Benu', 'https://www.benu.lv/', {}],
+  [/m[eē]ness\s*aptieka/i, 'Mēness aptieka', 'https://www.menessaptieka.lv/', {}],
+  [/euroaptieka/i, 'Euroaptieka', 'https://www.euroaptieka.lv/', {}],
+  [/\bdrogas\b/i, 'Drogas', 'https://www.drogas.lv/', {}],
+  [/hesburger/i, 'Hesburger', 'https://www.hesburger.lv/', {}],
+  [/mc\s*donald/i, "McDonald's", 'https://www.mcdonalds.lv/', {}],
+  [/\bkfc\b/i, 'KFC', 'https://www.kfc.lv/', {}],
+  [/\bcaffeine\b/i, 'Caffeine', 'https://www.caffeine.lv/', {}],
+  [/\bdepo\b/i, 'Depo', 'https://www.depo.lv/', {}],
+  [/\bikea\b/i, 'IKEA', 'https://www.ikea.com/lv/lv/', {}],
+  [/\belektrum\b/i, 'Elektrum', 'https://www.elektrum.lv/', {}],
+];
+function placeBrand(...names) {
+  for (const n of names) if (n) for (const b of PLACE_BRANDS) if (b[0].test(n)) return b;
+  return null;
+}
+function placePhone(raw) {
+  if (!raw) return null;
+  for (const part of String(raw).split(/[;,]/)) {
+    let d = part.trim().replace(/^00/, '+').replace(/[\s\-().\/]/g, '');
+    if (!/^\+?\d{7,15}$/.test(d)) continue;
+    if (/^[2-9]\d{7}$/.test(d)) d = '+371' + d;          // vietējais LV numurs
+    const lv = /^\+371(\d{8})$/.exec(d);
+    const label = lv ? '+371 ' + lv[1].slice(0, 4) + ' ' + lv[1].slice(4) : d;
+    return { tel: 'tel:' + d, label };
+  }
+  return null;
+}
+function placeWebsite(raw) {
+  if (!raw) return null;
+  let s = String(raw).split(';')[0].trim();
+  if (!s || s.length > 300 || /[\s<>"'`\\]/.test(s)) return null;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(s)) { if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+([\/?#]|$)/i.test(s)) return null; s = 'https://' + s; }
+  let u;
+  try { u = new URL(s); } catch { return null; }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;   // nekādu javascript:, data:, file: u.c.
+  if (u.username || u.password || u.port) return null;
+  const h = u.hostname.toLowerCase();
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(h) || /^[\d.]+$/.test(h) || !/[a-z]{2,}$/.test(h)) return null;
+  u.protocol = 'https:';
+  return { url: u.href, host: h.replace(/^www\./, '') };
+}
+// { phone, web, brandWeb, app: { name, android, ios } } — tikai tas, kas zināms; null, ja nekā nav.
+function placeContacts(t, name) {
+  t = t || {};
+  const phone = placePhone(t.phone || t['contact:phone'] || t['contact:mobile'] || t.mobile);
+  let web = placeWebsite(t.website || t['contact:website'] || t.url);
+  const b = placeBrand(t.brand, t.name, t.operator, name);
+  let brandWeb = false;
+  if (!web && b) { web = placeWebsite(b[2]); brandWeb = true; }
+  const app = b && (b[3].android || b[3].ios) ? {
+    name: b[1],
+    android: b[3].android ? 'https://play.google.com/store/apps/details?id=' + b[3].android : null,
+    ios: b[3].ios ? 'https://apps.apple.com/lv/app/id' + b[3].ios : null,
+  } : null;
+  return phone || web || app ? { phone, web, brandWeb, app } : null;
 }
 
 // Kartes flīžu POI → vietu saraksts (pēc attāluma, bez dublikātiem no blakus flīzēm).
@@ -187,7 +261,8 @@ function parseTilePlaces(features, catId, lat, lng) {
     const g = f.geometry && f.geometry.type === 'Point' && f.geometry.coordinates;
     if (!g) continue;
     out.push({ id: 'tile' + out.length, osmType: null, osmId: null, cat: catId, name: p.name || c.label,
-      lat: g[1], lng: g[0], d: placeDistM(lat, lng, g[1], g[0]), addr: '', extra: [], oh: '', open: null });
+      lat: g[1], lng: g[0], d: placeDistM(lat, lng, g[1], g[0]), addr: '', extra: [], oh: '', open: null,
+      ct: placeContacts({}, p.name) });
   }
   out.sort((a, b) => a.d - b.d);
   const kept = [];
@@ -218,6 +293,7 @@ function parsePhotonPlaces(features, catId, lat, lng) {
       id: type ? type + p.osm_id : 'ph' + out.length, osmType: type || null, osmId: p.osm_id || null,
       cat: catId, name: p.name || c.label, lat: g[1], lng: g[0], d: placeDistM(lat, lng, g[1], g[0]),
       addr: [p.street, p.housenumber].filter(Boolean).join(' '), extra: [], oh: '', open: null,
+      ct: placeContacts({}, p.name),
     });
   }
   out.sort((a, b) => a.d - b.d);
@@ -254,6 +330,7 @@ function mergePlaceDetails(places, elements, now = new Date(), parse = null) {
     if (p.cat === 'fuel' && t.brand && !q.name.toLowerCase().includes(t.brand.toLowerCase())) q.extra.push(t.brand);
     q.oh = t.opening_hours || '';
     q.open = placeOpenNow(q.oh, now, parse);
+    q.ct = placeContacts(t, q.name);
     out.push(q);
   }
   return out;
@@ -261,5 +338,6 @@ function mergePlaceDetails(places, elements, now = new Date(), parse = null) {
 
 if (typeof module !== 'undefined') {
   module.exports = { PLACE_CATEGORIES, PLACE_PHOTON_TAGS, buildPlacesQuery, parsePlaces, placeOpenNow, placeIconSvg,
-    buildPhotonPlacesUrl, parsePhotonPlaces, buildPlaceDetailsQuery, mergePlaceDetails, parseTilePlaces, resortPlaces, PLACE_TILE_SUBCLASS, placeStatus };
+    buildPhotonPlacesUrl, parsePhotonPlaces, buildPlaceDetailsQuery, mergePlaceDetails, parseTilePlaces, resortPlaces, PLACE_TILE_SUBCLASS, placeStatus,
+    placeContacts, placePhone, placeWebsite, placeBrand, PLACE_BRANDS };
 }
