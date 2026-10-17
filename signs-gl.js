@@ -76,9 +76,10 @@ class SignStore {
     this.roads = null;       // roadIndex vai null
     this.enabled = true;
     this.decorate = null;    // s → { time, off, unk, info } (laika ierobežojumi)
-    this.dotFor = null;      // s → punkta krāsa (brīdinājumu režīmā: atzīme ar asti + punkts attālinātā kartē)
-    this.iconScale = 1;      // "izlēciena" animācijai
-    this.onPinsShown = null; // izsauc, kad atzīmes parādās no jauna
+    this.dotFor = null;      // s → marķiera kods (brīdinājumu režīmā; null — zīmju režīmā)
+    this.onDots = null;      // (features) → punkti attālinātā kartē / pārejai (atsevišķā avotā)
+    this.onPinsShown = null; // izsauc, kad marķieri parādās no jauna (pēc tuvināšanas)
+    this.pinScale = 1; this.pinOpacity = 1;   // marķieru pārejas animācijai
     this.iconFor = null;     // s → attēla id (brīdinājumu režīmā — vienotas ikonas)
     this.titleFor = null;    // s → nosaukums
     this.iconUrl = new Map(); // attēla id -> adrese
@@ -485,8 +486,10 @@ class SignStore {
       minzoom: SIGNS_MIN_ZOOM,          // attālinātā kartē tūkstošiem zīmju tikai bremzē — tās nerāda
       layout: {
         'icon-image': ['get', 'icon'],
-        'icon-size': signsIconSize(1),
-        'icon-anchor': ['case', ['has', 'pin'], 'bottom-left', 'center'],   // atzīmes aste (apakšā pa kreisi) — precīzā vieta
+        'icon-size': signsIconSize(this.pinScale),
+        // Marķierim apakšā ir punkts tieši notikuma vietā — enkurs tur (pārējām zīmēm — centrs).
+        'icon-anchor': ['case', ['has', 'pin'], 'bottom', 'center'],
+        'icon-offset': ['case', ['has', 'pin'], ['literal', [0, 2.5]], ['literal', [0, 0]]],
         'symbol-sort-key': ['get', 'prio'],
         'icon-padding': 1,
         'icon-pitch-alignment': 'viewport',
@@ -502,11 +505,9 @@ class SignStore {
       },
       paint: {
         // Ja aizliegums tagad nav spēkā — zīme blāva.
-        // Atzīmes parādās tikai no ALERT_POP_ZOOM (zemāk — punkti), pārējās zīmes kā līdz šim.
-        'icon-opacity': ['interpolate', ['linear'], ['zoom'],
-          ALERT_POP_ZOOM - 0.35, ['case', ['has', 'pin'], 0, ['boolean', ['get', 'off'], false], 0.45, relCase(1, 0.4, 1)],
-          ALERT_POP_ZOOM, ['case', ['boolean', ['get', 'off'], false], 0.45, relCase(1, 0.4, 1)]],
-        'text-opacity': ['interpolate', ['linear'], ['zoom'], ALERT_POP_ZOOM - 0.35, ['case', ['has', 'pin'], 0, 1], ALERT_POP_ZOOM, 1],
+        // Marķieru (pin) caurspīdību vada pārejas animācija (punkts ↔ ikona); pārējās zīmes kā līdz šim.
+        'icon-opacity': signsIconOpacity(this.pinOpacity),
+        'text-opacity': ['case', ['has', 'pin'], this.pinOpacity, 1],
         'text-color': ['case', ['any', ['boolean', ['get', 'off'], false], ['boolean', ['get', 'unk'], false]], '#5f6b7a', '#c62828'],
         'text-halo-color': '#ffffff',
         'text-halo-width': 2.2,
@@ -516,9 +517,22 @@ class SignStore {
   }
 
   // Atzīmju "izlēciena" animācija: maina ikonu izmēru (k = 0…1,1…1).
-  setIconScale(k) {
-    this.iconScale = k;
-    if (this.map.getLayer('signs')) this.map.setLayoutProperty('signs', 'icon-size', signsIconSize(k));
+  // Marķieru pārejas animācija: izmērs (k) un caurspīdība (op) tikai brīdinājumu marķieriem.
+  setPinAnim(k, op) {
+    const L = this.map.getLayer('signs');
+    if (L && k !== this.pinScale) this.map.setLayoutProperty('signs', 'icon-size', signsIconSize(k));
+    if (L && op !== this.pinOpacity) {
+      this.map.setPaintProperty('signs', 'icon-opacity', signsIconOpacity(op));
+      this.map.setPaintProperty('signs', 'text-opacity', ['case', ['has', 'pin'], op, 1]);
+    }
+    this.pinScale = k; this.pinOpacity = op;
+  }
+
+  _dots(feats) {
+    if (!this.onDots) return;
+    if (!feats.length && this._dotsEmpty) return;
+    this._dotsEmpty = !feats.length;
+    this.onDots(feats);
   }
 
   // Karte prasa attēlu, kura vēl nav: ielādē to un uzzīmē 64×64.
@@ -573,7 +587,7 @@ class SignStore {
   _update() {
     const map = this.map, src = map.getSource && map.getSource('signs');
     if (!src) return;
-    if (!this.enabled) { src.setData({ type: 'FeatureCollection', features: [] }); return; }
+    if (!this.enabled) { src.setData({ type: 'FeatureCollection', features: [] }); this._dots([]); this._pinsShown = false; return; }
     // Attālinātā kartē zīmes nerāda un nerēķina (tas bija galvenais bremzētājs, attālinot karti).
     if (map.getZoom() < SIGNS_MIN_ZOOM) {
       // Brīdinājumu režīmā — tikai krāsaini punkti (bez piesaistes ceļam: ātri, arī ja to ir tūkstošiem).
@@ -581,15 +595,15 @@ class SignStore {
         const b = map.getBounds(), feats = [];
         this.eachInBox(b.getSouth(), b.getWest(), b.getNorth(), b.getEast(), s => {
           if (feats.length >= 4000 || !this.filter(s)) return;
-          const col = this.dotFor(s);
-          if (col) feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [s.lng, s.lat] }, properties: { col } });
+          const code = this.dotFor(s);
+          if (code != null) feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [s.lng, s.lat] }, properties: { code } });
         });
-        src.setData({ type: 'FeatureCollection', features: feats });
-        this._emptyShown = false; this._pinsShown = false;
+        if (!this._emptyShown) { src.setData({ type: 'FeatureCollection', features: [] }); this._emptyShown = true; }
+        this._dots(feats); this._pinsShown = false;
         return;
       }
       if (!this._emptyShown) { src.setData({ type: 'FeatureCollection', features: [] }); this._emptyShown = true; }
-      this._pinsShown = false;
+      this._dots([]); this._pinsShown = false;
       return;
     }
     this._emptyShown = false;
@@ -644,10 +658,12 @@ class SignStore {
           s._m && s._m.quality === 'uncertain' ? { unsure: s._m.reason || 'piesaiste nav droša' } : null,
           s.conflict ? { conflict: true } : null,
           this.decorate ? this.decorate(s) : null,
-          this.dotFor ? { col: this.dotFor(s), pin: 1 } : null),
+          this.dotFor ? { code: this.dotFor(s), pin: 1 } : null),
       })),
     });
-    // Atzīmes parādījās (pēc tuvināšanas no punktiem) — lai tās "izlec" ar animāciju.
+    // Punkti tieši marķieru vietās (pārejai punkts ↔ ikona bez pozīcijas lēcieniem).
+    this._dots(this.dotFor ? list.map(({ s, pos }) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [pos.lng, pos.lat] }, properties: { code: this.dotFor(s) } })) : []);
+    // Marķieri parādījās (pēc tuvināšanas no punktiem) — pāreja var sākties.
     const pinsNow = !!this.dotFor && list.length > 0;
     if (pinsNow && !this._pinsShown && this.onPinsShown) this.onPinsShown();
     this._pinsShown = pinsNow;
@@ -656,11 +672,14 @@ class SignStore {
 
 const SIGNS_MIN_ZOOM = 12;
 const SIGN_DOTS_MIN_ZOOM = 9;   // no šī tuvinājuma brīdinājumi redzami kā punkti
-const ALERT_POP_ZOOM = 13;      // no šī tuvinājuma punkti "izlec" par ikonām
+function signsIconOpacity(op) {
+  const rel = ['match', ['get', 'rel'], 'mine', 1, 'other', 0.4, 1];
+  return ['case', ['has', 'pin'], op, ['boolean', ['get', 'off'], false], 0.45, rel];
+}
 function signsIconSize(k) {
-  // Brīdinājumu atzīmes (pin) — tikpat lielas kā ziņojumu atzīmes; pārējās zīmes pēc piederības ceļam.
+  // Brīdinājumu marķieri (pin) — kā ziņojumu marķieri (k — pārejas animācijai); pārējās zīmes pēc piederības ceļam.
   const relCase = (pin, mine, other, unknown) => ['case', ['has', 'pin'], pin * k,
-    ['match', ['get', 'rel'], 'mine', mine * k, 'other', other * k, unknown * k]];
+    ['match', ['get', 'rel'], 'mine', mine, 'other', other, unknown]];
   return ['interpolate', ['linear'], ['zoom'],
     13, relCase(0.68, 0.62, 0.42, 0.55),
     16, relCase(1, 0.95, 0.6, 0.82),

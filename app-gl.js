@@ -1409,70 +1409,169 @@ function readOsmAlert(el) {
   refreshAlertsSoon();
 }
 
-function alertIconSize(k) { return ['interpolate', ['linear'], ['zoom'], 12, 0.6 * k, 16, 1 * k, 18.5, 1.25 * k]; }
+// ---------- Brīdinājumu marķieri: punkti attālinātā kartē ↔ pilnas ikonas tuvinātā ----------
+// Tālu: mazi, eleganti, viegli spīdoši punkti (identitātes krāsā); blīvās vietās tie saplūst vienā
+// nedaudz lielākā punktā (svarīgākā veida krāsā). Tuvu: pilni marķieri. Pāreja abos virzienos animēta.
+const MARKER_IN_ZOOM = 13;     // tuvinot līdz šim — punkti pārvēršas ikonās
+const MARKER_OUT_ZOOM = 12.6;  // attālinot zem šī — ikonas atpakaļ punktos (histerēze: nav mirgošanas)
+const ALERT_DOTS_SRC = 'alert-dots';
+function alertIconSize(k) { return ['interpolate', ['linear'], ['zoom'], 12, 0.62 * k, 16, 1 * k, 18.5, 1.22 * k]; }
 function installAlertLayer() {
   if (map.getSource('alerts')) return;
   map.addSource('alerts', { type: 'geojson', data: EMPTY_FC });
-  // Attālinātā kartē (9…13) — spīdīgi krāsaini punkti; tuvinot tie "izlec" par atzīmēm.
-  installAlertDots('alerts');
-  installAlertDots('signs');
+  installAlertDots();
   map.addLayer({
     id: 'alerts', type: 'symbol', source: 'alerts',
-    minzoom: ALERT_POP_ZOOM - 0.35,
+    minzoom: SIGNS_MIN_ZOOM,
     layout: {
       'icon-image': ['get', 'icon'],
-      'icon-size': alertIconSize(1),
-      'icon-anchor': 'bottom-left',   // aste rāda precīzo vietu
+      'icon-size': alertIconSize(markerMorph.pos ? 1 : 0.3),
+      'icon-anchor': 'bottom', 'icon-offset': [0, 2.5],   // marķiera punkts — tieši notikuma vietā
       'icon-allow-overlap': true,
       'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
       'symbol-sort-key': ['get', 'prio'],
+      'visibility': markerMorph.pos ? 'visible' : 'none',
     },
-    paint: { 'icon-opacity': ['interpolate', ['linear'], ['zoom'], ALERT_POP_ZOOM - 0.35, 0, ALERT_POP_ZOOM, 1] },
+    paint: { 'icon-opacity': markerMorph.pos },
   });
   refreshAlerts();
+  applyMarkerFrame(markerFrame(markerMorph.pos), true);
 }
-function installAlertDots(source) {
-  if (!map.getSource(source) || map.getLayer(source + '-dots')) return;
-  const fade = (v) => ['interpolate', ['linear'], ['zoom'], ALERT_POP_ZOOM - 0.35, v, ALERT_POP_ZOOM, 0];
-  const r = (a, b) => ['interpolate', ['linear'], ['zoom'], SIGN_DOTS_MIN_ZOOM, a, ALERT_POP_ZOOM, b];
-  const base = { source, minzoom: SIGN_DOTS_MIN_ZOOM, maxzoom: ALERT_POP_ZOOM + 0.1, filter: ['has', 'col'] };
+// Punktu slāņi (atsevišķs avots ar apvienošanu). r — rādiusa reizinātājs animācijai.
+function dotRadius(r) {
+  const one = (a, b) => ['interpolate', ['linear'], ['zoom'], 9, a * r, MARKER_IN_ZOOM, b * r];
+  return ['case', ['has', 'point_count'],
+    ['interpolate', ['linear'], ['get', 'point_count'], 2, 4.3 * r, 12, 5.6 * r, 60, 7 * r],
+    one(3.1, 4.4)];
+}
+function installAlertDots() {
+  if (map.getSource(ALERT_DOTS_SRC)) return;
+  map.addSource(ALERT_DOTS_SRC, { type: 'geojson', data: EMPTY_FC, cluster: true, clusterMaxZoom: 11, clusterRadius: 14,
+    clusterProperties: { code: ['min', ['get', 'code']] } });
+  const col = alertCodeColorExpr();
   const before = map.getLayer('signs') ? 'signs' : undefined;
-  map.addLayer(Object.assign({ id: source + '-dots-glow', type: 'circle', paint: {
-    'circle-color': ['get', 'col'], 'circle-radius': r(7, 13), 'circle-blur': 1, 'circle-opacity': fade(0.55),
+  const base = { source: ALERT_DOTS_SRC, minzoom: SIGN_DOTS_MIN_ZOOM };
+  map.addLayer(Object.assign({ id: 'alert-dots-glow', type: 'circle', paint: {
+    'circle-color': col, 'circle-radius': dotRadius(2.5), 'circle-blur': 1, 'circle-opacity': 0.32,
     'circle-pitch-alignment': 'map' } }, base), before);
-  map.addLayer(Object.assign({ id: source + '-dots', type: 'circle', paint: {
-    'circle-color': ['get', 'col'], 'circle-radius': r(3.2, 5.6),
-    'circle-stroke-color': '#ffffff', 'circle-stroke-width': r(1.2, 1.8),
-    'circle-opacity': fade(1), 'circle-stroke-opacity': fade(1) } }, base), before);
-  // Mazs spīdums (atspīdums augšā pa kreisi) — punkti izskatās kā stikla pērlītes
-  map.addLayer(Object.assign({ id: source + '-dots-shine', type: 'circle', paint: {
-    'circle-color': '#ffffff', 'circle-radius': r(1, 1.8), 'circle-translate': [-1, -1.2],
-    'circle-opacity': fade(0.75) } }, base), before);
+  map.addLayer(Object.assign({ id: 'alert-dots', type: 'circle', paint: {
+    'circle-color': col, 'circle-radius': dotRadius(1),
+    'circle-stroke-color': '#ffffff', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9, 1.1, 13, 1.5],
+    'circle-stroke-opacity': 0.92, 'circle-opacity': 1 } }, base), before);
+  // Mazs atspīdums augšā pa kreisi — punkti izskatās kā stikla pērlītes
+  map.addLayer(Object.assign({ id: 'alert-dots-shine', type: 'circle', paint: {
+    'circle-color': '#ffffff', 'circle-radius': dotRadius(0.36), 'circle-translate': [-0.9, -1],
+    'circle-opacity': 0.7 } }, base), before);
 }
-// Kad tuvinot pārsniedz ALERT_POP_ZOOM, atzīmes "izlec" (palielinās ar nelielu atsitienu).
-let alertPopZ = null, alertPopRaf = 0;
-function watchAlertPop() {
+let signDots = [];
+function refreshAlertDots() {
+  const src = map && map.getSource && map.getSource(ALERT_DOTS_SRC);
+  if (!src) return;
+  const show = state.signsOn && state.mapMode === 'alerts';
+  const own = show && alerts ? alerts.list().map(it => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [it.lng, it.lat] },
+    properties: { code: alertCode(it.type) } })) : [];
+  src.setData({ type: 'FeatureCollection', features: show ? signDots.concat(own) : [] });
+}
+
+// ----- Pāreja punkts ↔ ikona (2 varianti: "pop" — Elegant Pop, "morph" — dzīvīgāka pārveidošanās) -----
+// pos: 0 — punkti, 1 — ikonas. Animē laika gaitā uz mērķi; kadra vērtības nosaka varianta līknes.
+const markerMorph = { pos: 1, target: 1, raf: 0, last: 0, pending: 0, kind: store.get('markerAnim', 'pop') };
+const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
+const smooth = x => { x = clamp01(x); return x * x * (3 - 2 * x); };
+const backOut = (x, c) => { x = clamp01(x); const u = x - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
+const MARKER_VARIANTS = {
+  // Elegant Pop: punkts nedaudz palielinās → ikona parādās ar fade + scale un nelielu atsitienu
+  pop: { ms: 340, frame: t => ({
+    dotR: 1 + 0.35 * smooth(t / 0.35), dotOp: 1 - smooth((t - 0.28) / 0.32),
+    glow: 1 + 0.7 * smooth(t / 0.3) * (1 - smooth((t - 0.35) / 0.35)),
+    iconOp: smooth((t - 0.2) / 0.32), iconS: 0.55 + 0.45 * backOut((t - 0.2) / 0.8, 1.6),
+  }) },
+  // Morph: punkts "ieelpo", paplašinās ar mirdzumu, no tā izaug ikona ar mazu atlēcienu
+  morph: { ms: 560, frame: t => {
+    const inhale = 1 - 0.24 * Math.sin(Math.PI * clamp01(t / 0.36));
+    const grow = 1 + 0.95 * smooth((t - 0.16) / 0.32);
+    const u = clamp01((t - 0.3) / 0.7);
+    return {
+      dotR: inhale * grow, dotOp: 1 - smooth((t - 0.42) / 0.26),
+      glow: 1 + 1.1 * smooth((t - 0.12) / 0.3) * (1 - smooth((t - 0.5) / 0.3)),
+      iconOp: smooth((t - 0.3) / 0.24),
+      iconS: u <= 0 ? 0.22 : 1 - 0.78 * Math.exp(-5.2 * u) * Math.cos(9.4 * u),
+    };
+  } },
+};
+function markerFrame(pos) {
+  const v = MARKER_VARIANTS[markerMorph.kind] || MARKER_VARIANTS.pop;
+  if (pos <= 0) return { dotR: 1, dotOp: 1, glow: 1, iconOp: 0, iconS: 0.3 };
+  if (pos >= 1) return { dotR: 1, dotOp: 0, glow: 1, iconOp: 1, iconS: 1 };
+  return v.frame(pos);
+}
+const markerLast = {};
+function applyMarkerFrame(f, force) {
+  if (!map) return;
+  const set = (key, val, fn) => { if (force || markerLast[key] !== val) { markerLast[key] = val; fn(val); } };
+  const r2 = x => Math.round(x * 100) / 100;
+  const dotsOn = f.dotOp > 0.01, iconsOn = f.iconOp > 0.01;
+  for (const id of ['alert-dots-glow', 'alert-dots', 'alert-dots-shine']) {
+    if (map.getLayer(id)) set('vis:' + id, dotsOn ? 'visible' : 'none', v => map.setLayoutProperty(id, 'visibility', v));
+  }
+  if (dotsOn && map.getLayer('alert-dots')) {
+    set('dotR', r2(f.dotR), v => { map.setPaintProperty('alert-dots', 'circle-radius', dotRadius(v)); map.setPaintProperty('alert-dots-shine', 'circle-radius', dotRadius(0.36 * v)); });
+    set('dotOp', r2(f.dotOp), v => { map.setPaintProperty('alert-dots', 'circle-opacity', v); map.setPaintProperty('alert-dots', 'circle-stroke-opacity', 0.92 * v); map.setPaintProperty('alert-dots-shine', 'circle-opacity', 0.7 * v); });
+    set('glow', r2(f.glow) + ':' + r2(f.dotOp), () => { map.setPaintProperty('alert-dots-glow', 'circle-radius', dotRadius(2.5 * f.dotR * (0.85 + 0.15 * f.glow))); map.setPaintProperty('alert-dots-glow', 'circle-opacity', Math.min(0.75, 0.32 * f.glow) * f.dotOp); });
+  }
+  if (map.getLayer('alerts')) {
+    set('vis:alerts', iconsOn ? 'visible' : 'none', v => map.setLayoutProperty('alerts', 'visibility', v));
+    if (iconsOn) {
+      set('iconS', r2(f.iconS), v => map.setLayoutProperty('alerts', 'icon-size', alertIconSize(v)));
+      set('iconOp', r2(f.iconOp), v => map.setPaintProperty('alerts', 'icon-opacity', v));
+    }
+  }
+  if (signs && map.getLayer('signs')) signs.setPinAnim(iconsOn ? r2(f.iconS) : 0.3, r2(f.iconOp));
+}
+function markerTargetFor(z) {
+  if (z >= MARKER_IN_ZOOM) return 1;
+  if (z < MARKER_OUT_ZOOM) return 0;
+  return markerMorph.target;   // starp sliekšņiem — paliek kā bija
+}
+// Sāk pāreju uz mērķi. Tuvinot — gaida, kamēr zīmju marķieri ir aprēķināti (punkti pa to laiku paliek redzami).
+function setMarkerTarget(target, now) {
+  markerMorph.target = target;
+  clearTimeout(markerMorph.pending); markerMorph.pending = 0;
+  const waitPins = target === 1 && signs && signs.dotFor && signs.enabled && !signs._pinsShown && !now;
+  if (waitPins) { markerMorph.pending = setTimeout(() => runMarkerMorph(), 1500); return; }
+  runMarkerMorph();
+}
+function runMarkerMorph() {
+  clearTimeout(markerMorph.pending); markerMorph.pending = 0;
+  cancelAnimationFrame(markerMorph.raf);
+  markerMorph.last = performance.now();
+  const step = now => {
+    const v = MARKER_VARIANTS[markerMorph.kind] || MARKER_VARIANTS.pop;
+    const dir = markerMorph.target > markerMorph.pos ? 1 : -1;
+    const dt = Math.min(64, now - markerMorph.last); markerMorph.last = now;
+    // attālinot — nedaudz ātrāk (ikona "ievelkas" punktā)
+    markerMorph.pos = clamp01(markerMorph.pos + dir * dt / (dir > 0 ? v.ms : v.ms * 0.8));
+    applyMarkerFrame(markerFrame(markerMorph.pos));
+    if (markerMorph.pos !== markerMorph.target) markerMorph.raf = requestAnimationFrame(step);
+  };
+  markerMorph.raf = requestAnimationFrame(step);
+}
+// Priekšskatījums iestatījumos: punkti → ikonas (ja karte ir pietiekami tuvu)
+function previewMarkerMorph() {
+  if (map.getZoom() < MARKER_IN_ZOOM) { map.easeTo({ zoom: 15, duration: 700 }); return; }
+  cancelAnimationFrame(markerMorph.raf);
+  markerMorph.pos = 0; applyMarkerFrame(markerFrame(0));
+  setTimeout(() => setMarkerTarget(1, true), 450);
+}
+function watchMarkerMorph() {
+  markerMorph.pos = markerMorph.target = map.getZoom() >= MARKER_IN_ZOOM ? 1 : 0;
   map.on('zoom', () => {
-    const z = map.getZoom();
-    if (alertPopZ != null && alertPopZ < ALERT_POP_ZOOM - 0.2 && z >= ALERT_POP_ZOOM - 0.2 && state.mapMode === 'alerts' && state.signsOn) popAlerts();
-    alertPopZ = z;
+    const t = markerTargetFor(map.getZoom());
+    if (t !== markerMorph.target) setMarkerTarget(t);
   });
 }
-function popAlerts() {
-  cancelAnimationFrame(alertPopRaf);
-  const t0 = performance.now(), D = 650;
-  const back = t => { const c = 2.4, u = t - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
-  const apply = k => {
-    if (map.getLayer('alerts')) map.setLayoutProperty('alerts', 'icon-size', alertIconSize(k));
-    signs.setIconScale(k);
-  };
-  const step = now => {
-    const t = Math.min(1, (now - t0) / D);
-    apply(Math.max(0.02, back(t)));
-    if (t < 1) alertPopRaf = requestAnimationFrame(step); else apply(1);
-  };
-  alertPopRaf = requestAnimationFrame(step);
-}
+// Zīmju marķieri parādījās (pēc tuvināšanas) — ja gaidām, sākam pāreju tagad.
+function onSignPinsShown() { if (markerMorph.pending) runMarkerMorph(); }
 let alertsTimer = null;
 function refreshAlertsSoon() { clearTimeout(alertsTimer); alertsTimer = setTimeout(refreshAlerts, 200); }
 function refreshAlerts() {
@@ -1482,8 +1581,9 @@ function refreshAlerts() {
   const list = show ? alerts.list() : [];
   src.setData({ type: 'FeatureCollection', features: list.map(it => ({
     type: 'Feature', geometry: { type: 'Point', coordinates: [it.lng, it.lat] },
-    properties: { id: it.id, icon: 'alert:' + it.type, col: alertDotColor(it.type), prio: it.source === 'user' ? 0 : 5 },
+    properties: { id: it.id, icon: 'alert:' + it.type, prio: it.source === 'user' ? 0 : 5 },
   })) });
+  refreshAlertDots();
 }
 
 function showAlertPopup(id, coords) {
@@ -1623,8 +1723,8 @@ function applySignVisibility() {
     signs.setFilter(s => !!alertTypeForSign(s) && signFitsProfile(s, state.profile));
     signs.iconFor = s => 'alert:' + (alertTypeForSign(s) || 'hazard');
     signs.titleFor = s => { const t = alertTypeForSign(s); return t ? ALERT_TYPES[t].label : s.title; };
-    signs.dotFor = s => alertDotColor(alertTypeForSign(s) || 'hazard');
-    signs.onPinsShown = popAlerts;
+    signs.dotFor = s => alertCode(alertTypeForSign(s) || 'hazard');
+    signs.onPinsShown = onSignPinsShown;
   } else {
     signs.setFilter(s => state.cats[s.cat] && signFitsProfile(s, state.profile));
     signs.iconFor = null;
@@ -1683,6 +1783,10 @@ function wireUi() {
   $('masterSwitch').addEventListener('change', e => {
     state.signsOn = e.target.checked; store.set('signsOn', state.signsOn); applySignVisibility();
   });
+  // Marķieru animācija (punkts ↔ ikona): izvēle un priekšskatījums
+  $('markerAnim').value = markerMorph.kind;
+  $('markerAnim').addEventListener('change', e => { markerMorph.kind = e.target.value; store.set('markerAnim', markerMorph.kind); previewMarkerMorph(); });
+  $('markerAnimTest').addEventListener('click', previewMarkerMorph);
   $('warnSwitch').checked = state.warn;
   $('warnSwitch').addEventListener('change', e => { state.warn = e.target.checked; store.set('warn', state.warn); updateLimit(); });
   $('testSwitch').addEventListener('change', e => {
@@ -2004,10 +2108,11 @@ async function init() {
   });
   signs = new SignStore(map);
   signs.decorate = signTimeInfo;
+  signs.onDots = feats => { signDots = feats; refreshAlertDots(); };
+  watchMarkerMorph();
   alerts = new AlertStore({ load: () => store.get('reports', []), save: list => store.set('reports', list) });
   setInterval(() => { if (alerts.prune()) refreshAlerts(); }, 30000);   // novecojušos ziņojumus noņem
   setInterval(() => { signs.refresh(); updateLimit(); }, 60000); // laika ierobežojumi mainās
-  watchAlertPop();
 
   map.on('style.load', () => {
     installRouteLayers();

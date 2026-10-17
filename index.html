@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=59">
+  <link rel="stylesheet" href="style-gl.css?v=60">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -192,6 +192,14 @@
       <span>Bultas krāsa</span>
       <div id="arrowColors" class="arrow-colors" role="group" aria-label="Bultas krāsa"></div>
     </div>
+    <div class="row anim-row">
+      <label for="markerAnim">Marķieru animācija</label>
+      <select id="markerAnim" class="select">
+        <option value="pop">Elegant Pop</option>
+        <option value="morph">Morph</option>
+      </select>
+      <button id="markerAnimTest" type="button" class="link-btn">Parādīt</button>
+    </div>
     <label class="row" for="basemapSelect">
       <span>Kartes stils</span>
       <select id="basemapSelect" class="select"></select>
@@ -208,20 +216,20 @@
   </section>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script src="cache.js?v=59"></script>
-  <script src="signs.js?v=59"></script>
-  <script src="mapillary.js?v=59"></script>
-  <script src="roads-gl.js?v=59"></script>
-  <script src="basemap-gl.js?v=59"></script>
-  <script src="signs-gl.js?v=59"></script>
-  <script src="nav.js?v=59"></script>
-  <script src="times.js?v=59"></script>
-  <script src="alerts.js?v=59"></script>
-  <script src="places.js?v=59"></script>
-  <script src="model.js?v=59"></script>
-  <script src="rides-config.js?v=59"></script>
-  <script src="rides.js?v=59"></script>
-  <script src="rides-ui.js?v=59"></script>
-  <script src="app-gl.js?v=59"></script>
+  <script src="cache.js?v=60"></script>
+  <script src="signs.js?v=60"></script>
+  <script src="mapillary.js?v=60"></script>
+  <script src="roads-gl.js?v=60"></script>
+  <script src="basemap-gl.js?v=60"></script>
+  <script src="signs-gl.js?v=60"></script>
+  <script src="nav.js?v=60"></script>
+  <script src="times.js?v=60"></script>
+  <script src="alerts.js?v=60"></script>
+  <script src="places.js?v=60"></script>
+  <script src="model.js?v=60"></script>
+  <script src="rides-config.js?v=60"></script>
+  <script src="rides.js?v=60"></script>
+  <script src="rides-ui.js?v=60"></script>
+  <script src="app-gl.js?v=60"></script>
 </body>
 </html>
