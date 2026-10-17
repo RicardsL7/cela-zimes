@@ -137,40 +137,25 @@ const ALERT_OBJ_DEFS =
   `<linearGradient id="mt" x1="0" x2="1"><stop offset="0" stop-color="#5d6672"/><stop offset=".4" stop-color="#e9edf1"/><stop offset="1" stop-color="#4b535e"/></linearGradient>`;
 const lamp = (id, c0, c1, c2) => `<radialGradient id="${id}" cx=".38" cy=".34" r=".72"><stop offset="0" stop-color="${c0}"/><stop offset=".38" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></radialGradient>`;
 const ALERT_OBJECTS = {
-  // Luksofors: melns fona vairogs ar baltu maliņu, korpuss, nojumes, trīs spīdošas lampas, stabs
-  'traffic-light': `<defs><linearGradient id="h" x1="0" x2="1"><stop offset="0" stop-color="#58616d"/><stop offset=".3" stop-color="#363d47"/><stop offset="1" stop-color="#171b21"/></linearGradient>` +
-    lamp('lr', '#fff4f2', '#ff4a3d', '#a30f08') + lamp('ly', '#fffbe8', '#ffc21a', '#a35f00') + lamp('lg', '#effff4', '#2fe072', '#0a7a33') + `</defs>` +
-    `<g filter="url(#o)"><rect x="29" y="45" width="6" height="15" rx="1.5" fill="url(#mt)" stroke="${OL}" stroke-width="1.4"/>` +
-    `<rect x="15" y="3" width="34" height="44" rx="7" fill="#12161c" stroke="${OL}" stroke-width="1.6"/>` +
-    `<rect x="16.8" y="4.8" width="30.4" height="40.4" rx="5.6" fill="none" stroke="#fff" stroke-width="1.5" opacity=".92"/>` +
-    `<rect x="21" y="7.5" width="22" height="36" rx="5" fill="url(#h)" stroke="${OL}" stroke-width="1.3"/>` +
-    `<rect x="22.6" y="9" width="2.2" height="33" rx="1.1" fill="#fff" opacity=".2"/>` +
-    [[14.6, 'lr', '#ff4a3d'], [25.5, 'ly', '#ffc21a'], [36.4, 'lg', '#2fe072']].map(([cy, id, c]) =>
-      `<circle cx="32" cy="${cy}" r="6.6" fill="${c}" opacity=".45" filter="url(#gb)"/>` +
-      `<circle cx="32" cy="${cy}" r="5.3" fill="#06080b"/><circle cx="32" cy="${cy}" r="4.4" fill="url(#${id})"/>` +
-      `<ellipse cx="30.4" cy="${cy - 1.7}" rx="1.6" ry="1" fill="#fff" opacity=".85"/>` +
-      `<path d="M25.6 ${cy - 1.6}a6.4 6.4 0 0 1 12.8 0h-1.9a4.5 4.5 0 0 0-9 0Z" fill="#0b0e12"/>`).join('') + `</g>`,
-  // Stacionārais fotoradars: dzeltena kaste (priekša, augša, sāns) uz staba; objektīvs, zibspuldze
-  'camera-fixed': `<defs><linearGradient id="bf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe880"/><stop offset=".5" stop-color="#ffc928"/><stop offset="1" stop-color="#e29a00"/></linearGradient>` +
-    `<linearGradient id="gp" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2b3647"/><stop offset="1" stop-color="#05080e"/></linearGradient>` +
-    `<linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f1f5f9"/><stop offset=".5" stop-color="#7c8797"/><stop offset="1" stop-color="#28303c"/></linearGradient>` +
-    lamp('ln', '#c4ebff', '#3b82f6', '#0a1240') +
-    `<radialGradient id="fl" cx=".5" cy=".45" r=".65"><stop offset="0" stop-color="#ffffff"/><stop offset=".45" stop-color="#fff3c4"/><stop offset="1" stop-color="#f5b70a"/></radialGradient></defs>` +
-    `<g filter="url(#o)"><rect x="28.5" y="39" width="7" height="21" rx="1.6" fill="url(#mt)" stroke="${OL}" stroke-width="1.4"/>` +
-    `<rect x="23.5" y="38" width="17" height="4.6" rx="1.6" fill="#3b4350" stroke="${OL}" stroke-width="1.2"/>` +
-    `<path d="M8.5 14 15.5 7h40l-7 7Z" fill="#fff2a6" stroke="${OL}" stroke-width="1.4" stroke-linejoin="round"/>` +
-    `<path d="M48.5 14l7-7v26l-7 7Z" fill="#c98a00" stroke="${OL}" stroke-width="1.4" stroke-linejoin="round"/>` +
-    `<rect x="6.5" y="14" width="42" height="26" rx="3.2" fill="url(#bf)" stroke="${OL}" stroke-width="1.6"/>` +
-    `<rect x="8.5" y="15.4" width="38" height="2.6" rx="1.3" fill="#fff" opacity=".45"/>` +
-    `<rect x="10" y="18.5" width="35" height="18.5" rx="2.6" fill="url(#gp)" stroke="${OL}" stroke-width="1"/>` +
-    `<path d="M10.5 21 13 18.5h9L13.5 37H10.5Z" fill="#fff" opacity=".1"/>` +
-    `<circle cx="19.5" cy="27.7" r="7.4" fill="url(#rg)" stroke="${OL}" stroke-width=".9"/><circle cx="19.5" cy="27.7" r="5.8" fill="#070a12"/>` +
-    `<circle cx="19.5" cy="27.7" r="4.6" fill="url(#ln)"/><circle cx="19.5" cy="27.7" r="1.7" fill="#050816" opacity=".7"/>` +
-    `<ellipse cx="17.5" cy="25.4" rx="1.9" ry="1.2" fill="#fff" opacity=".9" transform="rotate(-30 17.5 25.4)"/>` +
-    `<rect x="30" y="21" width="11.5" height="7.6" rx="1.4" fill="url(#fl)" stroke="#6b4f00" stroke-width=".8"/>` +
-    `<path d="M33.8 21v7.6M37.7 21v7.6M30 24.8h11.5" stroke="#e9a800" stroke-width=".5" opacity=".7"/>` +
-    `<circle cx="32.5" cy="32.8" r="1.6" fill="#ff3b30"/><circle cx="32" cy="32.3" r=".5" fill="#fff"/>` +
-    `<circle cx="38.5" cy="32.8" r="1.8" fill="#111827" stroke="#64748b" stroke-width=".7"/></g>`,
+  // Luksofors: plakans, mīlīgs — tumšs korpuss, nojumes, trīs spīdošas lampas, stabs
+  'traffic-light': `<g filter="url(#o)" stroke="#141a22" stroke-linejoin="round" stroke-linecap="round"><rect x="28.5" y="44" width="7" height="17" rx="2" fill="#8a94a3" stroke-width="2.2"/><path d="M30.6 46v13" stroke="#fff" stroke-width="1.4" opacity=".5"/><rect x="17.5" y="2.5" width="29" height="44" rx="9" fill="#2f3744" stroke-width="2.6"/><rect x="20.8" y="6" width="4.6" height="37" rx="2.3" fill="#fff" opacity=".14" stroke="none"/>` +
+    [[13.6, '#ff4d4d'], [24.6, '#ffc531'], [35.6, '#34d26a']].map(([cy, c]) =>
+      `<circle cx="32" cy="${cy}" r="7.6" fill="${c}" opacity=".45" stroke="none" filter="url(#gb)"/>` +
+      `<circle cx="32" cy="${cy}" r="6.6" fill="#151a21" stroke="none"/><circle cx="32" cy="${cy}" r="5" fill="${c}" stroke-width="1.4"/>` +
+      `<path d="M28.9 ${cy + 3}a5 5 0 0 0 7.6-1.7" fill="none" stroke="#000" stroke-width="1.6" opacity=".18"/>` +
+      `<circle cx="30" cy="${cy - 2}" r="1.7" fill="#fff" stroke="none"/>` +
+      '').join('') + `</g>`,
+  // Stacionārais fotoradars: gaiša kaste ar dzeltenu jumtiņu uz staba; liels objektīvs, zibspuldze
+  'camera-fixed': `<g filter="url(#o)" stroke="#141a22" stroke-linejoin="round" stroke-linecap="round"><rect x="28.5" y="41" width="7" height="20" rx="2" fill="#8a94a3" stroke-width="2.2"/><path d="M30.6 44v15" stroke="#fff" stroke-width="1.4" opacity=".5"/>` +
+    `<rect x="21" y="37.5" width="22" height="6" rx="3" fill="#5b6574" stroke-width="2"/>` +
+    `<path d="M50 15.5 57 11v23l-7 5Z" fill="#aab5c4" stroke-width="2.2"/>` +
+    `<rect x="5" y="12" width="46" height="27" rx="7" fill="#eef2f7" stroke-width="2.6"/>` +
+    `<path d="M8 31.5h40v2.5a3.5 3.5 0 0 1-3.5 3.5h-33A3.5 3.5 0 0 1 8 34Z" fill="#cdd6e2" stroke="none"/>` +
+    `<rect x="2.5" y="6" width="52" height="8.5" rx="4.2" fill="#ffc531" stroke-width="2.4"/><path d="M6.5 8.8h44" stroke="#fff" stroke-width="1.6" opacity=".6"/>` +
+    `<circle cx="21" cy="25.5" r="9.6" fill="#2a3342" stroke-width="2.4"/><circle cx="21" cy="25.5" r="6.2" fill="#3b82f6" stroke="none"/>` +
+    `<circle cx="21" cy="25.5" r="2.9" fill="#0b1530" stroke="none"/><circle cx="18" cy="22.4" r="2.2" fill="#fff" stroke="none"/>` +
+    `<rect x="35" y="18.5" width="11.5" height="7" rx="2" fill="#fff6c2" stroke-width="1.8"/><path d="M37 20.6h4" stroke="#fff" stroke-width="1.4"/>` +
+    `<circle cx="40.8" cy="31" r="2.3" fill="#ff4d4d" stroke-width="1.5"/></g>`,
   // Mobilais radars: kamera uz trijkāja
   'camera-mobile': `<defs><linearGradient id="b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5b6573"/><stop offset="1" stop-color="#1a202a"/></linearGradient>` +
     lamp('ln', '#c4ebff', '#3b82f6', '#0a1240') + `</defs>` +
@@ -198,17 +183,14 @@ const ALERT_OBJECTS = {
     `<path d="M9.5 13a5.5 5.5 0 1 1 11 0Z" fill="url(#y)" stroke="${OL}" stroke-width="1.3"/><path d="M43.5 13a5.5 5.5 0 1 1 11 0Z" fill="url(#y)" stroke="${OL}" stroke-width="1.3"/>` +
     `<rect x="9" y="12.6" width="12" height="2.6" rx="1" fill="#3b4350" stroke="${OL}" stroke-width="1"/><rect x="43" y="12.6" width="12" height="2.6" rx="1" fill="#3b4350" stroke="${OL}" stroke-width="1"/>` +
     `<ellipse cx="13.4" cy="9.3" rx="1.5" ry="1" fill="#fff" opacity=".85"/><ellipse cx="47.4" cy="9.3" rx="1.5" ry="1" fill="#fff" opacity=".85"/></g></g>`,
-  // Remontdarbi: oranžs konuss ar izliektām atstarojošām joslām uz gumijas pamatnes
-  'roadworks': `<defs><linearGradient id="k" x1="0" x2="1"><stop offset="0" stop-color="#a8360c"/><stop offset=".22" stop-color="#f26a1b"/><stop offset=".42" stop-color="#ffb27a"/><stop offset=".6" stop-color="#ff7a1f"/><stop offset="1" stop-color="#8f2d08"/></linearGradient>` +
-    `<linearGradient id="w" x1="0" x2="1"><stop offset="0" stop-color="#aeb7c2"/><stop offset=".4" stop-color="#ffffff"/><stop offset=".65" stop-color="#eef1f5"/><stop offset="1" stop-color="#8d97a3"/></linearGradient>` +
-    `<linearGradient id="bt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5b6573"/><stop offset="1" stop-color="#2a3039"/></linearGradient></defs>` +
-    `<g filter="url(#o)"><path d="M5 53.5h54v4a2.5 2.5 0 0 1-2.5 2.5h-49A2.5 2.5 0 0 1 5 57.5Z" fill="#15191f" stroke="${OL}" stroke-width="1.4"/>` +
-    `<path d="M10 45.5h44l5 8H5Z" fill="url(#bt)" stroke="${OL}" stroke-width="1.4" stroke-linejoin="round"/>` +
-    `<ellipse cx="32" cy="49.3" rx="17.5" ry="3.2" fill="#000" opacity=".35"/>` +
-    `<path d="M29.3 5.6Q32 2.2 34.7 5.6L48.6 48.6Q32 53.4 15.4 48.6Z" fill="url(#k)" stroke="${OL}" stroke-width="1.6" stroke-linejoin="round"/>` +
-    `<path d="M25.4 18Q32 20.2 38.6 18L41.1 25.4Q32 28.2 22.9 25.4Z" fill="url(#w)"/>` +
-    `<path d="M20.6 32.6Q32 35.6 43.4 32.6L46.1 40.8Q32 44.6 17.9 40.8Z" fill="url(#w)"/>` +
-    `<path d="M30.6 6.6 24.8 46" stroke="#fff" stroke-width="2.2" stroke-linecap="round" opacity=".38"/></g>`,
+  // Remontdarbi: plakans oranžs konuss ar baltām joslām uz pamatnes
+  'roadworks': `<g filter="url(#o)" stroke="#141a22" stroke-linejoin="round" stroke-linecap="round"><rect x="7" y="50" width="50" height="9" rx="3" fill="#3a4250" stroke-width="2.4"/><path d="M11 52.6h42" stroke="#fff" stroke-width="1.4" opacity=".3"/>` +
+    `<path d="M28.4 6.2Q32 1.2 35.6 6.2L49.5 51h-35Z" fill="#ff7a1f" stroke="none"/>` +
+    `<path d="M33.6 4.4Q34.8 4.9 35.6 6.2L49.5 51H39.5Z" fill="#d9530b" stroke="none" opacity=".55"/>` +
+    `<path d="M25.3 17.5h13.4l2.6 8.6H22.7ZM20.6 32.5h22.8l2.7 9H17.9Z" fill="#fff" stroke="none"/>` +
+    `<path d="M38.7 17.5l2.6 8.6h-3.6l-2.3-8.6ZM43.4 32.5l2.7 9h-4l-2.4-9Z" fill="#cbd5e1" stroke="none"/>` +
+    `<path d="M29.8 7.5 22.6 47" stroke="#fff" stroke-width="2.4" opacity=".45"/>` +
+    `<path d="M28.4 6.2Q32 1.2 35.6 6.2L49.5 51h-35Z" fill="none" stroke-width="2.6"/></g>`,
   // Bērni: divi bērni sadevušies rokās (oranžs un zils krekls, mugursoma) — skolas zona
   'school': `<defs><linearGradient id="sa" x1="0" x2="1"><stop offset="0" stop-color="#ffa14d"/><stop offset="1" stop-color="#e2550c"/></linearGradient>` +
     `<linearGradient id="sb" x1="0" x2="1"><stop offset="0" stop-color="#7dd3fc"/><stop offset="1" stop-color="#0284c7"/></linearGradient>` +
@@ -240,6 +222,7 @@ const ALERT_OBJECTS = {
     `<ellipse cx="22.6" cy="38" rx="1.4" ry=".9" fill="#fff" opacity=".85"/></g>`,
 };
 // Kuri veidi kartē ir priekšmeti (bez burbuļa)
+const ALERT_OBJ_PAD = 'M3 62.5 15.5 55.2A17.5 5.6 0 0 1 37 50a17.5 5.6 0 1 1 0 11.2c-5 0-9.5-.6-12.6-1.6Z';
 const ALERT_STANDALONE = new Set(['traffic-light', 'camera-fixed', 'camera-mobile', 'obstacle', 'roadworks', 'school', 'rail']);
 
 function alertMix(hex, to, k) {
@@ -273,21 +256,25 @@ const ALERT_PIN_OBJ_DEFS = `<filter id="o" x="-25%" y="-25%" width="150%" height
   `<feOffset dy="1.4"/><feComponentTransfer><feFuncA type="linear" slope=".35"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>` +
   `<filter id="gb" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6"/></filter>` +
   `<linearGradient id="mt" x1="0" x2="1"><stop offset="0" stop-color="#5d6672"/><stop offset=".4" stop-color="#e9edf1"/><stop offset="1" stop-color="#4b535e"/></linearGradient>`;
-const ALERT_PIN_PATH = 'M32 2A25 25 0 0 1 41.2 50.25L32 61.5 22.8 50.25A25 25 0 0 1 32 2Z';
+const ALERT_PIN_PATH = 'M34 3.5A24.5 24.5 0 1 1 24.8 50.7L3 62.5 11.3 37.2A24.5 24.5 0 0 1 34 3.5Z';   // aste apakšā pa kreisi — rāda precīzo vietu
 function alertSvg(type, size = 64) {
   if (ALERT_STANDALONE.has(type)) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 64 64"><defs>${ALERT_OBJ_DEFS}</defs>` +
-      `<ellipse cx="32" cy="60.5" rx="15" ry="2.6" fill="#000" opacity=".28" filter="url(#gb)"/>${ALERT_OBJECTS[type]}</svg>`;
+    // Priekšmets stāv uz balta "pamatnes" ovāla; no tā — bultiņa uz precīzo vietu (apakšā pa kreisi, kā atzīmēm)
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 64 64"><defs>${ALERT_OBJ_DEFS}` +
+      `<filter id="pd" x="-30%" y="-60%" width="160%" height="220%"><feGaussianBlur in="SourceAlpha" stdDeviation="1"/><feOffset dy="1"/>` +
+      `<feComponentTransfer><feFuncA type="linear" slope=".45"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>` +
+      `<path d="${ALERT_OBJ_PAD}" fill="#fff" filter="url(#pd)"/><ellipse cx="37" cy="55.6" rx="13.5" ry="2.8" fill="#000" opacity=".16"/>` +
+      `<g transform="translate(11 -0.5) scale(.82)">${ALERT_OBJECTS[type]}</g></svg>`;
   }
   const st = ALERT_PIN_STYLE[type] || ALERT_PIN_STYLE.hazard;
   const bg = st.bg, hi = alertMix(bg, 'w', 0.3), lo = alertMix(bg, 'k', 0.14);
   let inner;
   if (st.obj && ALERT_OBJECTS[st.obj]) {
-    inner = `<g transform="translate(14.7 9.7) scale(.54)">${ALERT_OBJECTS[st.obj]}</g>`;
+    inner = `<g transform="translate(16.7 10.7) scale(.54)">${ALERT_OBJECTS[st.obj]}</g>`;
   } else {
     let g = (ALERT_GLYPHS[type] || ALERT_GLYPHS.hazard)(st.dark ? bg : alertMix(bg, 'k', 0.1));
     if (st.dark) g = g.split(ALERT_W).join('#1f2937');
-    inner = `<g filter="url(#d)" transform="translate(17.6 12.6) scale(1.2)">${g}</g>`;
+    inner = `<g filter="url(#d)" transform="translate(19.6 13.6) scale(1.2)">${g}</g>`;
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 64 64"><defs>${ALERT_PIN_OBJ_DEFS}` +
     `<linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset=".6" stop-color="${bg}"/><stop offset="1" stop-color="${lo}"/></linearGradient>` +
@@ -297,8 +284,8 @@ function alertSvg(type, size = 64) {
     `<feComponentTransfer><feFuncA type="linear" slope=".3"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>` +
     `<path d="${ALERT_PIN_PATH}" fill="#000" opacity=".4" filter="url(#s)" transform="translate(0 1.4)"/>` +
     `<path d="${ALERT_PIN_PATH}" fill="#fff"/>` +
-    `<circle cx="32" cy="27" r="21.8" fill="url(#f)"/>` +
-    `<path d="M13.4 22A19.5 19.5 0 0 1 50.6 22C45 18.6 39 17.4 32 17.4S19 18.6 13.4 22Z" fill="url(#g)"/>` +
+    `<circle cx="34" cy="28" r="21.4" fill="url(#f)"/>` +
+    `<path d="M15.6 23A19.2 19.2 0 0 1 52.4 23C47 19.6 41 18.4 34 18.4S21 19.6 15.6 23Z" fill="url(#g)"/>` +
     inner + `</svg>`;
 }
 const alertUrlCache = new Map();

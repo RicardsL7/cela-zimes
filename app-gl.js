@@ -1422,7 +1422,7 @@ function installAlertLayer() {
     layout: {
       'icon-image': ['get', 'icon'],
       'icon-size': alertIconSize(1),
-      'icon-anchor': 'bottom',
+      'icon-anchor': 'bottom-left',   // aste rāda precīzo vietu
       'icon-allow-overlap': true,
       'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
       'symbol-sort-key': ['get', 'prio'],
@@ -1460,15 +1460,15 @@ function watchAlertPop() {
 }
 function popAlerts() {
   cancelAnimationFrame(alertPopRaf);
-  const t0 = performance.now(), D = 480;
-  const back = t => { const c = 1.9, u = t - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
+  const t0 = performance.now(), D = 650;
+  const back = t => { const c = 2.4, u = t - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
   const apply = k => {
     if (map.getLayer('alerts')) map.setLayoutProperty('alerts', 'icon-size', alertIconSize(k));
     signs.setIconScale(k);
   };
   const step = now => {
     const t = Math.min(1, (now - t0) / D);
-    apply(0.15 + 0.85 * back(t));
+    apply(Math.max(0.02, back(t)));
     if (t < 1) alertPopRaf = requestAnimationFrame(step); else apply(1);
   };
   alertPopRaf = requestAnimationFrame(step);
@@ -1624,11 +1624,13 @@ function applySignVisibility() {
     signs.iconFor = s => 'alert:' + (alertTypeForSign(s) || 'hazard');
     signs.titleFor = s => { const t = alertTypeForSign(s); return t ? ALERT_TYPES[t].label : s.title; };
     signs.dotFor = s => alertDotColor(alertTypeForSign(s) || 'hazard');
+    signs.onPinsShown = popAlerts;
   } else {
     signs.setFilter(s => state.cats[s.cat] && signFitsProfile(s, state.profile));
     signs.iconFor = null;
     signs.titleFor = null;
     signs.dotFor = null;
+    signs.onPinsShown = null;
   }
   signs.refresh();
   refreshAlerts();

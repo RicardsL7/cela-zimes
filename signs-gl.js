@@ -78,6 +78,7 @@ class SignStore {
     this.decorate = null;    // s → { time, off, unk, info } (laika ierobežojumi)
     this.dotFor = null;      // s → punkta krāsa (brīdinājumu režīmā: atzīme ar asti + punkts attālinātā kartē)
     this.iconScale = 1;      // "izlēciena" animācijai
+    this.onPinsShown = null; // izsauc, kad atzīmes parādās no jauna
     this.iconFor = null;     // s → attēla id (brīdinājumu režīmā — vienotas ikonas)
     this.titleFor = null;    // s → nosaukums
     this.iconUrl = new Map(); // attēla id -> adrese
@@ -485,7 +486,7 @@ class SignStore {
       layout: {
         'icon-image': ['get', 'icon'],
         'icon-size': signsIconSize(1),
-        'icon-anchor': ['case', ['has', 'pin'], 'bottom', 'center'],
+        'icon-anchor': ['case', ['has', 'pin'], 'bottom-left', 'center'],   // atzīmes aste (apakšā pa kreisi) — precīzā vieta
         'symbol-sort-key': ['get', 'prio'],
         'icon-padding': 1,
         'icon-pitch-alignment': 'viewport',
@@ -584,10 +585,11 @@ class SignStore {
           if (col) feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [s.lng, s.lat] }, properties: { col } });
         });
         src.setData({ type: 'FeatureCollection', features: feats });
-        this._emptyShown = false;
+        this._emptyShown = false; this._pinsShown = false;
         return;
       }
       if (!this._emptyShown) { src.setData({ type: 'FeatureCollection', features: [] }); this._emptyShown = true; }
+      this._pinsShown = false;
       return;
     }
     this._emptyShown = false;
@@ -645,6 +647,10 @@ class SignStore {
           this.dotFor ? { col: this.dotFor(s), pin: 1 } : null),
       })),
     });
+    // Atzīmes parādījās (pēc tuvināšanas no punktiem) — lai tās "izlec" ar animāciju.
+    const pinsNow = !!this.dotFor && list.length > 0;
+    if (pinsNow && !this._pinsShown && this.onPinsShown) this.onPinsShown();
+    this._pinsShown = pinsNow;
   }
 }
 
