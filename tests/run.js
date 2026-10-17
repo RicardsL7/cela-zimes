@@ -653,6 +653,29 @@ test('Y. Kopbraucieni: brauciena gaita, statusi, čats', async () => {
   eq((await pas.myRequests()).length, 0, 'pabeigts brauciens vairs nav aktīvo sarakstā');
 });
 
+test('R. Vietu kontakti: droši tālruņi, tikai https mājaslapas, pārbaudītas lietotnes', () => {
+  const P = require('../places.js');
+  eq(P.placePhone('26 123 456').tel, 'tel:+37126123456');
+  eq(P.placePhone('+371 6700-0000; 29999999').label, '+371 6700 0000');
+  eq(P.placePhone('0037120000000').tel, 'tel:+37120000000');
+  ok(!P.placePhone('zvaniet*123#'));
+  eq(P.placeWebsite('http://www.Neste.lv/lv').url, 'https://www.neste.lv/lv', 'http → https');
+  eq(P.placeWebsite('circlek.lv').host, 'circlek.lv');
+  for (const bad of ['javascript:alert(1)', 'data:text/html,x', 'file:///etc', 'ftp://x.lv', 'https://u:p@x.lv', 'https://1.2.3.4/', 'https://x.lv:8080/', 'https://x.lv/"><b>', 'nav'])
+    ok(!P.placeWebsite(bad), 'bloķē ' + bad);
+  const els = [{ type: 'node', id: 1, lat: 56.95, lon: 24.1, tags: { amenity: 'fuel', brand: 'Neste', name: 'Neste Brīvības', phone: '+371 67 000 000', website: 'https://www.neste.lv/' } },
+               { type: 'node', id: 2, lat: 56.951, lon: 24.1, tags: { amenity: 'fuel', name: 'Mazā DUS' } }];
+  const ps = P.parsePlaces(els, 'fuel', 56.95, 24.1);
+  eq(ps[0].ct.phone.tel, 'tel:+37167000000');
+  eq(ps[0].ct.app.ios, 'https://apps.apple.com/lv/app/id535050119');
+  eq(ps[1].ct, null, 'nav kontaktu → nav pogu');
+  const lidl = P.placeContacts({}, 'Lidl');
+  ok(lidl.brandWeb && lidl.web.host === 'lidl.lv' && /lidlplus/.test(lidl.app.android));
+  for (const b of P.PLACE_BRANDS) { ok(P.placeWebsite(b[2]), b[1] + ' vietne'); for (const v of Object.values(b[3])) ok(/^[\w.]+$/.test(v), b[1] + ' id'); }
+  const m = P.mergePlaceDetails([{ id: 'node5', cat: 'coffee', name: 'Kafija', extra: [] }], [{ type: 'node', id: 5, tags: { 'contact:website': 'kafija.lv', 'contact:phone': '20000000' } }]);
+  eq(m[0].ct.web.url, 'https://kafija.lv/'); eq(m[0].ct.phone.label, '+371 2000 0000');
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
