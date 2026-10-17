@@ -676,6 +676,77 @@ test('R. Vietu kontakti: droši tālruņi, tikai https mājaslapas, pārbaudīta
   eq(m[0].ct.web.url, 'https://kafija.lv/'); eq(m[0].ct.phone.label, '+371 2000 0000');
 });
 
+test('S. Vai drīkstu stāvēt: zīmes, laiki, noteikumi, OSM, atgādinājums', () => {
+  const P = require('../parking.js'), T = require('../times.js');
+  const base = { roadKnown: true, dirKnown: true, mly: true, osmOk: true, acc: 6 };
+  const mon = h => new Date(`2026-10-19T${h}:00+03:00`);            // pirmdiena
+  const c = T.parseCondition('Mo-Fr 07:00-19:00');
+  // Zīmju veidi (Mapillary kodi, kas Rīgā tiešām sastopami)
+  eq(P.parkSignKind('regulatory--no-stopping--g1'), 'no-stopping');
+  eq(P.parkSignKind('regulatory--no-parking--g1'), 'no-parking');
+  eq(P.parkSignKind('regulatory--no-parking-or-no-stopping--g1'), 'no-parking');
+  eq(P.parkSignKind('regulatory--no-parking-bicycles-or-motorcycles--g1'), null, 'mopēdu zīme neattiecas uz auto');
+  eq(P.parkSignKind('regulatory--end-of-prohibition--g1'), 'end');
+  eq(P.parkSignKind('information--parking--g5'), 'parking');
+  eq(P.parkSignKind('complementary--tow-away-zone--g1'), 'tow');
+  // Laika aizliegums spēkā → sarkans, "drīkstēs no 19:00"
+  let v = P.parkVerdict(Object.assign({ signs: [{ kind: 'no-parking', at: -30, cond: c, sure: true }] }, base), mon('12:00'));
+  eq(v.state, 'no'); eq(v.headline, 'Nedrīksti stāvēt'); ok(/no 19:00/.test(v.sub), v.sub);
+  // Pēc 19:00 → zaļš līdz rītdienas 07:00 + atgādinājums 15 min pirms
+  v = P.parkVerdict(Object.assign({ signs: [{ kind: 'no-parking', at: -30, cond: c, sure: true }] }, base), mon('20:00'));
+  eq(v.state, 'ok'); ok(/līdz rīt 07:00/.test(v.sub), v.sub);
+  eq(v.remindAt.toISOString(), '2026-10-20T03:45:00.000Z');
+  // Piektdienas vakarā — līdz pirmdienai
+  v = P.parkVerdict(Object.assign({ signs: [{ kind: 'no-parking', at: -30, cond: c, sure: true }] }, base), new Date('2026-10-23T20:00:00+03:00'));
+  ok(/pirmdien 07:00/.test(v.sub), v.sub);
+  // Pastāvīgs "Apstāties aizliegts" → bez "drīkstēs no"
+  v = P.parkVerdict(Object.assign({ signs: [{ kind: 'no-stopping', at: -12, sure: true }] }, base), mon('12:00'));
+  eq(v.headline, 'Apstāties aizliegts'); ok(!v.from);
+  // Beigu zīme starp aizliegumu un mašīnu atceļ aizliegumu
+  v = P.parkVerdict(Object.assign({ signs: [{ kind: 'no-stopping', at: -60, sure: true }, { kind: 'end', at: -8 }] }, base), mon('12:00'));
+  eq(v.state, 'ok');
+  // Zīme priekšā (zona sākas pie zīmes) — tikai brīdinājums, ja tuvu
+  v = P.parkVerdict(Object.assign({ signs: [{ kind: 'no-stopping', at: 5, sure: true }] }, base), mon('12:00'));
+  eq(v.state, 'warn'); ok(v.reasons.some(r => /PIRMS/.test(r.text)));
+  v = P.parkVerdict(Object.assign({ signs: [{ kind: 'no-stopping', at: 80, sure: true }] }, base), mon('12:00'));
+  eq(v.state, 'ok', 'tāla zīme priekšā neietekmē');
+  // Plāksnīte ir, laiks nav nolasīts — neizdomā, brīdina
+  v = P.parkVerdict(Object.assign({ signs: [{ kind: 'no-parking', at: -20, timeUnknown: true, sure: true }] }, base), mon('12:00'));
+  eq(v.state, 'warn'); eq(v.confidence, 'medium');
+  // Nedroša piederība ielas pusei → brīdinājums, ne sarkans
+  v = P.parkVerdict(Object.assign({ signs: [{ kind: 'no-parking', at: -20, sure: false }] }, base), mon('12:00'));
+  eq(v.state, 'warn');
+  // CSN attālumi: pāreja 4 m priekšā, pietura 10 m priekšā, krustojums
+  v = P.parkVerdict(Object.assign({ signs: [], near: { crossingAt: 4 } }, base, { acc: 4 }), mon('12:00'));
+  eq(v.state, 'no'); ok(v.reasons.some(r => /121\.5/.test(r.text)));
+  v = P.parkVerdict(Object.assign({ signs: [], near: { stopAhead: 12 } }, base, { acc: 4 }), mon('12:00'));
+  eq(v.state, 'no'); ok(/25 m/.test(v.reasons[0].text));
+  v = P.parkVerdict(Object.assign({ signs: [], near: { junctionAhead: 14 } }, base, { acc: 10 }), mon('12:00'));
+  eq(v.state, 'warn', 'krustojums tuvu, bet GPS ±10 m — brīdina');
+  v = P.parkVerdict(Object.assign({ signs: [], near: { junctionAhead: 60, stopBehind: 40 } }, base), mon('12:00'));
+  eq(v.state, 'ok');
+  // Nav ceļa datu → "nevar pārbaudīt", nevis "drīkst"
+  v = P.parkVerdict({ roadKnown: false, signs: [] }, mon('12:00'));
+  eq(v.state, 'unknown');
+  // OSM: ielas puses atzīmes (jaunā un vecā shēma), maksa, maksimālais laiks
+  const o = P.parkOsmSide({ 'parking:right:restriction:conditional': 'no_stopping @ (Mo-Fr 07:00-10:00)', 'parking:both:fee': 'yes', 'parking:both:maxstay': '2 hours' }, 'right');
+  ok(o.restrict.test(mon('08:00')) && !o.restrict.test(mon('12:00'))); eq(o.maxstay, 7200000);
+  eq(P.parkOsmSide({ 'parking:right:restriction:conditional': 'no_stopping @ (Mo-Fr 07:00-10:00)' }, 'left'), null, 'otrā pusē nav');
+  eq(P.parkOsmSide({ 'parking:condition:both': 'no_parking' }, 'left').restrict.kind, 'no-parking');
+  v = P.parkVerdict(Object.assign({ signs: [], osm: o }, base), mon('12:00'));
+  eq(v.headline, 'Drīkst, bet par maksu'); ok(/vēl 2 h/.test(v.sub), v.sub);
+  v = P.parkVerdict(Object.assign({ signs: [], osm: o }, base), mon('08:00'));
+  eq(v.headline, 'Apstāties aizliegts'); ok(/10:00/.test(v.sub), v.sub);
+  // Stāvlaukums: privāts / ar darba laiku
+  eq(P.parkVerdict({ roadKnown: false, area: { access: 'private' }, signs: [], osmOk: true, mly: true, dirKnown: true }, mon('12:00')).state, 'no');
+  v = P.parkVerdict({ roadKnown: true, area: { name: 'Origo', fee: 'yes', oh: 'Mo-Su 06:00-23:00' }, signs: [{ kind: 'no-stopping', at: -5, sure: true }], osmOk: true, mly: true }, mon('12:00'));
+  eq(v.state, 'warn', 'stāvlaukumā ielas zīmes neattiecas'); ok(/23:00/.test(v.sub), v.sub);
+  // Kalendāra fails
+  const ics = P.parkIcs({ start: new Date('2026-10-20T03:45:00Z'), end: new Date('2026-10-20T04:00:00Z'), title: 'Pārliec mašīnu', text: 'a, b; c', lat: 56.95, lng: 24.1 });
+  ok(/DTSTART:20261020T034500Z/.test(ics) && /BEGIN:VALARM/.test(ics) && ics.includes('a\\, b\\; c') && /\r\n$/.test(ics));
+  eq(P.pkMaxstay('90 min'), 5400000); eq(P.pkMaxstay('1:30'), 5400000); eq(P.pkMaxstay('kaut kas'), null);
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
