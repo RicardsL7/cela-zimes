@@ -2253,7 +2253,7 @@ function goToPlace(p) {
 }
 function wirePlaces() {
   const icons = $('placesBtnIcons');
-  for (const id of ['fuel', 'food', 'parking', 'hotel']) icons.insertAdjacentHTML('beforeend', placeIconSvg(id, 26));
+  for (const id of ['fuel', 'parking', 'food', 'coffee']) icons.insertAdjacentHTML('beforeend', placeIconSvg(id, 26));
   const ul = $('placeCats');
   for (const c of PLACE_CATEGORIES) {
     const li = document.createElement('li');

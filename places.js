@@ -1,4 +1,7 @@
 // ---------- Vietas tuvumā (kā Waze "Categories") ----------
+// Secība — pēc tā, cik bieži autovadītāji tās izmanto: vispirms ceļam vajadzīgais (degviela,
+// stāvvieta, uzlāde), tad ēdiens un veikali, tad veselība un drošība (redzama bez ritināšanas),
+// beigās retāk vajadzīgais.
 // Kategorijas → OpenStreetMap birkas. Meklē Overpass ap mani (vai kartes centru).
 // Tikai reāli OSM dati: nosaukums, adrese, darba laiks, zīmols.
 
@@ -6,32 +9,32 @@ const PLACE_W = '#fff';
 const PLACE_CATEGORIES = [
   { id: 'fuel',     label: 'Degviela',            color: '#2f9e44', q: ['nwr["amenity"="fuel"]'],
     glyph: `<path d="M8 6.5h7v12H8Z" fill="none" stroke="${PLACE_W}" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.7 8.5h3.6v3H9.7Z" fill="${PLACE_W}"/><path d="M15 10h1.4a1.3 1.3 0 0 1 1.3 1.3v4.2a1 1 0 0 0 2 0V9.8L18 8" fill="none" stroke="${PLACE_W}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>` },
-  { id: 'food',     label: 'Ēdiens',              color: '#e8590c', q: ['nwr["amenity"~"^(restaurant|fast_food|food_court)$"]'],
-    glyph: `<path d="M8.5 5.5v5.2M7 5.5v3.8a1.5 1.5 0 0 0 3 0V5.5M8.5 10.7V18.5" fill="none" stroke="${PLACE_W}" stroke-width="1.6" stroke-linecap="round"/><path d="M15.5 18.5V5.5c-1.8.8-2.6 2.8-2.6 5.2 0 1.4.9 2.2 2.6 2.2" fill="none" stroke="${PLACE_W}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>` },
   { id: 'parking',  label: 'Stāvvieta',           color: '#1c7ed6', q: ['nwr["amenity"="parking"]["access"!~"^(private|no|customers)$"]'],
     glyph: `<path d="M9.5 18V6.5h3.6a3.3 3.3 0 0 1 0 6.6H9.5" fill="none" stroke="${PLACE_W}" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>` },
-  { id: 'grocery',  label: 'Pārtikas veikali',    color: '#37b24d', q: ['nwr["shop"~"^(supermarket|convenience|greengrocer)$"]'],
-    glyph: `<path d="M5.5 6.5h2l1.6 8h7.4l1.5-5.6H8.3" fill="none" stroke="${PLACE_W}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="17.6" r="1.2" fill="${PLACE_W}"/><circle cx="15.6" cy="17.6" r="1.2" fill="${PLACE_W}"/>` },
-  { id: 'coffee',   label: 'Kafija',              color: '#9c6b3f', q: ['nwr["amenity"="cafe"]'],
-    glyph: `<path d="M6.5 10h9v3.5a4 4 0 0 1-4 4h-1a4 4 0 0 1-4-4Z" fill="none" stroke="${PLACE_W}" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.5 11h1.2a1.8 1.8 0 0 1 0 3.6h-1.4M9 5.5c-.6.8.6 1.4 0 2.2M12 5.5c-.6.8.6 1.4 0 2.2" fill="none" stroke="${PLACE_W}" stroke-width="1.5" stroke-linecap="round"/>` },
-  { id: 'shopping', label: 'Iepirkšanās',         color: '#d6336c', q: ['nwr["shop"~"^(mall|department_store|clothes|shoes|electronics|doityourself|hardware|furniture)$"]'],
-    glyph: `<path d="M6.5 9h11l-.8 9.5H7.3Z" fill="none" stroke="${PLACE_W}" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.5 10.5V8a2.5 2.5 0 0 1 5 0v2.5" fill="none" stroke="${PLACE_W}" stroke-width="1.7" stroke-linecap="round"/>` },
-  { id: 'pharmacy', label: 'Aptiekas',            color: '#12b886', q: ['nwr["amenity"="pharmacy"]'],
-    glyph: `<rect x="5.6" y="9.4" width="12.8" height="5.2" rx="2.6" transform="rotate(-45 12 12)" fill="none" stroke="${PLACE_W}" stroke-width="1.7"/><path d="m10.1 10.1 3.8 3.8" stroke="${PLACE_W}" stroke-width="1.7"/>` },
   { id: 'ev',       label: 'EV uzlāde',           color: '#0c8599', q: ['nwr["amenity"="charging_station"]'],
     glyph: `<path d="M13 4.5 7.5 13h4l-1 6.5L16.5 11h-4Z" fill="${PLACE_W}"/>` },
+  { id: 'food',     label: 'Ēdiens',              color: '#e8590c', q: ['nwr["amenity"~"^(restaurant|fast_food|food_court)$"]'],
+    glyph: `<path d="M8.5 5.5v5.2M7 5.5v3.8a1.5 1.5 0 0 0 3 0V5.5M8.5 10.7V18.5" fill="none" stroke="${PLACE_W}" stroke-width="1.6" stroke-linecap="round"/><path d="M15.5 18.5V5.5c-1.8.8-2.6 2.8-2.6 5.2 0 1.4.9 2.2 2.6 2.2" fill="none" stroke="${PLACE_W}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>` },
+  { id: 'coffee',   label: 'Kafija',              color: '#9c6b3f', q: ['nwr["amenity"="cafe"]'],
+    glyph: `<path d="M6.5 10h9v3.5a4 4 0 0 1-4 4h-1a4 4 0 0 1-4-4Z" fill="none" stroke="${PLACE_W}" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.5 11h1.2a1.8 1.8 0 0 1 0 3.6h-1.4M9 5.5c-.6.8.6 1.4 0 2.2M12 5.5c-.6.8.6 1.4 0 2.2" fill="none" stroke="${PLACE_W}" stroke-width="1.5" stroke-linecap="round"/>` },
+  { id: 'grocery',  label: 'Pārtikas veikali',    color: '#37b24d', q: ['nwr["shop"~"^(supermarket|convenience|greengrocer)$"]'],
+    glyph: `<path d="M5.5 6.5h2l1.6 8h7.4l1.5-5.6H8.3" fill="none" stroke="${PLACE_W}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="17.6" r="1.2" fill="${PLACE_W}"/><circle cx="15.6" cy="17.6" r="1.2" fill="${PLACE_W}"/>` },
   { id: 'carwash',  label: 'Auto mazgātavas',     color: '#3b5bdb', q: ['nwr["amenity"="car_wash"]'],
     glyph: `<path d="M8.2 4.6c-.9 1.2-1.3 2-1.3 2.6a1.3 1.3 0 0 0 2.6 0c0-.6-.4-1.4-1.3-2.6ZM12 3.6c-.9 1.2-1.3 2-1.3 2.6a1.3 1.3 0 0 0 2.6 0c0-.6-.4-1.4-1.3-2.6ZM15.8 4.6c-.9 1.2-1.3 2-1.3 2.6a1.3 1.3 0 0 0 2.6 0c0-.6-.4-1.4-1.3-2.6Z" fill="${PLACE_W}"/>` +
       `<path d="M5.5 17.2v-2.9l1.3-3.2a1.8 1.8 0 0 1 1.7-1.1h7a1.8 1.8 0 0 1 1.7 1.1l1.3 3.2v2.9Z" fill="none" stroke="${PLACE_W}" stroke-width="1.6" stroke-linejoin="round"/>` +
       `<path d="M5.5 14.3h13" stroke="${PLACE_W}" stroke-width="1.4"/><path d="M7.2 17.2v1.6M16.8 17.2v1.6" stroke="${PLACE_W}" stroke-width="1.8" stroke-linecap="round"/>` },
+  { id: 'pharmacy', label: 'Aptiekas',            color: '#12b886', q: ['nwr["amenity"="pharmacy"]'],
+    glyph: `<rect x="5.6" y="9.4" width="12.8" height="5.2" rx="2.6" transform="rotate(-45 12 12)" fill="none" stroke="${PLACE_W}" stroke-width="1.7"/><path d="m10.1 10.1 3.8 3.8" stroke="${PLACE_W}" stroke-width="1.7"/>` },
   { id: 'medical',  label: 'Medicīniskā palīdzība', color: '#e03131', q: ['nwr["amenity"~"^(hospital|clinic|doctors)$"]'],
     glyph: `<path d="M10 6h4v4h4v4h-4v4h-4v-4H6v-4h4Z" fill="${PLACE_W}"/>` },
-  { id: 'hotel',    label: 'Viesnīcas',           color: '#7048e8', q: ['nwr["tourism"~"^(hotel|motel|guest_house|hostel)$"]'],
-    glyph: `<path d="M5.5 17.5V7M5.5 13.5h13v4M18.5 13.5v-1.8a2.2 2.2 0 0 0-2.2-2.2H11v4" fill="none" stroke="${PLACE_W}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8.3" cy="11" r="1.5" fill="${PLACE_W}"/>` },
-  { id: 'park',     label: 'Parki',               color: '#5c940d', q: ['nwr["leisure"="park"]["name"]'],
-    glyph: `<path d="M12 4.5c-2.6 0-4.3 2.2-4.3 4.6 0 .5 0 .9.2 1.3A3.3 3.3 0 0 0 9.7 16h4.6a3.3 3.3 0 0 0 1.8-5.6c.2-.4.2-.8.2-1.3 0-2.4-1.7-4.6-4.3-4.6Z" fill="none" stroke="${PLACE_W}" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 11v8" stroke="${PLACE_W}" stroke-width="1.7" stroke-linecap="round"/>` },
   { id: 'crisis',   label: 'Ārkārtas palīdzība',  color: '#c92a2a', q: ['nwr["amenity"~"^(police|fire_station)$"]', 'nwr["amenity"="hospital"]["emergency"="yes"]', 'nwr["social_facility"="shelter"]'],
     glyph: `<path d="M12 4.5 18.5 7v4.6c0 3.9-2.7 6.7-6.5 7.9-3.8-1.2-6.5-4-6.5-7.9V7Z" fill="none" stroke="${PLACE_W}" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 8.5v4.2" stroke="${PLACE_W}" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="15.2" r="1.1" fill="${PLACE_W}"/>` },
+  { id: 'hotel',    label: 'Viesnīcas',           color: '#7048e8', q: ['nwr["tourism"~"^(hotel|motel|guest_house|hostel)$"]'],
+    glyph: `<path d="M5.5 17.5V7M5.5 13.5h13v4M18.5 13.5v-1.8a2.2 2.2 0 0 0-2.2-2.2H11v4" fill="none" stroke="${PLACE_W}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8.3" cy="11" r="1.5" fill="${PLACE_W}"/>` },
+  { id: 'shopping', label: 'Iepirkšanās',         color: '#d6336c', q: ['nwr["shop"~"^(mall|department_store|clothes|shoes|electronics|doityourself|hardware|furniture)$"]'],
+    glyph: `<path d="M6.5 9h11l-.8 9.5H7.3Z" fill="none" stroke="${PLACE_W}" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.5 10.5V8a2.5 2.5 0 0 1 5 0v2.5" fill="none" stroke="${PLACE_W}" stroke-width="1.7" stroke-linecap="round"/>` },
+  { id: 'park',     label: 'Parki',               color: '#5c940d', q: ['nwr["leisure"="park"]["name"]'],
+    glyph: `<path d="M12 4.5c-2.6 0-4.3 2.2-4.3 4.6 0 .5 0 .9.2 1.3A3.3 3.3 0 0 0 9.7 16h4.6a3.3 3.3 0 0 0 1.8-5.6c.2-.4.2-.8.2-1.3 0-2.4-1.7-4.6-4.3-4.6Z" fill="none" stroke="${PLACE_W}" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 11v8" stroke="${PLACE_W}" stroke-width="1.7" stroke-linecap="round"/>` },
 ];
 // Ātrā meklēšana (Photon, ~0,4 s): OSM birkas katrai kategorijai
 const PLACE_PHOTON_TAGS = {"fuel": ["amenity:fuel"], "food": ["amenity:restaurant", "amenity:fast_food", "amenity:food_court"], "parking": ["amenity:parking"], "grocery": ["shop:supermarket", "shop:convenience", "shop:greengrocer"], "coffee": ["amenity:cafe"], "shopping": ["shop:mall", "shop:department_store", "shop:clothes", "shop:shoes", "shop:electronics", "shop:doityourself", "shop:hardware", "shop:furniture"], "pharmacy": ["amenity:pharmacy"], "ev": ["amenity:charging_station"], "carwash": ["amenity:car_wash"], "medical": ["amenity:hospital", "amenity:clinic", "amenity:doctors"], "hotel": ["tourism:hotel", "tourism:motel", "tourism:guest_house", "tourism:hostel"], "park": ["leisure:park"], "crisis": ["amenity:police", "amenity:fire_station", "amenity:hospital"]};
