@@ -20,6 +20,10 @@ const PLACE_CATEGORIES = [
     glyph: `<rect x="5.6" y="9.4" width="12.8" height="5.2" rx="2.6" transform="rotate(-45 12 12)" fill="none" stroke="${PLACE_W}" stroke-width="1.7"/><path d="m10.1 10.1 3.8 3.8" stroke="${PLACE_W}" stroke-width="1.7"/>` },
   { id: 'ev',       label: 'EV uzlāde',           color: '#0c8599', q: ['nwr["amenity"="charging_station"]'],
     glyph: `<path d="M13 4.5 7.5 13h4l-1 6.5L16.5 11h-4Z" fill="${PLACE_W}"/>` },
+  { id: 'carwash',  label: 'Auto mazgātavas',     color: '#3b5bdb', q: ['nwr["amenity"="car_wash"]'],
+    glyph: `<path d="M8.2 4.6c-.9 1.2-1.3 2-1.3 2.6a1.3 1.3 0 0 0 2.6 0c0-.6-.4-1.4-1.3-2.6ZM12 3.6c-.9 1.2-1.3 2-1.3 2.6a1.3 1.3 0 0 0 2.6 0c0-.6-.4-1.4-1.3-2.6ZM15.8 4.6c-.9 1.2-1.3 2-1.3 2.6a1.3 1.3 0 0 0 2.6 0c0-.6-.4-1.4-1.3-2.6Z" fill="${PLACE_W}"/>` +
+      `<path d="M5.5 17.2v-2.9l1.3-3.2a1.8 1.8 0 0 1 1.7-1.1h7a1.8 1.8 0 0 1 1.7 1.1l1.3 3.2v2.9Z" fill="none" stroke="${PLACE_W}" stroke-width="1.6" stroke-linejoin="round"/>` +
+      `<path d="M5.5 14.3h13" stroke="${PLACE_W}" stroke-width="1.4"/><path d="M7.2 17.2v1.6M16.8 17.2v1.6" stroke="${PLACE_W}" stroke-width="1.8" stroke-linecap="round"/>` },
   { id: 'medical',  label: 'Medicīniskā palīdzība', color: '#e03131', q: ['nwr["amenity"~"^(hospital|clinic|doctors)$"]'],
     glyph: `<path d="M10 6h4v4h4v4h-4v4h-4v-4H6v-4h4Z" fill="${PLACE_W}"/>` },
   { id: 'hotel',    label: 'Viesnīcas',           color: '#7048e8', q: ['nwr["tourism"~"^(hotel|motel|guest_house|hostel)$"]'],
@@ -30,16 +34,26 @@ const PLACE_CATEGORIES = [
     glyph: `<path d="M12 4.5 18.5 7v4.6c0 3.9-2.7 6.7-6.5 7.9-3.8-1.2-6.5-4-6.5-7.9V7Z" fill="none" stroke="${PLACE_W}" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 8.5v4.2" stroke="${PLACE_W}" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="15.2" r="1.1" fill="${PLACE_W}"/>` },
 ];
 // Ātrā meklēšana (Photon, ~0,4 s): OSM birkas katrai kategorijai
-const PLACE_PHOTON_TAGS = {"fuel": ["amenity:fuel"], "food": ["amenity:restaurant", "amenity:fast_food", "amenity:food_court"], "parking": ["amenity:parking"], "grocery": ["shop:supermarket", "shop:convenience", "shop:greengrocer"], "coffee": ["amenity:cafe"], "shopping": ["shop:mall", "shop:department_store", "shop:clothes", "shop:shoes", "shop:electronics", "shop:doityourself", "shop:hardware", "shop:furniture"], "pharmacy": ["amenity:pharmacy"], "ev": ["amenity:charging_station"], "medical": ["amenity:hospital", "amenity:clinic", "amenity:doctors"], "hotel": ["tourism:hotel", "tourism:motel", "tourism:guest_house", "tourism:hostel"], "park": ["leisure:park"], "crisis": ["amenity:police", "amenity:fire_station", "amenity:hospital"]};
+const PLACE_PHOTON_TAGS = {"fuel": ["amenity:fuel"], "food": ["amenity:restaurant", "amenity:fast_food", "amenity:food_court"], "parking": ["amenity:parking"], "grocery": ["shop:supermarket", "shop:convenience", "shop:greengrocer"], "coffee": ["amenity:cafe"], "shopping": ["shop:mall", "shop:department_store", "shop:clothes", "shop:shoes", "shop:electronics", "shop:doityourself", "shop:hardware", "shop:furniture"], "pharmacy": ["amenity:pharmacy"], "ev": ["amenity:charging_station"], "carwash": ["amenity:car_wash"], "medical": ["amenity:hospital", "amenity:clinic", "amenity:doctors"], "hotel": ["tourism:hotel", "tourism:motel", "tourism:guest_house", "tourism:hostel"], "park": ["leisure:park"], "crisis": ["amenity:police", "amenity:fire_station", "amenity:hospital"]};
 const PLACE_BY_ID = Object.fromEntries(PLACE_CATEGORIES.map(c => [c.id, c]));
 // Uzreiz no kartes (OpenMapTiles "poi" slānis jau ielādētajās kartes flīzēs) — bez interneta pieprasījuma
 const PLACE_TILE_SUBCLASS = {
   fuel: ['fuel'], food: ['restaurant', 'fast_food', 'food_court'], parking: ['parking'],
   grocery: ['supermarket', 'convenience', 'greengrocer'], coffee: ['cafe'],
   shopping: ['mall', 'department_store', 'clothes', 'shoes', 'electronics', 'doityourself', 'hardware', 'furniture'],
-  pharmacy: ['pharmacy'], ev: ['charging_station'], medical: ['hospital', 'clinic', 'doctors'],
+  pharmacy: ['pharmacy'], ev: ['charging_station'], carwash: ['car_wash'], medical: ['hospital', 'clinic', 'doctors'],
   hotel: ['hotel', 'motel', 'guest_house', 'hostel'], park: ['park'], crisis: ['police', 'fire_station', 'hospital'],
 };
+
+// Auto mazgātava: pašapkalpošanās / automātiskā / roku mazgāšana (ja OSM tas norādīts)
+function carWashInfo(t) {
+  const out = [];
+  if (t.self_service === 'yes') out.push('pašapkalpošanās');
+  else if (t.self_service === 'no') out.push('ar darbinieku');
+  if (t.automated === 'yes') out.push('automātiskā');
+  if (t.hand_wash === 'yes' || t['car_wash:hand'] === 'yes') out.push('roku mazgāšana');
+  return out;
+}
 
 function placeIconSvg(id, size = 40) {
   const c = PLACE_BY_ID[id];
@@ -145,6 +159,7 @@ function parsePlaces(elements, catId, lat, lng, now = new Date(), parse = null) 
       if (t.capacity) extra.push(t.capacity + ' vietas');
     }
     if (catId === 'ev' && t.capacity) extra.push(t.capacity + ' uzlādes vietas');
+    if (catId === 'carwash') extra.push(...carWashInfo(t));
     if (catId === 'fuel' && t.brand && !name.toLowerCase().includes(t.brand.toLowerCase())) extra.push(t.brand);
     out.push({
       id: el.type + el.id, cat: catId, name, lat: plat, lng: plng,
@@ -232,6 +247,7 @@ function mergePlaceDetails(places, elements, now = new Date(), parse = null) {
       if (t.capacity) q.extra.push(t.capacity + ' vietas');
     }
     if (p.cat === 'ev' && t.capacity) q.extra.push(t.capacity + ' uzlādes vietas');
+    if (p.cat === 'carwash') q.extra.push(...carWashInfo(t));
     if (p.cat === 'fuel' && t.brand && !q.name.toLowerCase().includes(t.brand.toLowerCase())) q.extra.push(t.brand);
     q.oh = t.opening_hours || '';
     q.open = placeOpenNow(q.oh, now, parse);
