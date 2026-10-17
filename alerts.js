@@ -99,20 +99,19 @@ const ALERT_GLYPHS = {
   'camera-mobile': C => `<rect x="4" y="3.5" width="13" height="9.5" rx="2.4" fill="${ALERT_W}"/><circle cx="9.5" cy="8.2" r="2.8" fill="${C}"/>` +
     `<circle cx="9.5" cy="8.2" r="1.1" fill="${ALERT_W}"/><path d="M17 6.6 20.5 5v6.4L17 9.8Z" fill="${ALERT_W}" ${RJ}/>` +
     `<path d="M10.5 13v8M10.5 15 6 21M10.5 15l4.5 6" stroke="${ALERT_W}" stroke-width="1.8" fill="none" ${RJ}/>`,
-  'accident': C => `<path d="M3.5 18v-3.4l1.6-4a2.2 2.2 0 0 1 2-1.4h5.4a2.2 2.2 0 0 1 2 1.4l1.6 4V18Z" fill="${ALERT_W}"/>` +
-    `<path d="M6.8 11.3h6.4l1 2.7H5.8Z" fill="${C}"/><circle cx="6.6" cy="15.8" r="1" fill="${C}"/><circle cx="13.4" cy="15.8" r="1" fill="${C}"/>` +
-    `<rect x="4.3" y="17.6" width="2.4" height="2.4" rx=".8" fill="${ALERT_W}"/><rect x="13.3" y="17.6" width="2.4" height="2.4" rx=".8" fill="${ALERT_W}"/>` +
-    `<path d="m18.6 2.6 1 2.3 2.4-.6-1.3 2.1 1.9 1.5-2.5.3-.2 2.5-1.7-1.8-1.9 1.6.4-2.5-2.4-.6 2.2-1.2-.8-2.4 2.2 1Z" fill="${ALERT_W}" ${RJ}/>`,
-  'jam': C => `<path d="M2.8 12.6v-2.4l1-2.6a1.6 1.6 0 0 1 1.5-1h4.3a1.6 1.6 0 0 1 1.5 1l1 2.6v2.4Z" fill="${ALERT_W}" opacity=".62"/>` +
-    `<path d="M9.8 19.6v-2.9l1.2-3a1.8 1.8 0 0 1 1.7-1.2h5.1a1.8 1.8 0 0 1 1.7 1.2l1.2 3v2.9Z" fill="${ALERT_W}"/>` +
-    `<path d="M12.4 14.3h6.6l.8 2.2H11.6Z" fill="${C}"/><circle cx="12.3" cy="18.1" r=".9" fill="${C}"/><circle cx="19.1" cy="18.1" r=".9" fill="${C}"/>` +
-    `<rect x="10.4" y="19.1" width="2.2" height="1.9" rx=".7" fill="${ALERT_W}"/><rect x="18.8" y="19.1" width="2.2" height="1.9" rx=".7" fill="${ALERT_W}"/>`,
+  'accident': C => `<path d="M2.5 19v-3.8l1.8-4.5a2.4 2.4 0 0 1 2.2-1.5h6a2.4 2.4 0 0 1 2.2 1.5l1.8 4.5V19Z" fill="${ALERT_W}"/>` +
+    `<path d="M6.2 11.8h7.1l1.1 3H5.1Z" fill="${C}"/><circle cx="6" cy="16.9" r="1.1" fill="${C}"/><circle cx="13.5" cy="16.9" r="1.1" fill="${C}"/>` +
+    `<rect x="3.4" y="18.5" width="2.6" height="2.4" rx=".8" fill="${ALERT_W}"/><rect x="13.5" y="18.5" width="2.6" height="2.4" rx=".8" fill="${ALERT_W}"/>` +
+    `<path d="m18.7 2.4 1.1 2.6 2.7-.7-1.5 2.4 2.1 1.7-2.8.3-.2 2.8-1.9-2-2.1 1.8.4-2.8-2.7-.6 2.4-1.4-.9-2.7 2.5 1.1Z" fill="${ALERT_W}" ${RJ}/>`,
+  'jam': C => `<path d="M2.6 12.4v-2.5l1.1-2.7a1.7 1.7 0 0 1 1.6-1.1h4.4a1.7 1.7 0 0 1 1.6 1.1l1.1 2.7v2.5Z" fill="${ALERT_W}"/>` +
+    `<path d="M8.8 20.2v-3.1l1.3-3.2a1.9 1.9 0 0 1 1.8-1.3h5.5a1.9 1.9 0 0 1 1.8 1.3l1.3 3.2v3.1Z" fill="${ALERT_W}" stroke="${C}" stroke-width="1.4"/>` +
+    `<path d="M11.6 14.6h7.2l.9 2.4h-9Z" fill="${C}"/><circle cx="11.5" cy="18.6" r="1" fill="${C}"/><circle cx="18.9" cy="18.6" r="1" fill="${C}"/>`,
   'roadworks': C => `<path d="M10.7 3.3a1.4 1.4 0 0 1 2.6 0L18 17.2H6Z" fill="${ALERT_W}"/>` +
     `<path d="M9.3 8.8h5.4l1 3H8.3ZM7.6 14h8.8" stroke="${C}" stroke-width="1.6" fill="${C}" ${RJ}/>` +
     `<rect x="3.5" y="17.6" width="17" height="3" rx="1.4" fill="${ALERT_W}"/>`,
   'closure': C => `<circle cx="12" cy="12" r="8.8" fill="${ALERT_W}"/><rect x="6.6" y="10.4" width="10.8" height="3.2" rx="1.6" fill="${C}"/>`,
-  'lane-closed': C => `<path d="M5 3.5v17M19 3.5v17" stroke="${ALERT_W}" stroke-width="2" ${RJ}/><path d="M12 3.5v2.5M12 9.5v2.5M12 15.5v2.5" stroke="${ALERT_W}" stroke-width="1.6" ${RJ} opacity=".55"/>` +
-    `<circle cx="15.4" cy="12.4" r="4.2" fill="${ALERT_W}"/><path d="m13.8 10.8 3.2 3.2m0-3.2-3.2 3.2" stroke="${C}" stroke-width="1.6" ${RJ}/>`,
+  'lane-closed': C => `<path d="M4 3.5v17M20 3.5v17" stroke="${ALERT_W}" stroke-width="2.4" ${RJ}/>` +
+    `<circle cx="12" cy="12" r="6.2" fill="${ALERT_W}"/><path d="m9.6 9.6 4.8 4.8m0-4.8-4.8 4.8" stroke="${C}" stroke-width="2" ${RJ}/>`,
   'obstacle': C => `<path d="M6.5 14.5v6M17.5 14.5v6" stroke="${ALERT_W}" stroke-width="2" ${RJ}/><rect x="2.8" y="8" width="18.4" height="6.6" rx="1.8" fill="${ALERT_W}"/>` +
     `<path d="M7.2 8.4 4.4 14.2M12.2 8.4l-2.8 5.8M17.2 8.4l-2.8 5.8" stroke="${C}" stroke-width="1.8"/><circle cx="6.5" cy="5.4" r="1.6" fill="${ALERT_W}"/><circle cx="17.5" cy="5.4" r="1.6" fill="${ALERT_W}"/>`,
   'object': C => `<path d="M12 3.4 19.6 7.4v9.2L12 20.6 4.4 16.6V7.4Z" fill="${ALERT_W}" ${RJ}/><path d="M4.6 7.5 12 11.5l7.4-4M12 11.5v8.9" stroke="${C}" stroke-width="1.3" fill="none" ${RJ}/>`,
@@ -128,9 +127,9 @@ const ALERT_GLYPHS = {
   'fog': C => `<path d="M7 9.4a4 4 0 0 1 7.6-1.6A3.4 3.4 0 0 1 19 10" stroke="${ALERT_W}" stroke-width="1.9" fill="none" ${RJ}/><path d="M4 13h16M5.5 16.4h13M7.5 19.8h9" stroke="${ALERT_W}" stroke-width="2" ${RJ}/>`,
   'flood': C => `<path d="M7.4 9.6 12 5.4l4.6 4.2v2.4H7.4Z" fill="${ALERT_W}" ${RJ}/><path d="M3.5 14.6c2.1-1.5 4.1 1.5 6.2 0s4.1 1.5 6.2 0 4.1 1.5 5.6 0M3.5 18.8c2.1-1.5 4.1 1.5 6.2 0s4.1 1.5 6.2 0 4.1 1.5 5.6 0" stroke="${ALERT_W}" stroke-width="1.9" fill="none" ${RJ}/>`,
   'ice': C => `<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9" stroke="${ALERT_W}" stroke-width="1.8" ${RJ}/><path d="M9.8 4.6 12 6.6l2.2-2M9.8 19.4l2.2-2 2.2 2" stroke="${ALERT_W}" stroke-width="1.4" fill="none" ${RJ}/><circle cx="12" cy="12" r="2.4" fill="${ALERT_W}"/>`,
-  'rain': C => `<path d="M6.8 13.4a4.3 4.3 0 0 1-.5-8.6 5.9 5.9 0 0 1 11 1 3.9 3.9 0 0 1-.4 7.6Z" fill="${ALERT_W}"/><path d="M8.2 16.4 7 19.6M12.4 16.4l-1.2 3.2M16.6 16.4l-1.2 3.2" stroke="${ALERT_W}" stroke-width="1.9" ${RJ}/>`,
+  'rain': C => `<path d="M6.8 13.4a4.3 4.3 0 0 1-.5-8.6 5.9 5.9 0 0 1 11 1 3.9 3.9 0 0 1-.4 7.6Z" fill="${ALERT_W}"/><path d="M8.2 16.4 7 19.8M12.4 16.4l-1.2 3.4M16.6 16.4l-1.2 3.4" stroke="${ALERT_W}" stroke-width="2.4" ${RJ}/>`,
   'snow': C => `<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9" stroke="${ALERT_W}" stroke-width="1.9" ${RJ}/><path d="M9.7 4.6 12 6.6l2.3-2M9.7 19.4 12 17.4l2.3 2M5 10.9l2.9-.9-.6-3M19 13.1l-2.9.9.6 3M5 13.1l2.9.9-.6 3M19 10.9l-2.9-.9.6-3" stroke="${ALERT_W}" stroke-width="1.4" fill="none" ${RJ}/>`,
-  'rail': C => `<path d="M5 6.5 19 17.5M19 6.5 5 17.5" stroke="${ALERT_W}" stroke-width="3.6" ${RJ}/><path d="M5 6.5 19 17.5M19 6.5 5 17.5" stroke="${C}" stroke-width="1.1" ${RJ} opacity=".55"/>`,
+  'rail': C => `<path d="M4.5 6 19.5 18M19.5 6 4.5 18" stroke="${ALERT_W}" stroke-width="4" ${RJ}/>`,
   'traffic-light': C => `<rect x="7.4" y="2.2" width="9.2" height="19.6" rx="3.8" fill="${ALERT_W}"/>` +
     `<circle cx="12" cy="7" r="2.15" fill="#ff5b57"/><circle cx="12" cy="12" r="2.15" fill="#ffbf2e"/><circle cx="12" cy="17" r="2.15" fill="#2fd27a"/>`,
   'school': C => `<circle cx="8.4" cy="4.8" r="2.1" fill="${ALERT_W}"/><circle cx="16" cy="7.6" r="1.8" fill="${ALERT_W}"/>` +
@@ -145,6 +144,19 @@ function alertMix(hex, to, k) {
   const c = [n >> 16, (n >> 8) & 255, n & 255].map(v => Math.round(v + (t - v) * k));
   return '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
 }
+// Katra simbola optiskais izmērs burbulī (mērogs, nobīde x, y): simboli ~1,5× lielāki, katrs pielāgots savai
+// formai (apaļie — mazāk, iegarenie/plānie — vairāk), lai visi izskatītos vienlīdz lieli un atpazīstami mazā izmērā.
+const ALERT_GLYPH_FIT = {
+  'police': [1.392, 19.3, 10.37], 'police-hidden': [1.392, 19.3, 10.37], 'camera-fixed': [1.346, 18.56, 10.85],
+  'camera-mobile': [1.367, 19.26, 10.26], 'accident': [1.256, 19.93, 12.37], 'jam': [1.439, 19.38, 8.08],
+  'roadworks': [1.323, 20.12, 11.77], 'closure': [1.462, 18.45, 9.45], 'lane-closed': [1.406, 19.13, 10.13],
+  'obstacle': [1.325, 20.1, 10.9], 'object': [1.428, 18.86, 9.86], 'pothole': [1.379, 19.45, 11.28],
+  'stopped-vehicle': [1.378, 18.57, 11.77], 'signal-broken': [1.44, 18.71, 10.36], 'hazard': [1.321, 20.16, 11.54],
+  'weather': [1.373, 20.18, 11.02], 'fog': [1.554, 17.35, 7.31], 'flood': [1.444, 17.95, 9.22],
+  'ice': [1.6, 16.8, 7.8], 'rain': [1.339, 21.02, 12.76], 'snow': [1.6, 16.8, 7.8],
+  'rail': [1.553, 17.36, 8.36], 'traffic-light': [1.432, 18.82, 9.82], 'school': [1.547, 17.44, 9.21],
+  'restriction': [1.495, 18.07, 9.07],
+};
 // Marķiera forma: aplis ar baltu malu un īsu "runas burbuļa" asti apakšā pa kreisi.
 // Astes gals (11,54.5) — tieši notikuma vieta (kartē: enkurs apakšā pa kreisi + nobīde).
 const ALERT_PIN = 'M36 3A24 24 0 1 1 22.2 46.7L11 54.5 15.2 39A24 24 0 0 1 36 3Z';
@@ -158,15 +170,16 @@ function alertSvg(type, size = 64) {
     const lampDef = (id, c0, c1) => `<radialGradient id="${id}" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="${c0}"/><stop offset="1" stop-color="${c1}"/></radialGradient>`;
     return head + lampDef('lr', '#ff8a8a', '#f2484f') + lampDef('ly', '#ffe27a', '#f7c21c') + lampDef('lg', '#6ff0a6', '#22c46a') +
       `<linearGradient id="b" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2c3a50"/><stop offset="1" stop-color="#1a2536"/></linearGradient></defs>` +
-      `<g filter="url(#s)"><rect x="16.5" y="3" width="31" height="58" rx="11" fill="#fff"/>` +
-      `<rect x="19.5" y="6" width="25" height="52" rx="8.4" fill="url(#b)"/></g>` +
-      `<rect x="21.5" y="8" width="4.4" height="48" rx="2.2" fill="#fff" opacity=".07"/>` +
-      [[16.8, 'lr'], [32, 'ly'], [47.2, 'lg']].map(([cy, id]) =>
-        `<circle cx="32" cy="${cy}" r="7" fill="url(#${id})"/><ellipse cx="30" cy="${cy - 2.4}" rx="2.6" ry="1.6" fill="#fff" opacity=".45"/>`).join('') +
+      `<g filter="url(#s)"><rect x="15" y="1" width="34" height="62" rx="12" fill="#fff"/>` +
+      `<rect x="18" y="4" width="28" height="56" rx="9.4" fill="url(#b)"/></g>` +
+      `<rect x="20" y="6" width="4.6" height="52" rx="2.3" fill="#fff" opacity=".07"/>` +
+      [[14.6, 'lr'], [32, 'ly'], [49.4, 'lg']].map(([cy, id]) =>
+        `<circle cx="32" cy="${cy}" r="8.4" fill="url(#${id})"/><ellipse cx="29.6" cy="${cy - 2.9}" rx="3.1" ry="1.9" fill="#fff" opacity=".45"/>`).join('') +
       `</svg>`;
   }
   const c = alertColor(type), hi = alertMix(c, 'w', 0.22), lo = alertMix(c, 'k', 0.16);
   const glyph = (ALERT_GLYPHS[type] || ALERT_GLYPHS.hazard)(alertMix(c, 'k', 0.04));
+  const fit = ALERT_GLYPH_FIT[type] || ALERT_GLYPH_FIT.hazard;
   return head +
     `<linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset=".55" stop-color="${c}"/><stop offset="1" stop-color="${lo}"/></linearGradient>` +
     `<linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".34"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
@@ -175,7 +188,7 @@ function alertSvg(type, size = 64) {
     `<g filter="url(#s)"><path d="${ALERT_PIN}" fill="#fff"/><circle cx="36" cy="27" r="20.6" fill="url(#f)"/></g>` +
     `<path d="M18.4 23A18 18 0 0 1 53.6 23C48.8 19.6 43 18.2 36 18.2S23.2 19.6 18.4 23Z" fill="url(#g)"/>` +
     `<circle cx="36" cy="27" r="19.9" fill="none" stroke="#fff" stroke-width=".7" opacity=".28"/>` +
-    `<g filter="url(#d)" transform="translate(24.5 15.5) scale(.958)">${glyph}</g></svg>`;
+    `<g filter="url(#d)" transform="translate(${fit[1]} ${fit[2]}) scale(${fit[0]})">${glyph}</g></svg>`;
 }
 const alertUrlCache = new Map();
 function alertDataUrl(type) {
