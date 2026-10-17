@@ -270,7 +270,11 @@ function parkTileExtras(ctx, lat, lng, best, locate) {
     }
   }
   // Tālu no brauktuves un blakus stāvlaukums — visticamāk, mašīna ir stāvlaukumā.
-  if (lot && !ctx.area && (!best || best.d > 15 || best.seg.cls === 'service')) ctx.area = { name: lot.name, guess: true };
+  // Tālu no ielām (tuvumā tikai piebrauktuves) un blakus stāvlaukums — iespējams, mašīna ir stāvlaukumā.
+  if (lot && !ctx.area && lot.d < 45) {
+    const street = roadIndex._candidates(lat, lng, 12).filter(c => c.seg.cls !== 'service').reduce((m, c) => Math.min(m, c.d), Infinity);
+    if (street > 18) ctx.area = { name: lot.name, guess: true };
+  }
   const dir = ctx.dir;
   for (const f of tr) {
     const b = f.properties && f.properties.brunnel;

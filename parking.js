@@ -136,9 +136,11 @@ function parkVerdict(ctx, now = new Date()) {
   const bans = [];                // { test|null (vienmēr), why }
   const fees = [];
   let maxstay = null, unknownTime = false;
+  const maybe = [];               // nedroši piesaistīti laika aizliegumi — tikai brīdinājumam un atgādinājumam
   const acc = Math.min(25, Math.max(4, ctx.acc || 10));
   const signs = (ctx.signs || []).slice().sort((a, b) => b.at - a.at);   // tuvākā aiz mašīnas — pirmā
-  const inArea = !!ctx.area;
+  const inArea = !!ctx.area && !ctx.area.guess;
+  if (ctx.area && ctx.area.guess) R.push({ level: 'info', text: `Tuvumā ir stāvlaukums${ctx.area.name ? ' „' + ctx.area.name + '”' : ''}`, detail: 'Ja mašīna ir stāvlaukumā, noteicošas ir tā zīmes (maksa, laiks, tikai klientiem).', src: 'karte' });
 
   const addBan = (kind, test, label, src, ref, sure = true, timeUnknown = false) => {
     const name = PK_SIGN_NAME[kind] || 'Stāvēt aizliegts';
@@ -149,6 +151,7 @@ function parkVerdict(ctx, now = new Date()) {
     }
     const on = test ? !!test(now) : true;
     if (!sure) {
+      if (test) maybe.push(test);
       R.push({ level: on ? 'warn' : 'info', text: `${name}${label ? ' · ' + label : ''}${on ? ' — iespējams, attiecas uz tavu vietu' : ' — šobrīd nav spēkā'}`,
         detail: 'Nav droši zināms, vai zīme attiecas uz šo ielas pusi.', src, ref });
       return;
@@ -159,7 +162,7 @@ function parkVerdict(ctx, now = new Date()) {
 
   if (inArea) {
     const a = ctx.area;
-    R.push({ level: a.guess ? 'info' : 'ok', text: `Tu${a.guess ? ', visticamāk,' : ''} esi stāvlaukumā${a.name ? ' „' + a.name + '”' : ''}`, detail: a.guess ? 'Pārbaudi stāvlaukuma zīmes (maksa, laiks, tikai klientiem).' : '', src: 'OpenStreetMap' });
+    R.push({ level: 'ok', text: `Tu esi stāvlaukumā${a.name ? ' „' + a.name + '”' : ''}`, src: 'OpenStreetMap' });
     if (/^(private|no)$/.test(a.access || '')) R.push({ level: 'no', hard: true, text: 'Privāts stāvlaukums — svešiem stāvēt nedrīkst', src: 'OpenStreetMap' });
     else if (/^(customers|permissive|destination)$/.test(a.access || '')) R.push({ level: 'warn', text: a.access === 'customers' ? 'Tikai klientiem' : 'Ierobežota piekļuve', src: 'OpenStreetMap' });
     else if (/^(residents|permit)$/.test(a.access || '')) R.push({ level: 'warn', text: 'Tikai iedzīvotājiem vai ar atļauju', src: 'OpenStreetMap' });
@@ -249,7 +252,7 @@ function parkVerdict(ctx, now = new Date()) {
   const bannedAt = d => always || timed.some(b => b.test(d));
   const hardNo = R.some(r => r.level === 'no' && r.hard);
   const bannedNow = bans.length > 0 && bannedAt(now);
-  let state, headline, sub = '', until = null, from = null;
+  let state, headline, sub = '', until = null, from = null, maybeUntil = null;
   const feeAt = d => fees.some(f => !f.test || f.test(d));
 
   if (!ctx.roadKnown && !inArea) {
@@ -269,11 +272,19 @@ function parkVerdict(ctx, now = new Date()) {
     if (timed.length) until = pkNextChange(bannedAt, now);
     const ms = maxstay ? new Date(now.getTime() + maxstay) : null;
     if (ms && (!until || ms < until)) until = ms;
+    if (maybe.length) {
+      const mu = pkNextChange(d => maybe.some(t => t(d)), now);
+      if (mu && !maybe.some(t => t(now)) && (!until || mu < until)) {
+        R.unshift({ level: 'warn', text: `Iespējams, no ${pkWhen(mu, now)} te stāvēt nedrīkst — pārbaudi zīmi`, src: 'zīmes laiks' });
+        maybeUntil = mu;
+      }
+    }
     const warns = R.filter(r => r.level === 'warn');
     const paidNow = fees.length && feeAt(now);
     state = warns.length || paidNow || unknownTime ? 'warn' : 'ok';
     headline = paidNow ? 'Drīkst, bet par maksu' : warns.length ? 'Drīksti, bet pārbaudi' : 'Drīksti stāvēt';
     if (until) sub = `līdz ${pkWhen(until, now)} · vēl ${pkDur(until - now)}`;
+    else if (maybeUntil) sub = `iespējams, līdz ${pkWhen(maybeUntil, now)} · pārbaudi zīmi`;
     else if (warns.length) sub = warns[0].text;
     else sub = 'Bez laika ierobežojuma';
     if (ms && until && +until === +ms) R.push({ level: 'warn', text: `Maksimālais stāvēšanas laiks ${pkDur(maxstay)}`, src: 'OpenStreetMap' });
@@ -301,10 +312,11 @@ function parkVerdict(ctx, now = new Date()) {
   if (!ctx.osmOk) { score -= 1; why.push('OpenStreetMap dati nav ielādēti'); }
   if (R.some(r => /iespējams, attiecas/.test(r.text))) { score -= 1; why.push('zīmes piederība ielas pusei nav droša'); }
   const confidence = score >= 3 ? 'high' : score >= 2 ? 'medium' : 'low';
-  const remindAt = until ? new Date(until.getTime() - (until - now > 40 * 60000 ? 15 : 5) * 60000) : null;
+  const remindBase = until || maybeUntil;
+  const remindAt = remindBase ? new Date(remindBase.getTime() - (remindBase - now > 40 * 60000 ? 15 : 5) * 60000) : null;
   const order = { no: 0, warn: 1, ok: 2, info: 3 };
   R.sort((a, b) => order[a.level] - order[b.level]);
-  return { state, headline, sub, until, from, remindAt: remindAt && remindAt > now ? remindAt : null, reasons: R, confidence,
+  return { state, headline, sub, until: until || maybeUntil, from, remindAt: remindAt && remindAt > now ? remindAt : null, reasons: R, confidence,
     confidenceText: { high: 'Pārliecība: augsta', medium: 'Pārliecība: vidēja', low: 'Pārliecība: zema' }[confidence] + (why.length ? ' — ' + why.join(', ') : ''),
     proof: (R.find(r => r.ref && (r.level === 'no' || r.level === 'warn')) || R.find(r => r.ref) || {}).ref || null };
 }
