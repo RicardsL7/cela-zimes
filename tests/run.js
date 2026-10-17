@@ -747,6 +747,39 @@ test('S. Vai drīkstu stāvēt: zīmes, laiki, noteikumi, OSM, atgādinājums', 
   eq(P.pkMaxstay('90 min'), 5400000); eq(P.pkMaxstay('1:30'), 5400000); eq(P.pkMaxstay('kaut kas'), null);
 });
 
+test('T. Stāvēšana kartē: ielas puse, virziens, krustojums', () => {
+  for (const f of ['parking.js', 'park-gl.js']) {
+    const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
+      .replace(/if \(typeof module[\s\S]*?\n}\n?$/m, '').replace(/\(function parkWait\(\)[\s\S]*$/, '');
+    vm.runInContext(src, ctx, { filename: f });
+  }
+  vm.runInContext('var distM = (a, b, c, d) => Math.hypot((c - a) * 111320, (d - b) * 111320 * Math.cos(a * Math.PI / 180)); var state = {}; var signs = null;', ctx);
+  // Divvirzienu iela austrumi–rietumi (y=0), šķērsielas pie x=0 un x=200
+  roadIndex.setSegments([...road(-300, 0, 300, 0, 'A'), ...road(0, -100, 0, 100, 'B'), ...road(200, -100, 200, 100, 'C')], COVER);
+  const st = store();
+  st.add(sign(60, -6, 'regulatory--no-stopping--g1', 270));    // dienvidu pusē, austrumu virzienam
+  st.add(sign(60, 6, 'regulatory--no-parking--g1', 90));       // ziemeļu pusē, rietumu virzienam
+  st.add(sign(-20, -6, 'regulatory--no-stopping--g1', 270));   // aiz krustojuma — neattiecas
+  ctx.signs = st;
+  const ctxAt = (x, y, dir) => { const q = LL(x, y); return G('parkContext')(q.lat, q.lng, dir, { elements: [] }, 6, true); };
+  const V = c => G('parkVerdict')(c, new Date('2026-10-19T12:00:00+03:00'));
+  let c = ctxAt(100, -4, 90);
+  eq(c.side, 1); eq(Math.round(c.dir), 90);
+  eq(c.signs.filter(x => x.kind === 'no-stopping').map(x => Math.round(x.at)).join(), '-40', 'tikai savā pusē un līdz krustojumam');
+  eq(V(c).state, 'no');
+  c = ctxAt(100, -4, null);                       // bez kursa — pēc ielas puses
+  eq(Math.round(c.dir), 90); eq(V(c).state, 'no');
+  c = ctxAt(100, 4, null);                        // ziemeļu pusē → brauc uz rietumiem; zīme x=60 ir priekšā
+  eq(Math.round(c.dir), 270); eq(V(c).state, 'ok');
+  c = ctxAt(40, -4, 90);                          // pirms zīmes
+  eq(V(c).state, 'ok');
+  eq(V(ctxAt(190, -4, 90)).state, 'no', 'zona no zīmes līdz krustojumam (130 m)');
+  c = ctxAt(190, 4, null);                        // ziemeļu pusē, 10 m aiz krustojuma
+  ok(Math.round(c.near.junctionBehind) === 10, String(c.near.junctionBehind));
+  eq(V(c).state, 'warn');
+  roadIndex.setSegments([], COVER);
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
