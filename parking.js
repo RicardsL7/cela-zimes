@@ -29,6 +29,7 @@ function parkSignKind(value) {
   if (/tow-away/.test(v)) return 'tow';
   if (/^information--(parking|parallel-parking)/.test(v)) return 'parking';
   if (/bus-stop|tram-stop|trolleybus-stop/.test(v)) return 'stop';
+  if (/pedestrians?-crossing|crosswalk/.test(v)) return 'crossing';
   return null;
 }
 const PK_SIGN_NAME = { 'no-stopping': 'Apstāties aizliegts', 'no-parking': 'Stāvēt aizliegts', end: 'Aizlieguma beigas',
@@ -158,7 +159,7 @@ function parkVerdict(ctx, now = new Date()) {
 
   if (inArea) {
     const a = ctx.area;
-    R.push({ level: 'ok', text: `Tu esi stāvlaukumā${a.name ? ' „' + a.name + '”' : ''}`, src: 'OpenStreetMap' });
+    R.push({ level: a.guess ? 'info' : 'ok', text: `Tu${a.guess ? ', visticamāk,' : ''} esi stāvlaukumā${a.name ? ' „' + a.name + '”' : ''}`, detail: a.guess ? 'Pārbaudi stāvlaukuma zīmes (maksa, laiks, tikai klientiem).' : '', src: 'OpenStreetMap' });
     if (/^(private|no)$/.test(a.access || '')) R.push({ level: 'no', hard: true, text: 'Privāts stāvlaukums — svešiem stāvēt nedrīkst', src: 'OpenStreetMap' });
     else if (/^(customers|permissive|destination)$/.test(a.access || '')) R.push({ level: 'warn', text: a.access === 'customers' ? 'Tikai klientiem' : 'Ierobežota piekļuve', src: 'OpenStreetMap' });
     else if (/^(residents|permit)$/.test(a.access || '')) R.push({ level: 'warn', text: 'Tikai iedzīvotājiem vai ar atļauju', src: 'OpenStreetMap' });
@@ -262,7 +263,8 @@ function parkVerdict(ctx, now = new Date()) {
       from = pkNextChange(bannedAt, now);
       if (from) sub = `Drīkstēs no ${pkWhen(from, now)} (pēc ${pkDur(from - now)})`;
     }
-    if (!sub) sub = R.find(r => r.level === 'no').text;
+    const nr = R.find(r => r.level === 'no');
+    if (!sub) sub = nr.ref && nr.hard && /zīme/.test(nr.src || '') ? 'Visu diennakti · ' + nr.src.replace(/ · Mapillary$/, '') + ' (līdz krustojumam)' : nr.text;
   } else {
     if (timed.length) until = pkNextChange(bannedAt, now);
     const ms = maxstay ? new Date(now.getTime() + maxstay) : null;

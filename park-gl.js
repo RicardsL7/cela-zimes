@@ -124,7 +124,7 @@ async function parkLoadOsm(lat, lng) {
   const hit = parkOsmCache.get(key);
   if (hit && Date.now() - hit.t < 10 * 60000) return hit.v;
   // Overpass serveri bieži ir aizņemti (429/504) — mēģina vēlreiz ar pauzi.
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 2; i++) {
     try {
       const j = await fetchOverpass(parkOsmQuery(lat, lng), 20000);
       const v = { elements: j.elements || [] };
@@ -189,6 +189,7 @@ function parkContext(lat, lng, dirIn, osm, acc, mly) {
     if (!L || L.at < -420 || L.at > 160) return;
     if (kind === 'tow') { tows.push(L.at); return; }
     if (kind === 'stop') { if (side === 0 || L.curb === 0 || L.curb === side) parkStop(ctx, L.at); return; }
+    if (kind === 'crossing') { parkCrossing(ctx, L.at); return; }
     const m = signs.match(x);
     let facing = 0;                      // +1 — vērsta pret manu braukšanas virzienu (attiecas uz mani), −1 — pretējam
     if (m && m.travelDir != null) facing = roadAngleDiff(m.travelDir, dir) <= 60 ? 1 : roadAngleDiff(m.travelDir, dir) >= 120 ? -1 : 0;
@@ -209,13 +210,15 @@ function parkContext(lat, lng, dirIn, osm, acc, mly) {
   });
   for (const t of tows) { const sg = ctx.signs.find(z => Math.abs(z.at - t) < 6 && /no-/.test(z.kind)); if (sg) sg.tow = true; }
 
+  // Kartes flīzes (vienmēr pieejamas uzreiz): pieturas, tilti/tuneļi, stāvlaukumi
+  parkTileExtras(ctx, lat, lng, best, locate);
   // OSM: pārejas, pieturas, dzelzceļš, tilti, ielas stāvēšanas atzīmes
   for (const el of els) {
     const t = el.tags || {};
     if (el.type === 'node') {
       if (t.highway === 'crossing') {
         const L = locate(el.lat, el.lon, 5);
-        if (L && L.at > -6 && (ctx.near.crossingAt == null || Math.abs(L.at) < Math.abs(ctx.near.crossingAt))) ctx.near.crossingAt = L.at;
+        if (L) parkCrossing(ctx, L.at);
       } else if (t.railway === 'level_crossing') {
         const d = distM(lat, lng, el.lat, el.lon);
         if (ctx.near.railM == null || d < ctx.near.railM) ctx.near.railM = d;
@@ -246,6 +249,43 @@ function parkContext(lat, lng, dirIn, osm, acc, mly) {
   }
   if (ctx.osm === undefined) ctx.osm = null;
   return ctx;
+}
+function parkCrossing(ctx, at) {
+  if (at > -6 && (ctx.near.crossingAt == null || Math.abs(at) < Math.abs(ctx.near.crossingAt))) ctx.near.crossingAt = at;
+}
+function parkTileExtras(ctx, lat, lng, best, locate) {
+  let poi = [], tr = [];
+  try { poi = map.querySourceFeatures('openmaptiles', { sourceLayer: 'poi' }); } catch {}
+  try { tr = map.querySourceFeatures('openmaptiles', { sourceLayer: 'transportation', filter: ['has', 'brunnel'] }); } catch {}
+  let lot = null;
+  for (const f of poi) {
+    const p = f.properties || {}, g = f.geometry && f.geometry.type === 'Point' && f.geometry.coordinates;
+    if (!g) continue;
+    if (p.subclass === 'bus_stop' || p.subclass === 'tram_stop') {
+      const L = locate(g[1], g[0], 22);
+      if (L && (ctx.side === 0 || L.curb === 0 || L.curb === ctx.side)) parkStop(ctx, L.at);
+    } else if (p.class === 'parking' && p.subclass === 'parking') {
+      const d = distM(lat, lng, g[1], g[0]);
+      if (d < 70 && (!lot || d < lot.d)) lot = { d, name: p.name || '' };
+    }
+  }
+  // Tālu no brauktuves un blakus stāvlaukums — visticamāk, mašīna ir stāvlaukumā.
+  if (lot && !ctx.area && (!best || best.d > 15 || best.seg.cls === 'service')) ctx.area = { name: lot.name, guess: true };
+  const dir = ctx.dir;
+  for (const f of tr) {
+    const b = f.properties && f.properties.brunnel;
+    if (b !== 'bridge' && b !== 'tunnel') continue;
+    const g = f.geometry;
+    for (const line of g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : []) {
+      const pr = parkProject(line, lat, lng);
+      if (!pr || pr.d > 6) continue;
+      let bi = 1, bd = Infinity;
+      for (let i = 1; i < line.length; i++) { const q = parkProject([line[i - 1], line[i]], lat, lng); if (q && q.d < bd) { bd = q.d; bi = i; } }
+      const wb = parkBearing(line[bi - 1], line[bi]);
+      if (Math.min(roadAngleDiff(wb, dir), roadAngleDiff(wb, (dir + 180) % 360)) > 25) continue;
+      if (b === 'bridge') ctx.near.bridge = true; else ctx.near.tunnel = true;
+    }
+  }
 }
 function parkStop(ctx, at) {
   if (at >= 0) { if (ctx.near.stopAhead == null || at < ctx.near.stopAhead) ctx.near.stopAhead = at; }
