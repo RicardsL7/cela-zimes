@@ -1426,7 +1426,7 @@ function installAlertLayer() {
     layout: {
       'icon-image': ['get', 'icon'],
       'icon-size': alertIconSize(markerMorph.pos ? 1 : 0.3),
-      'icon-anchor': 'bottom', 'icon-offset': [0, 2.5],   // marķiera punkts — tieši notikuma vietā
+      'icon-anchor': 'bottom-left', 'icon-offset': [-5.5, 4.75],   // burbuļa astes gals — tieši notikuma vietā
       'icon-allow-overlap': true,
       'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
       'symbol-sort-key': ['get', 'prio'],

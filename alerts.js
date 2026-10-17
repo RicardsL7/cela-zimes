@@ -145,26 +145,37 @@ function alertMix(hex, to, k) {
   const c = [n >> 16, (n >> 8) & 255, n & 255].map(v => Math.round(v + (t - v) * k));
   return '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
 }
-// Marķiera forma (aplis + īsa smaile): centrs (32,26), r 19.5, smailes gals (32,51.5). Punkts — (32,59).
-const ALERT_PIN = 'M19.2 40.7A19.5 19.5 0 1 1 44.8 40.7Q37.4 46.2 33.5 50.3Q32 51.9 30.5 50.3Q26.6 46.2 19.2 40.7Z';
+// Marķiera forma: aplis ar baltu malu un īsu "runas burbuļa" asti apakšā pa kreisi.
+// Astes gals (11,54.5) — tieši notikuma vieta (kartē: enkurs apakšā pa kreisi + nobīde).
+const ALERT_PIN = 'M36 3A24 24 0 1 1 22.2 46.7L11 54.5 15.2 39A24 24 0 0 1 36 3Z';
+const ALERT_STANDALONE = new Set(['traffic-light']);   // bez burbuļa — pats objekts uz ceļa (enkurs centrā)
 function alertSvg(type, size = 64) {
+  const head = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 64 64"><defs>` +
+    `<filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="1.5"/><feOffset dy="1.4"/>` +
+    `<feComponentTransfer><feFuncA type="linear" slope=".3"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+  if (type === 'traffic-light') {
+    // Luksofors: kompakts tumši zils korpuss ar baltu malu un trim spilgtām lampām (bez staba)
+    const lampDef = (id, c0, c1) => `<radialGradient id="${id}" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="${c0}"/><stop offset="1" stop-color="${c1}"/></radialGradient>`;
+    return head + lampDef('lr', '#ff8a8a', '#f2484f') + lampDef('ly', '#ffe27a', '#f7c21c') + lampDef('lg', '#6ff0a6', '#22c46a') +
+      `<linearGradient id="b" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2c3a50"/><stop offset="1" stop-color="#1a2536"/></linearGradient></defs>` +
+      `<g filter="url(#s)"><rect x="16.5" y="3" width="31" height="58" rx="11" fill="#fff"/>` +
+      `<rect x="19.5" y="6" width="25" height="52" rx="8.4" fill="url(#b)"/></g>` +
+      `<rect x="21.5" y="8" width="4.4" height="48" rx="2.2" fill="#fff" opacity=".07"/>` +
+      [[16.8, 'lr'], [32, 'ly'], [47.2, 'lg']].map(([cy, id]) =>
+        `<circle cx="32" cy="${cy}" r="7" fill="url(#${id})"/><ellipse cx="30" cy="${cy - 2.4}" rx="2.6" ry="1.6" fill="#fff" opacity=".45"/>`).join('') +
+      `</svg>`;
+  }
   const c = alertColor(type), hi = alertMix(c, 'w', 0.22), lo = alertMix(c, 'k', 0.16);
   const glyph = (ALERT_GLYPHS[type] || ALERT_GLYPHS.hazard)(alertMix(c, 'k', 0.04));
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 64 64"><defs>` +
+  return head +
     `<linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset=".55" stop-color="${c}"/><stop offset="1" stop-color="${lo}"/></linearGradient>` +
     `<linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".34"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
-    `<radialGradient id="dg" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="${c}" stop-opacity=".55"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></radialGradient>` +
-    `<filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="1.4"/><feOffset dy="1.3"/>` +
-    `<feComponentTransfer><feFuncA type="linear" slope=".28"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>` +
     `<filter id="d" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur in="SourceAlpha" stdDeviation=".45"/><feOffset dy=".45"/>` +
     `<feComponentTransfer><feFuncA type="linear" slope=".22"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>` +
-    // punkts precīzajā vietā (ar maigu mirdzumu) — tas pats, kas attālinātā kartē
-    `<circle cx="32" cy="59" r="5" fill="url(#dg)"/><circle cx="32" cy="59" r="2.6" fill="${c}" stroke="#fff" stroke-width="1.2"/>` +
-    `<g filter="url(#s)"><path d="${ALERT_PIN}" fill="#fff"/>` +
-    `<path d="${ALERT_PIN}" fill="url(#f)" transform="translate(32 26) scale(.895) translate(-32 -26)"/></g>` +
-    `<path d="M16 22.5A16.6 16.6 0 0 1 48 22.5C43.5 19.4 38.2 18 32 18S20.5 19.4 16 22.5Z" fill="url(#g)"/>` +
-    `<circle cx="32" cy="26" r="17.2" fill="none" stroke="#fff" stroke-width=".7" opacity=".28"/>` +
-    `<g filter="url(#d)" transform="translate(20.5 14.5) scale(.958)">${glyph}</g></svg>`;
+    `<g filter="url(#s)"><path d="${ALERT_PIN}" fill="#fff"/><circle cx="36" cy="27" r="20.6" fill="url(#f)"/></g>` +
+    `<path d="M18.4 23A18 18 0 0 1 53.6 23C48.8 19.6 43 18.2 36 18.2S23.2 19.6 18.4 23Z" fill="url(#g)"/>` +
+    `<circle cx="36" cy="27" r="19.9" fill="none" stroke="#fff" stroke-width=".7" opacity=".28"/>` +
+    `<g filter="url(#d)" transform="translate(24.5 15.5) scale(.958)">${glyph}</g></svg>`;
 }
 const alertUrlCache = new Map();
 function alertDataUrl(type) {
@@ -280,5 +291,5 @@ function alertInfo(it, now = Date.now()) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { ALERT_TYPES, REPORT_GROUPS, alertSvg, alertDotColor, alertCode, alertCodeColorExpr, ALERT_ORDER, alertTypeForSign, signNeedsDirection, alertTypeForOsm, weatherAlerts, AlertStore, makeReport, alertInfo };
+  module.exports = { ALERT_TYPES, REPORT_GROUPS, alertSvg, ALERT_STANDALONE, alertDotColor, alertCode, alertCodeColorExpr, ALERT_ORDER, alertTypeForSign, signNeedsDirection, alertTypeForOsm, weatherAlerts, AlertStore, makeReport, alertInfo };
 }

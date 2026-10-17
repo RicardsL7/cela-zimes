@@ -487,9 +487,9 @@ class SignStore {
       layout: {
         'icon-image': ['get', 'icon'],
         'icon-size': signsIconSize(this.pinScale),
-        // Marķierim apakšā ir punkts tieši notikuma vietā — enkurs tur (pārējām zīmēm — centrs).
-        'icon-anchor': ['case', ['has', 'pin'], 'bottom', 'center'],
-        'icon-offset': ['case', ['has', 'pin'], ['literal', [0, 2.5]], ['literal', [0, 0]]],
+        // Marķiera burbuļa aste (apakšā pa kreisi) rāda precīzo vietu; luksofors un pārējās zīmes — centrā.
+        'icon-anchor': ['case', ['==', ['get', 'icon'], 'alert:traffic-light'], 'center', ['has', 'pin'], 'bottom-left', 'center'],
+        'icon-offset': ['case', ['==', ['get', 'icon'], 'alert:traffic-light'], ['literal', [0, 0]], ['has', 'pin'], ['literal', [-5.5, 4.75]], ['literal', [0, 0]]],
         'symbol-sort-key': ['get', 'prio'],
         'icon-padding': 1,
         'icon-pitch-alignment': 'viewport',
