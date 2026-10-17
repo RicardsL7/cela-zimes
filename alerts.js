@@ -185,6 +185,8 @@ function alertSvg(type, size = 64) {
     `<linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".34"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
     `<filter id="d" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur in="SourceAlpha" stdDeviation=".45"/><feOffset dy=".45"/>` +
     `<feComponentTransfer><feFuncA type="linear" slope=".22"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>` +
+    // radariem — maigs violets mirdzums ap marķieri (svarīga brīdinājumu kategorija, nedaudz izceļas)
+    (type === 'camera-fixed' || type === 'camera-mobile' ? `<filter id="rg" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2.6"/></filter><circle cx="36" cy="27" r="24.5" fill="${hi}" opacity=".55" filter="url(#rg)"/>` : '') +
     `<g filter="url(#s)"><path d="${ALERT_PIN}" fill="#fff"/><circle cx="36" cy="27" r="20.6" fill="url(#f)"/></g>` +
     `<path d="M18.4 23A18 18 0 0 1 53.6 23C48.8 19.6 43 18.2 36 18.2S23.2 19.6 18.4 23Z" fill="url(#g)"/>` +
     `<circle cx="36" cy="27" r="19.9" fill="none" stroke="#fff" stroke-width=".7" opacity=".28"/>` +

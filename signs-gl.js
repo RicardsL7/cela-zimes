@@ -483,7 +483,9 @@ class SignStore {
     const relCase = (mine, other, unknown) => ['match', ['get', 'rel'], 'mine', mine, 'other', other, unknown];
     map.addLayer({
       id: 'signs', type: 'symbol', source: 'signs',
-      minzoom: SIGNS_MIN_ZOOM,          // attālinātā kartē tūkstošiem zīmju tikai bremzē — tās nerāda
+      minzoom: SIGNS_MIN_ZOOM,
+      // ātruma kameras brīdinājumu režīmā rāda radaru slānis (app-gl), nevis šis
+      filter: ['!', ['in', ['get', 'icon'], ['literal', ['alert:camera-fixed', 'alert:camera-mobile']]]],          // attālinātā kartē tūkstošiem zīmju tikai bremzē — tās nerāda
       layout: {
         'icon-image': ['get', 'icon'],
         'icon-size': signsIconSize(this.pinScale),
@@ -662,7 +664,7 @@ class SignStore {
       })),
     });
     // Punkti tieši marķieru vietās (pārejai punkts ↔ ikona bez pozīcijas lēcieniem).
-    this._dots(this.dotFor ? list.map(({ s, pos }) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [pos.lng, pos.lat] }, properties: { code: this.dotFor(s) } })) : []);
+    this._dots(this.dotFor ? list.map(({ s, pos, rel }) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [pos.lng, pos.lat] }, properties: { code: this.dotFor(s), rel } })) : []);
     // Marķieri parādījās (pēc tuvināšanas no punktiem) — pāreja var sākties.
     const pinsNow = !!this.dotFor && list.length > 0;
     if (pinsNow && !this._pinsShown && this.onPinsShown) this.onPinsShown();
