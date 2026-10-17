@@ -66,14 +66,20 @@ function parkBearing(a, b) {           // [lng, lat] → grādi
 
 // ---------- Dati ----------
 // Pārliecinās, ka karte rāda šo vietu pietuvinātu (ceļu indekss nāk no redzamās kartes).
+// Novieto vietu redzamajā kartes daļā virs kartītes. Atgriež true, ja karte kustas.
+function parkFrame(lat, lng, force) {
+  const H = map.getContainer().clientHeight, W = map.getContainer().clientWidth;
+  const sheetH = $('parkSheet').hidden ? 0 : Math.min($('parkSheet').offsetHeight || H * 0.5, H * 0.62);
+  const targetY = Math.max(90, (H - sheetH) / 2 + 30);
+  const pt = map.project([lng, lat]);
+  if (!force && map.getZoom() >= 16.2 && map.getPitch() <= 5 && pt.y > 70 && pt.y < H - sheetH - 30 && pt.x > 40 && pt.x < W - 90) return false;
+  state.follow = false;
+  map.easeTo({ center: [lng, lat], zoom: Math.max(17.2, Math.min(map.getZoom(), 18)), pitch: 0, duration: 650,
+    offset: [0, targetY - H / 2], essential: true });
+  return true;
+}
 async function parkEnsureView(lat, lng) {
-  const c = map.getCenter();
-  const sheetH = Math.min(window.innerHeight * 0.5, 420);
-  if (map.getZoom() < 16.2 || distM(c.lat, c.lng, lat, lng) > 140 || map.getPitch() > 5) {
-    state.follow = false;
-    map.easeTo({ center: [lng, lat], zoom: 17.3, pitch: 0, duration: 650, offset: [0, -sheetH / 2.4], essential: true });
-    await Promise.race([new Promise(r => map.once('moveend', r)), parkSleep(1500)]);
-  }
+  if (parkFrame(lat, lng)) await Promise.race([new Promise(r => map.once('moveend', r)), parkSleep(1500)]);
   for (let i = 0; i < 40; i++) {
     let loaded = false;
     try { loaded = map.isSourceLoaded('openmaptiles'); } catch {}
@@ -117,12 +123,16 @@ async function parkLoadOsm(lat, lng) {
   const key = lat.toFixed(4) + ',' + lng.toFixed(4);
   const hit = parkOsmCache.get(key);
   if (hit && Date.now() - hit.t < 10 * 60000) return hit.v;
-  try {
-    const j = await fetchOverpass(parkOsmQuery(lat, lng), 15000);
-    const v = { elements: j.elements || [] };
-    parkOsmCache.set(key, { t: Date.now(), v });
-    return v;
-  } catch { return null; }
+  // Overpass serveri bieži ir aizņemti (429/504) — mēģina vēlreiz ar pauzi.
+  for (let i = 0; i < 3; i++) {
+    try {
+      const j = await fetchOverpass(parkOsmQuery(lat, lng), 20000);
+      const v = { elements: j.elements || [] };
+      parkOsmCache.set(key, { t: Date.now(), v });
+      return v;
+    } catch { await parkSleep(1500 * (i + 1)); }
+  }
+  return null;
 }
 
 // ---------- Konteksts lēmumam ----------
@@ -257,19 +267,35 @@ async function parkCheck(lat, lng, opts = {}) {
   if (seq !== parkSeq) return;
   step('road', viewOk ? 'done' : 'fail');
   step('signs', 'run'); step('osm', 'run');
-  const [mly, osm] = await Promise.all([
-    parkLoadSigns(lat, lng).then(v => { step('signs', state.mlyToken ? (v ? 'done' : 'fail') : 'skip'); return v; }),
-    parkLoadOsm(lat, lng).then(v => { step('osm', v ? 'done' : 'fail'); return v; }),
-  ]);
+  let osm = null, osmDone = false;
+  const osmP = parkLoadOsm(lat, lng).then(v => { osm = v; osmDone = true; step('osm', v ? 'done' : 'fail'); return v; });
+  const mly = await parkLoadSigns(lat, lng);
+  step('signs', state.mlyToken ? (mly ? 'done' : 'fail') : 'skip');
+  await Promise.race([osmP, parkSleep(2500)]);       // OSM gaida nedaudz; ja kavējas — atbilde tagad, papildina vēlāk
   if (seq !== parkSeq) return;
-  // Pēc ielādes ceļu indekss var būt pārbūvēts — pārliecinās vēlreiz.
+  const finish = () => {
+    // Pēc ielādes ceļu indekss var būt pārbūvēts — pārliecinās, ka tas aptver vietu.
+    const ctx = parkContext(lat, lng, dirIn, osm, acc, mly);
+    if (!osmDone) ctx.osmPending = true;
+    const verdict = parkVerdict(ctx, new Date());
+    parkCur = { lat, lng, dir: ctx.dir, own, ctx, verdict, at: Date.now() };
+    parkRender();
+    parkDrawZone();
+    requestAnimationFrame(() => parkFrame(lat, lng));
+    return ctx;
+  };
   if (!roadIndex.covers(lat, lng)) await parkEnsureView(lat, lng);
-  const ctx = parkContext(lat, lng, dirIn, osm, acc, mly);
-  const verdict = parkVerdict(ctx, new Date());
-  parkCur = { lat, lng, dir: ctx.dir, own, ctx, verdict, at: Date.now() };
+  if (seq !== parkSeq) return;
+  finish();
   if (own && (!state.me || (state.me.speedKmh ?? 0) < 12)) parkSaveCar(parkCur);
-  parkRender();
-  parkDrawZone();
+  if (!osmDone) {
+    await osmP;
+    if (seq !== parkSeq) return;
+    if (!roadIndex.covers(lat, lng)) await parkEnsureView(lat, lng);
+    if (seq !== parkSeq) return;
+    finish();
+    if (own && (!state.me || (state.me.speedKmh ?? 0) < 12)) parkSaveCar(parkCur);
+  }
 }
 
 function parkSaveCar(p) {
@@ -328,7 +354,7 @@ function parkRender() {
   card.innerHTML = `<div class="pk-badge">${pkSvg(v.state, 34)}</div><div class="pk-vt"><div class="pk-head"></div><div class="pk-sub"></div><div class="pk-conf"></div></div>`;
   card.querySelector('.pk-head').textContent = v.headline;
   card.querySelector('.pk-sub').textContent = v.sub;
-  card.querySelector('.pk-conf').textContent = v.confidenceText;
+  card.querySelector('.pk-conf').textContent = p.ctx.osmPending ? 'Papildina ar pārejām, pieturām un stāvlaukumiem…' : v.confidenceText;
   body.appendChild(card);
   if (p.ctx.osmWay || p.ctx.area) {
     const where = document.createElement('p');
@@ -370,7 +396,7 @@ function parkRender() {
     li.querySelector('.pk-rs').textContent = [r.detail, r.src].filter(Boolean).join(' · ');
     if (r.ref) {
       li.classList.add('tap');
-      li.addEventListener('click', () => { map.easeTo({ center: [r.ref.lng, r.ref.lat], duration: 500, offset: [0, -Math.min(window.innerHeight * 0.5, 420) / 2.4] }); parkFlashSign(r.ref); });
+      li.addEventListener('click', () => { const H = map.getContainer().clientHeight, sh = Math.min($('parkSheet').offsetHeight, H * 0.62); map.easeTo({ center: [r.ref.lng, r.ref.lat], duration: 500, offset: [0, Math.max(90, (H - sh) / 2 + 30) - H / 2] }); parkFlashSign(r.ref); });
     }
     ul.appendChild(li);
   }

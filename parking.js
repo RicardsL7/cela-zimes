@@ -181,15 +181,21 @@ function parkVerdict(ctx, now = new Date()) {
   } else {
     // 1) Zīmes aiz mašīnas līdz krustojumam: katram veidam noteicošā ir tuvākā; aizlieguma beigu zīme to atceļ.
     const endAt = (signs.find(s => s.kind === 'end' && s.at <= 0) || { at: -Infinity }).at;
+    const parkAt = (signs.find(s => s.kind === 'parking' && s.at <= 0 && s.sure !== false) || { at: -Infinity }).at;
     for (const kind of ['no-stopping', 'no-parking']) {
-      const s = signs.find(x => x.kind === kind && x.at <= 0);
+      // Noteicošā ir tuvākā DROŠI piesaistītā zīme; ja tādas nav — tuvākā nedrošā (tikai brīdinājums).
+      const behind = signs.filter(x => x.kind === kind && x.at <= 0);
+      const s = behind.find(x => x.sure !== false) || behind[0];
       if (!s) continue;
       if (endAt > s.at) {
         R.push({ level: 'ok', text: `„${PK_SIGN_NAME[kind]}” zona beigusies (${Math.round(-endAt)} m aiz tevis ir beigu zīme)`, src: 'Mapillary', ref: signs.find(x => x.kind === 'end' && x.at === endAt).ref });
         continue;
       }
       const label = s.cond ? s.cond.ui : '';
-      addBan(kind, s.cond ? d => s.cond.test(d) : null, label, `zīme ${Math.round(-s.at)} m aiz tevis · Mapillary`, s.ref, s.sure !== false, s.timeUnknown);
+      // Stāvvietas zīme starp aizlieguma zīmi un mašīnu — šī vieta, visticamāk, ir atļauta stāvvieta.
+      const sure = s.sure !== false && !(parkAt > s.at);
+      addBan(kind, s.cond ? d => s.cond.test(d) : null, label, `zīme ${Math.round(-s.at)} m aiz tevis · Mapillary`, s.ref, sure, s.timeUnknown);
+      if (parkAt > s.at) R.push({ level: 'info', text: `Pēc aizlieguma zīmes ir stāvvietas zīme (${Math.round(-parkAt)} m aiz tevis) — stāvvietā stāvēt drīkst`, src: 'Mapillary' });
       if (s.tow) R.push({ level: 'warn', text: 'Evakuācijas zona — mašīnu var aizvilkt', src: 'Mapillary', ref: s.ref });
     }
     // 2) Aizlieguma zīme tieši priekšā (GPS kļūdas robežās) — zona sākas pie zīmes.
@@ -266,7 +272,8 @@ function parkVerdict(ctx, now = new Date()) {
     state = warns.length || paidNow || unknownTime ? 'warn' : 'ok';
     headline = paidNow ? 'Drīkst, bet par maksu' : warns.length ? 'Drīksti, bet pārbaudi' : 'Drīksti stāvēt';
     if (until) sub = `līdz ${pkWhen(until, now)} · vēl ${pkDur(until - now)}`;
-    else sub = 'Laika ierobežojumu nav atrasts';
+    else if (warns.length) sub = warns[0].text;
+    else sub = 'Bez laika ierobežojuma';
     if (ms && until && +until === +ms) R.push({ level: 'warn', text: `Maksimālais stāvēšanas laiks ${pkDur(maxstay)}`, src: 'OpenStreetMap' });
     if (paidNow) {
       const f = fees.find(x => !x.test || x.test(now));
