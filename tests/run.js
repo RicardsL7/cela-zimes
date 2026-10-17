@@ -488,9 +488,9 @@ test('M. Ziņojumu grupas (satiksme / bīstamība) kopā aptver visus ziņojamos
   eq([...all].sort().join(), reportable, 'visi ziņojamie veidi ir kādā pogā');
 });
 
-test('N. Vietas tuvumā: 12 kategorijas, pareizs Overpass vaicājums, tuvākās pirmās, darba laiks', () => {
+test('N. Vietas tuvumā: 13 kategorijas, pareizs Overpass vaicājums, tuvākās pirmās, darba laiks', () => {
   const CATS = G('PLACE_CATEGORIES'), q = G('buildPlacesQuery'), parse = G('parsePlaces'), pc = G('parseCondition');
-  eq(CATS.length, 12, '12 kategorijas kā Waze');
+  eq(CATS.length, 13, '13 kategorijas (ar auto mazgātavām)');
   const qq = q('fuel', 56.95, 24.1, 3000);
   ok(qq.includes('nwr["amenity"="fuel"](around:3000,56.95000,24.10000);') && qq.includes('out center'), 'degvielas vaicājums');
   ok(q('crisis', 56.95, 24.1, 3000).split('around:').length === 4, 'ārkārtas palīdzība — 3 vaicājumi');
@@ -550,6 +550,10 @@ test('Q. Vietas uzreiz no kartes flīzēm (bez interneta): kategorija, attālums
   eq(r.map(p => p.name).join(), 'Circle K,Neste', 'tikai degviela, tuvākā pirmā, dublikāts izmests');
   eq(tp(feats, 'ev', 56.95, 24.1)[0].name, 'EV uzlāde', 'bez nosaukuma — kategorijas nosaukums');
   eq(rs(r, 56.97, 24.1)[0].name, 'Neste', 'pārkārtots pēc jaunās vietas');
+  const cw = tp([F('car_wash', null, 24.1, 56.9503)], 'carwash', 56.95, 24.1);
+  eq(cw.length === 1 && cw[0].name, 'Auto mazgātavas', 'auto mazgātava no kartes flīzēm');
+  eq(G('carWashInfo')({ self_service: 'yes', automated: 'yes' }).join(), 'pašapkalpošanās,automātiskā');
+  eq(G('buildPlacesQuery')('carwash', 56.95, 24.1, 1500).includes('"amenity"="car_wash"'), true, 'Overpass vaicājums');
 });
 
 test('R. Darba laika punkts: zaļš / oranžs / dzeltens / sarkans / pelēks ar laiku', () => {
