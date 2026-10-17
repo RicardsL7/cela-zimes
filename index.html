@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=67">
+  <link rel="stylesheet" href="style-gl.css?v=68">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -79,6 +79,10 @@
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 3 21.5 19.5h-19Z" fill="currentColor"/><path d="M12 9v5" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16.8" r="1.2" fill="#fff"/></svg>
       <span class="fab-label">Ziņot</span>
     </button>
+    <button id="parkBtn" class="fab park-fab" title="Vai drīkstu šeit stāvēt?" aria-controls="parkSheet">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5" fill="currentColor"/><path d="M9.6 17V7.4h3.3a3 3 0 0 1 0 6H9.6" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="fab-label">Stāvēt</span>
+    </button>
     <button id="centerBtn" class="fab" title="Sekot man">
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 3 19 20l-7-4-7 4Z" fill="currentColor"/></svg>
       <span class="fab-label">Es</span>
@@ -138,6 +142,15 @@
   </section>
 
   <!-- Vietas tuvumā -->
+  <!-- Vai drīkstu šeit stāvēt? -->
+  <section id="parkSheet" class="sheet park-sheet" hidden aria-labelledby="parkTitle">
+    <div class="sheet-head">
+      <h2 id="parkTitle">Vai drīkstu šeit stāvēt?</h2>
+      <button id="closePark" class="link-btn" type="button">Aizvērt</button>
+    </div>
+    <div id="parkBody" aria-live="polite"></div>
+  </section>
+
   <section id="placesSheet" class="sheet places-sheet" hidden aria-labelledby="placesTitle">
     <div class="sheet-head">
       <button id="placesBack" class="back-btn" type="button" aria-label="Atpakaļ uz kategorijām" hidden>
@@ -217,20 +230,22 @@
   </section>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script src="cache.js?v=67"></script>
-  <script src="signs.js?v=67"></script>
-  <script src="mapillary.js?v=67"></script>
-  <script src="roads-gl.js?v=67"></script>
-  <script src="basemap-gl.js?v=67"></script>
-  <script src="signs-gl.js?v=67"></script>
-  <script src="nav.js?v=67"></script>
-  <script src="times.js?v=67"></script>
-  <script src="alerts.js?v=67"></script>
-  <script src="places.js?v=67"></script>
-  <script src="model.js?v=67"></script>
-  <script src="rides-config.js?v=67"></script>
-  <script src="rides.js?v=67"></script>
-  <script src="rides-ui.js?v=67"></script>
-  <script src="app-gl.js?v=67"></script>
+  <script src="cache.js?v=68"></script>
+  <script src="signs.js?v=68"></script>
+  <script src="mapillary.js?v=68"></script>
+  <script src="roads-gl.js?v=68"></script>
+  <script src="basemap-gl.js?v=68"></script>
+  <script src="signs-gl.js?v=68"></script>
+  <script src="nav.js?v=68"></script>
+  <script src="times.js?v=68"></script>
+  <script src="parking.js?v=68"></script>
+  <script src="alerts.js?v=68"></script>
+  <script src="places.js?v=68"></script>
+  <script src="model.js?v=68"></script>
+  <script src="rides-config.js?v=68"></script>
+  <script src="rides.js?v=68"></script>
+  <script src="rides-ui.js?v=68"></script>
+  <script src="app-gl.js?v=68"></script>
+  <script src="park-gl.js?v=68"></script>
 </body>
 </html>
