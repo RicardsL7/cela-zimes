@@ -513,8 +513,10 @@ function parkClearZone() {
   if (src) src.setData({ type: 'FeatureCollection', features: [] });
 }
 function parkEnsureLayers() {
-  if (map.getSource('park-zone')) return;
-  map.addSource('park-zone', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  // isStyleLoaded() ir false arī tad, kad vienkārši lādējas flīzes — tāpēc mēģina pievienot uzreiz.
+  if (map.getSource('park-zone')) return true;
+  try { map.addSource('park-zone', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } }); }
+  catch { return false; }
   map.addSource('park-walk', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   const before = map.getLayer('signs') ? 'signs' : undefined;
   map.addLayer({ id: 'park-walk', type: 'line', source: 'park-walk', layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -525,12 +527,13 @@ function parkEnsureLayers() {
     layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'c'], 'line-width': 8, 'line-opacity': 0.9 } }, before);
   map.addLayer({ id: 'park-sign', type: 'circle', source: 'park-zone', filter: ['==', ['get', 'k'], 'sign'],
     paint: { 'circle-radius': 15, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-width': 3.5, 'circle-stroke-color': ['get', 'c'] } });
+  return true;
 }
 // Kartē: posms, uz kuru attiecas atbilde (no noteicošās zīmes līdz mašīnai) un pati zīme.
 function parkDrawZone() {
   const p = parkCur;
   if (!p || !p.ctx.lines) { parkClearZone(); return; }
-  parkEnsureLayers();
+  if (!parkEnsureLayers()) return;
   const col = PARK_LVL_COLOR[p.verdict.state];
   const feats = [];
   const { fw, bw } = p.ctx.lines;
@@ -611,7 +614,7 @@ async function parkOpenCar() {
 }
 async function parkWalkToCar(car, label) {
   if (!state.me) return;
-  parkEnsureLayers();
+  if (!parkEnsureLayers()) return;
   const a = [state.me.lng, state.me.lat], b = [car.lng, car.lat];
   let coords = [a, b], dist = distM(a[1], a[0], b[1], b[0]), dur = dist / 1.3, real = false;
   try {
@@ -699,10 +702,12 @@ function wirePark() {
     parkCheck(e.lngLat.lat, e.lngLat.lng, { own: false });
   });
   setInterval(parkUpdateCarChip, 30000);
+  map.on('style.load', () => { if (!$('parkSheet').hidden) parkDrawZone(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { const c = parkLoadCar(); parkArmReminder(c); parkUpdateCarChip(); } });
   parkShowCar();
 }
+// Pogas pieslēdz, tiklīdz karte ir izveidota (kartes stils var ielādēties vēlāk).
 (function parkWait() {
-  if (typeof map !== 'undefined' && map && typeof signs !== 'undefined' && signs && map.isStyleLoaded && map.isStyleLoaded()) wirePark();
+  if (typeof map !== 'undefined' && map && typeof signs !== 'undefined' && signs && $('parkBtn')) wirePark();
   else setTimeout(parkWait, 150);
 })();
