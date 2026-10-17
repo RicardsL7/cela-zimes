@@ -1439,10 +1439,11 @@ function installAlertLayer() {
 }
 // Punktu slāņi (atsevišķs avots ar apvienošanu). r — rādiusa reizinātājs animācijai.
 function dotRadius(r) {
-  const one = (a, b) => ['interpolate', ['linear'], ['zoom'], 9, a * r, MARKER_IN_ZOOM, b * r];
-  return ['case', ['has', 'point_count'],
-    ['interpolate', ['linear'], ['get', 'point_count'], 2, 4.3 * r, 12, 5.6 * r, 60, 7 * r],
-    one(3.1, 4.4)];
+  // zoom drīkst būt tikai augšējā līmenī; apvienotie punkti — nedaudz lielāki pēc skaita
+  const cl = ['interpolate', ['linear'], ['get', 'point_count'], 2, 4.3 * r, 12, 5.6 * r, 60, 7 * r];
+  return ['interpolate', ['linear'], ['zoom'],
+    9, ['case', ['has', 'point_count'], cl, 3.1 * r],
+    MARKER_IN_ZOOM, ['case', ['has', 'point_count'], cl, 4.4 * r]];
 }
 function installAlertDots() {
   if (map.getSource(ALERT_DOTS_SRC)) return;
