@@ -136,7 +136,7 @@ async function pdOpen() {
       let st = v.state, note = '';
       if (st === 'ok' && v.until && v.until - eta < 60 * 60000) { st = 'warn'; note = 'tikai līdz ' + pkWhen(v.until, eta); }
       else if (st === 'ok') note = v.until ? 'līdz ' + pkWhen(v.until, eta) : 'bez laika ierobežojuma';
-      else if (st === 'warn') note = /maks/i.test(v.headline + v.sub) ? 'maksas' : (v.reasons.find(r => r.level === 'warn') || {}).text || 'pārbaudi zīmes';
+      else if (st === 'warn') note = /maks/i.test(v.headline + v.sub) ? 'maksas' : pdShort((v.reasons.find(r => r.level === 'warn') || {}).text);
       else note = v.headline.toLowerCase();
       results.push({ q, st, note, d: distM(dest.lat, dest.lng, q.lat, q.lng) });
       feats.push({ type: 'Feature', properties: { c: PD_COLOR[st] }, geometry: { type: 'LineString', coordinates: [q.a, q.b] } });
@@ -164,7 +164,7 @@ async function pdOpen() {
     lotFeats.push({ type: 'Feature', properties: { c: PD_COLOR[st] }, geometry: { type: 'Polygon', coordinates: [L.pts.map(q => [q[1], q[0]]).concat(L.pts[0][0] === L.pts.at(-1)[0] && L.pts[0][1] === L.pts.at(-1)[1] ? [] : [[L.pts[0][1], L.pts[0][0]]])] } });
     if (priv) continue;
     lots.push({ lot: true, lat: c[0], lng: c[1], d, st, name: t.name || 'Stāvlaukums',
-      note: [paid ? 'maksas' : t.fee === 'no' ? 'bez maksas' : '', cust ? (t.access === 'customers' ? 'klientiem' : 'ierobežota piekļuve') : '', t.maxstay ? 'max ' + t.maxstay : ''].filter(Boolean).join(' · ') || 'stāvlaukums' });
+      note: [paid ? 'maksas' : t.fee === 'no' ? 'bez maksas' : '', cust ? (t.access === 'customers' ? 'klientiem' : 'ierobežota piekļuve') : '', t.maxstay ? 'max ' + t.maxstay : ''].filter(Boolean).join(' · ') });
   }
   map.getSource('pd-lots') && map.getSource('pd-lots').setData({ type: 'FeatureCollection', features: lotFeats });
 
@@ -229,8 +229,20 @@ function pdRender() {
   body.appendChild(tip);
   const fine = document.createElement('p');
   fine.className = 'pk-fine';
-  fine.textContent = 'Krāsas balstītas uz ielu foto zīmēm (Mapillary), OpenStreetMap un Ceļu satiksmes noteikumiem ierašanās laikam. Ielas bez krāsas nav pārbaudītas. Noteicošās ir zīmes uz vietas.';
+  fine.textContent = 'Krāsas balstītas uz ielu foto zīmēm (Mapillary), OpenStreetMap un Ceļu satiksmes noteikumiem ierašanās laikam. Pilsētu maksas zonas (piem., Rīgas centrā) zināmas tikai tur, kur tās atzīmētas kartē. Ielas bez krāsas nav pārbaudītas. Noteicošās ir zīmes uz vietas.';
   body.appendChild(fine);
+}
+// Īss iemesls sarakstam
+function pdShort(t) {
+  t = t || '';
+  if (/iespējams|piederība/i.test(t)) return 'iespējams aizliegts — pārbaudi zīmi';
+  if (/Krustojums/.test(t)) return 'tuvu krustojumam';
+  if (/pārej/i.test(t)) return 'tuvu gājēju pārejai';
+  if (/[Pp]ietura/.test(t)) return 'tuvu pieturai';
+  if (/PIRMS/.test(t)) return 'aizlieguma zīme tuvumā';
+  if (/plāksnīte/.test(t)) return 'zīmei ir laika plāksnīte — pārbaudi';
+  if (/klientiem|atļauju/.test(t)) return 'ierobežota piekļuve';
+  return t ? t.replace(/ — .*$/, '').toLowerCase() : 'pārbaudi zīmes';
 }
 function pdDist(m) { return m < 1000 ? Math.round(m / 10) * 10 + ' m' : (m / 1000).toFixed(1).replace('.', ',') + ' km'; }
 
