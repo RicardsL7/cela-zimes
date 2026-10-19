@@ -841,6 +841,25 @@ test('V. Sastrēgumi: anonīmi mērījumi, privātuma zonas, līmeņi, maršruta
   eq(T.trRouteDelay(coords.slice().reverse(), jams).sec, 0, 'pretējā virzienā sastrēguma nav');
 });
 
+test('W. Kopbraucienu cena: izmaksu griesti, ievade, komisija', async () => {
+  const cap = G('rideFareCapCents'), parse = G('rideParsePrice'), money = G('rideMoney'), split = G('rideSplit');
+  // Rīga → Jelgava (~40 km taisni): 40 × 1,3 × 12 c ≈ 6,3 €
+  const c = cap({ from_lat: 56.95, from_lng: 24.1, to_lat: 56.65, to_lng: 23.72 });
+  ok(c > 550 && c < 700, 'Rīga–Jelgava griesti ~6 €: ' + c);
+  eq(cap({ from_lat: 56.95, from_lng: 24.1, to_lat: 56.951, to_lng: 24.1 }), 200, 'īsam braucienam vismaz 2 €');
+  eq(parse('4,50'), 450); eq(parse(' 4 € '), 400); eq(parse('4.5'), 450); eq(parse(''), null);
+  ok(Number.isNaN(parse('abc')) && Number.isNaN(parse('4,555')) && Number.isNaN(parse('-3')), 'nederīgas cenas');
+  eq(money(450), '4,50 €'); eq(money(1000), '10,00 €');
+  eq(JSON.stringify(split(1000)), '{"fee":100,"driver":900}', '10 € → šoferim 9 €, lietotnei 1 €');
+  eq(JSON.stringify(split(455, 10)), '{"fee":46,"driver":409}');
+  // Demo krātuve saglabā cenu piedāvājumā
+  const S = G('LocalRideStore'); const mem = {};
+  const st = new S({ getItem: k => mem[k] ?? null, setItem: (k, v) => { mem[k] = v; } });
+  await st.init(); await st.saveProfile({ name: 'Šoferis', car: '' });
+  await st.offer('req-1', { eta_min: 5, price_cents: 350 });
+  eq(JSON.parse(mem[Object.keys(mem)[0]]).offers[0].price_cents, 350, 'cena saglabāta');
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
