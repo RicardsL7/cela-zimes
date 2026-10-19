@@ -780,6 +780,35 @@ test('T. Stāvēšana kartē: ielas puse, virziens, krustojums', () => {
   roadIndex.setSegments([], COVER);
 });
 
+test('U. Sagatavotie OSM dati: šūnas, stāvlaukums, pārejas', async () => {
+  const { buildCells } = await import('../tools/build-osm.mjs');
+  const json = { elements: [
+    { type: 'node', lat: 56.95601, lon: 24.10001, tags: { highway: 'crossing' } },
+    { type: 'node', lat: 56.97, lon: 24.30, tags: { highway: 'bus_stop' } },
+    { type: 'way', tags: { highway: 'residential', name: 'Iela', 'parking:right:restriction': 'no_parking', surface: 'x' },
+      geometry: [{ lat: 56.9499, lon: 24.0999 }, { lat: 56.9501, lon: 24.1001 }] },
+    { type: 'way', tags: { amenity: 'parking', fee: 'yes', name: 'P1', surface: 'x' },
+      geometry: [{ lat: 56.9550, lon: 24.0990 }, { lat: 56.9550, lon: 24.1010 }, { lat: 56.9570, lon: 24.1010 }, { lat: 56.9570, lon: 24.0990 }, { lat: 56.9550, lon: 24.0990 }] },
+  ] };
+  const { cells, count } = buildCells(json);
+  eq(count.x, 1); eq(count.p, 1); eq(count.w, 1);
+  eq(cells.size, 5, 'iela šķērso 4 šūnas + pietura citur');
+  ok(!('surface' in cells.get('1138_481').w[0][0]), 'liekie tagi izmesti');
+  // Lietotnes puse: šūnas no "servera" (bez Overpass)
+  const files = { 'data/osm/index.json': { v: 1, cell: 0.05, osm: '2026-10-19T18:00:00Z', cells: [...cells.keys()] } };
+  for (const [k, v] of cells) files['data/osm/c_' + k + '.json'] = v;
+  ctx.fetch = async u => { const f = files[String(u).split('?')[0]]; return { ok: !!f, json: async () => JSON.parse(JSON.stringify(f)) }; };
+  vm.runInContext('parkDataIndex = undefined; parkCellCache.clear(); parkOsmCache.clear();', ctx);
+  const v = await G('parkLoadOsm')(56.956, 24.100);
+  ok(v.local); eq(v.osm, '2026-10-19T18:00:00Z');
+  ok(v.elements.some(e => e.type === 'node' && e.tags.highway === 'crossing'));
+  ok(v.elements.some(e => e.type === 'way' && e.tags.amenity === 'parking' && !e.geometry && e.tags.fee === 'yes'), 'punkts stāvlaukumā');
+  ok(!v.elements.some(e => e.tags.highway === 'bus_stop'), 'tālā pietura nav ielādēta');
+  const v2 = await G('parkLoadOsm')(56.9500, 24.1000);
+  ok(v2.elements.some(e => e.type === 'way' && e.tags['parking:right:restriction'] === 'no_parking'));
+  eq(v2.elements.filter(e => e.type === 'way' && e.tags.highway).length, 1, 'iela no vairākām šūnām — vienreiz');
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
