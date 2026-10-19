@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=76">
+  <link rel="stylesheet" href="style-gl.css?v=77">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -108,6 +108,7 @@
       <span class="route-time" id="routeTime">12 min</span>
       <span class="route-meta" id="routeMeta">5,3 km · ieradīsies 17:42</span>
     </div>
+    <div class="route-traffic" id="routeTraffic" hidden></div>
     <div class="route-signs" id="routeSigns"></div>
     <div class="route-actions">
       <button id="cancelRoute" class="btn ghost" type="button">Atcelt</button>
@@ -202,6 +203,16 @@
       <span>Brīdināt, ja pārsniedz ātrumu</span>
       <input type="checkbox" id="warnSwitch" class="switch" checked>
     </label>
+    <div id="trafficRows">
+      <label class="row">
+        <span>Rādīt sastrēgumus kartē</span>
+        <input type="checkbox" id="trafficShow" class="switch" checked>
+      </label>
+      <label class="row">
+        <span>Anonīmi dalīties ar braukšanas ātrumu sastrēgumu kartei<br><small class="fine">Tikai ātrums pa ielu posmiem, bez vārda un maršruta; ne pirmos un pēdējos 400 m.</small></span>
+        <input type="checkbox" id="trafficShare" class="switch">
+      </label>
+    </div>
     <label class="row">
       <span>Testa režīms (klikšķis uz kartes = mana vieta; ar maršrutu — simulēts brauciens)</span>
       <input type="checkbox" id="testSwitch" class="switch">
@@ -234,23 +245,25 @@
   </section>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script src="cache.js?v=76"></script>
-  <script src="signs.js?v=76"></script>
-  <script src="mapillary.js?v=76"></script>
-  <script src="roads-gl.js?v=76"></script>
-  <script src="basemap-gl.js?v=76"></script>
-  <script src="signs-gl.js?v=76"></script>
-  <script src="nav.js?v=76"></script>
-  <script src="times.js?v=76"></script>
-  <script src="parking.js?v=76"></script>
-  <script src="alerts.js?v=76"></script>
-  <script src="places.js?v=76"></script>
-  <script src="model.js?v=76"></script>
-  <script src="rides-config.js?v=76"></script>
-  <script src="rides.js?v=76"></script>
-  <script src="rides-ui.js?v=76"></script>
-  <script src="app-gl.js?v=76"></script>
-  <script src="park-gl.js?v=76"></script>
-  <script src="park-dest-gl.js?v=76"></script>
+  <script src="cache.js?v=77"></script>
+  <script src="signs.js?v=77"></script>
+  <script src="mapillary.js?v=77"></script>
+  <script src="roads-gl.js?v=77"></script>
+  <script src="basemap-gl.js?v=77"></script>
+  <script src="signs-gl.js?v=77"></script>
+  <script src="nav.js?v=77"></script>
+  <script src="times.js?v=77"></script>
+  <script src="parking.js?v=77"></script>
+  <script src="alerts.js?v=77"></script>
+  <script src="places.js?v=77"></script>
+  <script src="model.js?v=77"></script>
+  <script src="rides-config.js?v=77"></script>
+  <script src="traffic.js?v=77"></script>
+  <script src="rides.js?v=77"></script>
+  <script src="rides-ui.js?v=77"></script>
+  <script src="app-gl.js?v=77"></script>
+  <script src="park-gl.js?v=77"></script>
+  <script src="park-dest-gl.js?v=77"></script>
+  <script src="traffic-gl.js?v=77"></script>
 </body>
 </html>

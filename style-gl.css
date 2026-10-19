@@ -630,3 +630,15 @@ html:not(.navigating):not(.previewing) .loader { top: calc(env(safe-area-inset-t
 .pd-b { display: flex; gap: 6px; flex: none; }
 .pd-b .pk-btn { min-height: 36px; padding: 0 10px; }
 .pd-go { min-height: 36px; padding: 0 14px; font-size: 14px; }
+
+/* Sastrēgumi */
+.route-traffic { margin: 6px 0 0; padding: 6px 10px; border-radius: 10px; font: 700 14px var(--font-body); }
+.route-traffic.ok { background: color-mix(in srgb, var(--go) 12%, transparent); color: var(--go); }
+.route-traffic.mid { background: color-mix(in srgb, #f07800 14%, transparent); color: #c25e00; }
+.route-traffic.bad { background: color-mix(in srgb, #c81e3a 14%, transparent); color: #c81e3a; }
+.tr-consent { position: fixed; z-index: 55; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); max-width: 520px; margin-inline: auto;
+  background: var(--panel); color: var(--fg); border-radius: 18px; box-shadow: var(--shadow); padding: 14px 16px; animation: slide-up .28s ease-out; }
+.tr-c-t { font: 700 18px var(--font-sign); margin-bottom: 4px; }
+.tr-c-s { font: 500 13.5px/1.4 var(--font-body); color: var(--muted); }
+.tr-c-b { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
+.tr-c-b .btn { min-height: 42px; padding: 0 18px; }

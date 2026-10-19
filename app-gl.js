@@ -967,6 +967,7 @@ function onFix(lat, lng, speedKmh, gpsHeading, dur = 900, accuracy = null) {
   if (state.nav.active) updateNav();
   else updateNextSign();
   followCamera(dur);
+  if (typeof trafficOnFix === 'function') trafficOnFix(lat, lng, speedKmh, state.heading, accuracy);   // sastrēgumu karte (traffic-gl.js)
 }
 
 // ---------- GPS ----------
@@ -1173,6 +1174,7 @@ async function previewRoute() {
     $('bottombar').hidden = true;
     document.documentElement.classList.add('previewing');
     updateRouteSummary();
+    if (typeof trafficOnRoute === 'function') trafficOnRoute(route);   // sastrēgumi maršrutā (traffic-gl.js)
     // Telefonā tastatūra vēl aizveras — karti pielāgo, kad ekrāns ir pilnā izmērā.
     setTimeout(fitRoute, 350);
   } catch (err) {
