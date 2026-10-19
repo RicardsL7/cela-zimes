@@ -119,11 +119,70 @@ is_in(${p})->.a;
 (way(pivot.a)["amenity"="parking"]; relation(pivot.a)["amenity"="parking"];);
 out tags;`;
 }
+// ---------- Sagatavotie Latvijas dati (data/osm — GitHub tos atjauno reizi diennaktī) ----------
+// Ātri un stabili: nav jāgaida Overpass. Ja šo datu nav (vai neielādējas) — Overpass rezervei.
+let parkDataIndex;                 // undefined — vēl nav ielādēts; null — nav pieejams
+const parkCellCache = new Map();
+async function parkIndex() {
+  if (parkDataIndex !== undefined) return parkDataIndex;
+  try {
+    const r = await fetch('data/osm/index.json', { cache: 'no-cache' });
+    parkDataIndex = r.ok ? await r.json() : null;
+    if (parkDataIndex) parkDataIndex.set = new Set(parkDataIndex.cells || []);
+  } catch { parkDataIndex = undefined; return null; }   // tīkla kļūda — mēģinās nākamreiz
+  return parkDataIndex;
+}
+function parkCell(k) {
+  if (!parkCellCache.has(k)) parkCellCache.set(k, fetch('data/osm/c_' + k + '.json').then(r => r.ok ? r.json() : null).catch(() => null)
+    .then(v => { if (!v) parkCellCache.delete(k); return v; }));
+  return parkCellCache.get(k);
+}
+function parkInPoly(lat, lng, pts) {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [ai, bi] = pts[i], [aj, bj] = pts[j];
+    if ((ai > lat) !== (aj > lat) && lng < (bj - bi) * (lat - ai) / (aj - ai) + bi) inside = !inside;
+  }
+  return inside;
+}
+// Šūnas ap punktu → { elements (kā no Overpass), lots (stāvlaukumu kontūras), osm (datu laiks) } vai null.
+async function parkLoadLocal(lat, lng, radius = 150) {
+  const idx = await parkIndex();
+  if (!idx) return null;
+  const C = idx.cell || 0.05, [s, w, n, e] = parkBox(lat, lng, radius), keys = [];
+  for (let a = Math.floor(s / C); a <= Math.floor(n / C); a++)
+    for (let b = Math.floor(w / C); b <= Math.floor(e / C); b++) if (idx.set.has(a + '_' + b)) keys.push(a + '_' + b);
+  const cells = await Promise.all(keys.map(parkCell));
+  if (cells.some(c => !c)) return null;
+  const elements = [], lots = [], seen = new Set();
+  const NODE = { x: { highway: 'crossing' }, b: { highway: 'bus_stop' }, t: { railway: 'tram_stop' }, r: { railway: 'level_crossing' } };
+  const inBox = (la, lo) => la >= s && la <= n && lo >= w && lo <= e;
+  for (const c of cells) {
+    for (const [la, lo, code] of c.n) if (inBox(la, lo)) elements.push({ type: 'node', lat: la, lon: lo, tags: NODE[code] });
+    for (const [tags, pts] of c.w) {
+      const k = pts[0].join() + pts[pts.length - 1].join();
+      if (seen.has(k) || !pts.some(q => inBox(q[0], q[1]))) continue;
+      seen.add(k);
+      elements.push({ type: 'way', tags, geometry: pts.map(q => ({ lat: q[0], lon: q[1] })) });
+    }
+    for (const [tags, pts] of c.p) {
+      const k = 'p' + pts[0].join() + pts.length;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      lots.push({ tags, pts });
+      if (parkInPoly(lat, lng, pts)) elements.push({ type: 'way', tags: Object.assign({ amenity: 'parking' }, tags) });   // mašīna stāvlaukumā
+    }
+  }
+  return { elements, lots, osm: idx.osm || '', local: true };
+}
+
 async function parkLoadOsm(lat, lng) {
   const key = lat.toFixed(4) + ',' + lng.toFixed(4);
   const hit = parkOsmCache.get(key);
   if (hit && Date.now() - hit.t < 10 * 60000) return hit.v;
-  // Overpass serveri bieži ir aizņemti (429/504) — mēģina vēlreiz ar pauzi.
+  const local = await parkLoadLocal(lat, lng);
+  if (local) { parkOsmCache.set(key, { t: Date.now(), v: local }); return local; }
+  // Rezerve: Overpass (serveri bieži aizņemti — mēģina vēlreiz ar pauzi).
   for (let i = 0; i < 2; i++) {
     try {
       const j = await fetchOverpass(parkOsmQuery(lat, lng), 20000);
@@ -137,7 +196,7 @@ async function parkLoadOsm(lat, lng) {
 
 // ---------- Konteksts lēmumam ----------
 function parkContext(lat, lng, dirIn, osm, acc, mly) {
-  const ctx = { signs: [], near: {}, acc, roadKnown: false, dirKnown: false, mly, osmOk: !!osm, lines: null };
+  const ctx = { signs: [], near: {}, acc, roadKnown: false, dirKnown: false, mly, osmOk: !!osm, lines: null, osmDate: osm && osm.osm || '' };
   const els = osm ? osm.elements : [];
   const area = els.find(el => el.tags && el.tags.amenity === 'parking' && !el.geometry);
   if (area) {
@@ -479,7 +538,7 @@ function parkRender() {
   body.appendChild(tip);
   const fine = document.createElement('p');
   fine.className = 'pk-fine';
-  fine.textContent = 'Atbilde balstīta uz ielu foto (Mapillary), OpenStreetMap un Ceļu satiksmes noteikumiem. Dati var būt novecojuši — noteicošās ir zīmes un apzīmējumi uz vietas.';
+  fine.textContent = 'Atbilde balstīta uz ielu foto (Mapillary), OpenStreetMap' + (p.ctx.osmDate ? ' (dati no ' + new Date(p.ctx.osmDate).toLocaleDateString('lv-LV') + ')' : '') + ' un Ceļu satiksmes noteikumiem. Dati var būt novecojuši — noteicošās ir zīmes un apzīmējumi uz vietas.';
   body.appendChild(fine);
   parkShowPin(p.lat, p.lng, v.state);
 }
