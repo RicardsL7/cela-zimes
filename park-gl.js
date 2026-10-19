@@ -201,7 +201,7 @@ function parkContext(lat, lng, dirIn, osm, acc, mly) {
   const area = els.find(el => el.tags && el.tags.amenity === 'parking' && !el.geometry);
   if (area) {
     const t = area.tags;
-    ctx.area = { name: t.name || '', access: t.access || '', fee: t.fee || '', feeCond: (t['fee:conditional'] || '').replace(/^yes\s*@\s*/, ''), oh: t.opening_hours || '', maxstay: pkMaxstay(t.maxstay) };
+    ctx.area = { name: t.name || '', access: t.access || '', fee: t.fee || '', feeCond: t['fee:conditional'] ? splitConditional(t['fee:conditional']).filter(x => x.value === 'yes').map(x => x.cond.replace(/^\(|\)$/g, '')).join('; ') : '', oh: t.opening_hours || '', maxstay: pkMaxstay(t.maxstay) };
   }
   if (!roadIndex.ready || !roadIndex.covers(lat, lng)) return ctx;
   const cands = roadIndex._candidates(lat, lng, 12).filter(c => c.d <= 25).sort((a, b) => a.d - b.d);

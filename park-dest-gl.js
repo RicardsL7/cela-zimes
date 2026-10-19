@@ -83,7 +83,15 @@ async function pdOpen() {
   }
   if (seq !== pdSeq) return;
   prog(0.08);
-  const [mly, osm] = await Promise.all([parkLoadSigns(dest.lat, dest.lng), parkLoadLocal(dest.lat, dest.lng, PD_RADIUS + 150)]);
+  const [mly, osmAll] = await Promise.all([parkLoadSigns(dest.lat, dest.lng), parkLoadLocal(dest.lat, dest.lng, PD_RADIUS + 150)]);
+  // „Mašīna stāvlaukumā” atzīme attiecas uz galamērķa punktu — ielu punktiem to nosaka katram atsevišķi.
+  const osm = osmAll ? { elements: osmAll.elements.filter(el => !(el.tags && el.tags.amenity === 'parking' && !el.geometry)), lots: osmAll.lots, osm: osmAll.osm, local: true } : null;
+  const lotBoxes = ((osm && osm.lots) || []).map(L => {
+    let s = 90, w = 180, n = -90, e = -180;
+    for (const [la, lo] of L.pts) { s = Math.min(s, la); n = Math.max(n, la); w = Math.min(w, lo); e = Math.max(e, lo); }
+    return { L, s, w, n, e };
+  });
+  const inLot = (la, lo) => lotBoxes.some(b => la >= b.s && la <= b.n && lo >= b.w && lo <= b.e && parkInPoly(la, lo, b.L.pts));
   if (seq !== pdSeq) return;
   prog(0.2);
 
@@ -121,8 +129,8 @@ async function pdOpen() {
     for (let i = 0; i < samples.length; i++) {
       if (seq !== pdSeq) return;
       const q = samples[i];
+      if (inLot(q.lat, q.lng)) continue;                               // stāvlaukumus rāda atsevišķi
       const ctx = parkContext(q.lat, q.lng, q.dir, osm, 5, mly);
-      if (ctx.area && !ctx.area.guess) continue;                       // stāvlaukumus rāda atsevišķi
       const v = parkVerdict(ctx, eta);
       if (v.state === 'unknown') continue;
       let st = v.state, note = '';
@@ -146,6 +154,7 @@ async function pdOpen() {
   const lots = [];
   const lotFeats = [];
   for (const L of (osm && osm.lots) || []) {
+    if (!L.tags) continue;
     const c = L.pts.reduce((m, q) => [m[0] + q[0] / L.pts.length, m[1] + q[1] / L.pts.length], [0, 0]);
     const d = distM(dest.lat, dest.lng, c[0], c[1]);
     if (d > PD_RADIUS + 60) continue;
