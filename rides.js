@@ -108,7 +108,7 @@ function rideTimeText(iso, now = Date.now()) {
 const RIDE_FEE_PCT = 10;
 function rideFareCapCents(r) {
   const km = rideDist(r.from_lat, r.from_lng, r.to_lat, r.to_lng) / 1000;
-  return Math.max(200, Math.round(km * 1.3 * 12));
+  return Math.max(200, Math.floor(km * 1.3 * 12));   // uz leju — lai nekad nepārsniedz datubāzes robežu
 }
 // "4,50" / "4.5" / "4" → 450 (centi); tukšs → null; nederīgs → NaN
 function rideParsePrice(text) {
