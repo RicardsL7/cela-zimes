@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=73">
+  <link rel="stylesheet" href="style-gl.css?v=74">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -100,6 +100,10 @@
       <div class="route-sub" id="routeSub">Adrese</div>
     </div>
     <div class="place-acts dest-acts" id="destActs" hidden></div>
+    <button id="destParkBtn" class="dest-park-btn" type="button">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5" fill="currentColor"/><path d="M9.6 17V7.4h3.3a3 3 0 0 1 0 6H9.6" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Kur pie galamērķa drīkstēšu stāvēt?</span>
+    </button>
     <div class="route-stats">
       <span class="route-time" id="routeTime">12 min</span>
       <span class="route-meta" id="routeMeta">5,3 km · ieradīsies 17:42</span>
@@ -230,22 +234,23 @@
   </section>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script src="cache.js?v=73"></script>
-  <script src="signs.js?v=73"></script>
-  <script src="mapillary.js?v=73"></script>
-  <script src="roads-gl.js?v=73"></script>
-  <script src="basemap-gl.js?v=73"></script>
-  <script src="signs-gl.js?v=73"></script>
-  <script src="nav.js?v=73"></script>
-  <script src="times.js?v=73"></script>
-  <script src="parking.js?v=73"></script>
-  <script src="alerts.js?v=73"></script>
-  <script src="places.js?v=73"></script>
-  <script src="model.js?v=73"></script>
-  <script src="rides-config.js?v=73"></script>
-  <script src="rides.js?v=73"></script>
-  <script src="rides-ui.js?v=73"></script>
-  <script src="app-gl.js?v=73"></script>
-  <script src="park-gl.js?v=73"></script>
+  <script src="cache.js?v=74"></script>
+  <script src="signs.js?v=74"></script>
+  <script src="mapillary.js?v=74"></script>
+  <script src="roads-gl.js?v=74"></script>
+  <script src="basemap-gl.js?v=74"></script>
+  <script src="signs-gl.js?v=74"></script>
+  <script src="nav.js?v=74"></script>
+  <script src="times.js?v=74"></script>
+  <script src="parking.js?v=74"></script>
+  <script src="alerts.js?v=74"></script>
+  <script src="places.js?v=74"></script>
+  <script src="model.js?v=74"></script>
+  <script src="rides-config.js?v=74"></script>
+  <script src="rides.js?v=74"></script>
+  <script src="rides-ui.js?v=74"></script>
+  <script src="app-gl.js?v=74"></script>
+  <script src="park-gl.js?v=74"></script>
+  <script src="park-dest-gl.js?v=74"></script>
 </body>
 </html>

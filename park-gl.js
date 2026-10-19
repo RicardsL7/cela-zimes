@@ -312,10 +312,14 @@ function parkContext(lat, lng, dirIn, osm, acc, mly) {
 function parkCrossing(ctx, at) {
   if (at > -6 && (ctx.near.crossingAt == null || Math.abs(at) < Math.abs(ctx.near.crossingAt))) ctx.near.crossingAt = at;
 }
+let parkTileFeat = null;            // { poi, tr } — kešs, kad pārbauda daudzas vietas pēc kārtas
 function parkTileExtras(ctx, lat, lng, best, locate) {
   let poi = [], tr = [];
-  try { poi = map.querySourceFeatures('openmaptiles', { sourceLayer: 'poi' }); } catch {}
-  try { tr = map.querySourceFeatures('openmaptiles', { sourceLayer: 'transportation', filter: ['has', 'brunnel'] }); } catch {}
+  if (parkTileFeat) ({ poi, tr } = parkTileFeat);
+  else {
+    try { poi = map.querySourceFeatures('openmaptiles', { sourceLayer: 'poi' }); } catch {}
+    try { tr = map.querySourceFeatures('openmaptiles', { sourceLayer: 'transportation', filter: ['has', 'brunnel'] }); } catch {}
+  }
   let lot = null;
   for (const f of poi) {
     const p = f.properties || {}, g = f.geometry && f.geometry.type === 'Point' && f.geometry.coordinates;
@@ -415,6 +419,7 @@ function parkSaveCar(p) {
 function openParkSheet() {
   if (!$('placesSheet').hidden) closePlaces();
   if (typeof toggleSettings === 'function') toggleSettings(false);
+  $('parkTitle').textContent = 'Vai drīkstu šeit stāvēt?';
   $('parkSheet').hidden = false;
   document.documentElement.classList.add('parking');
   clearInterval(parkTick);
@@ -427,6 +432,7 @@ function closeParkSheet() {
   clearInterval(parkTick);
   if (parkPin) { parkPin.remove(); parkPin = null; }
   parkClearZone();
+  if (typeof pdClear === 'function') pdClear();
 }
 function parkRenderLoading(title) {
   $('parkBody').innerHTML = `<div class="pk-loading"><div class="pk-spin" aria-hidden="true"></div><p class="pk-lt"></p>
