@@ -103,6 +103,22 @@ function rideTimeText(iso, now = Date.now()) {
   if (dd === 1) return 'rīt ' + hm;
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}. ${hm}`;
 }
+// Maksa par braucienu (izmaksu dalīšana): maksimums = attālums × 1,3 (pa ceļiem) × 12 c/km, vismaz 2 €.
+// Tāpat aprēķina arī datubāze (supabase/rides-3-pay.sql → ride_fare_cap_cents).
+const RIDE_FEE_PCT = 10;
+function rideFareCapCents(r) {
+  const km = rideDist(r.from_lat, r.from_lng, r.to_lat, r.to_lng) / 1000;
+  return Math.max(200, Math.round(km * 1.3 * 12));
+}
+// "4,50" / "4.5" / "4" → 450 (centi); tukšs → null; nederīgs → NaN
+function rideParsePrice(text) {
+  const t = String(text ?? '').trim().replace(/\s|€|eur/gi, '').replace(',', '.');
+  if (!t) return null;
+  if (!/^\d{1,3}(\.\d{1,2})?$/.test(t)) return NaN;
+  return Math.round(parseFloat(t) * 100);
+}
+function rideMoney(c) { return (c / 100).toFixed(2).replace('.', ',') + ' €'; }
+function rideSplit(c, pct = RIDE_FEE_PCT) { const fee = Math.round(c * pct / 100); return { fee, driver: c - fee }; }
 function rideDistText(m) { return m < 1000 ? `${Math.round(m / 50) * 50 || 50} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0).replace('.', ',')} km`; }
 const RIDE_OFFER_STATUS = { pending: 'Gaida atbildi', accepted: 'Pieņemts', declined: 'Noraidīts', cancelled: 'Atcelts' };
 
@@ -192,7 +208,7 @@ class LocalRideStore {
   async offer(requestId, o) {
     const d = this._load();
     if (d.offers.some(x => x.request_id === requestId && x.driver_id === this.id && x.status !== 'cancelled')) return;
-    d.offers.push({ id: rideUuid(), request_id: requestId, driver_id: this.id, eta_min: o.eta_min, note: o.note || '', status: 'pending', created_at: new Date().toISOString() });
+    d.offers.push({ id: rideUuid(), request_id: requestId, driver_id: this.id, eta_min: o.eta_min, note: o.note || '', price_cents: o.price_cents ?? null, status: 'pending', created_at: new Date().toISOString() });
     this._save(d);
   }
   async offersFor(requestId) {
@@ -333,7 +349,7 @@ class SupabaseRideStore {
     return this._rest(q);
   }
   async offer(requestId, o) {
-    await this._rest('ride_offers', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ request_id: requestId, driver_id: this.id, eta_min: o.eta_min, note: o.note || '' }) });
+    await this._rest('ride_offers', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ request_id: requestId, driver_id: this.id, eta_min: o.eta_min, note: o.note || '', ...(o.price_cents != null ? { price_cents: o.price_cents } : {}) }) });
   }
   async _phones(ids) {
     if (!ids.length) return {};
@@ -377,12 +393,21 @@ SupabaseRideStore.prototype.passengerUpdate = function (offerId, lat, lng) {
   return this._rest('rpc/ride_passenger_update', { method: 'POST', body: JSON.stringify({ oid: offerId, p_lat: lat, p_lng: lng }) });
 };
 
+// Kartes maksājumi (servera funkcija supabase/functions/ride-pay). Demo režīmā to nav.
+SupabaseRideStore.prototype.pay = async function (action, body = {}) {
+  await this._ensure();
+  const r = await fetch(this.url + '/functions/v1/ride-pay', { method: 'POST', headers: this._h(), body: JSON.stringify({ action, ...body }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j.error || 'Maksājumi pašlaik nav pieejami'); e.status = r.status; throw e; }
+  return j;
+};
+
 function createRideStore(cfg) {
   if (cfg && cfg.url && cfg.anonKey) return new SupabaseRideStore(cfg);
   return new LocalRideStore();
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
+  module.exports = { rideFareCapCents, rideParsePrice, rideMoney, rideSplit, RIDE_FEE_PCT, rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
     rideTimeText, rideDistText, rideStage, rideFresh, rideEtaMinutes, ridePassengerStatus, rideDriverStatus, rideUnread, rideMsgTime, LocalRideStore, SupabaseRideStore, createRideStore, RIDE_OFFER_STATUS };
 }

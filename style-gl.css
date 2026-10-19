@@ -642,7 +642,24 @@ html:not(.navigating):not(.previewing) .loader { top: calc(env(safe-area-inset-t
 .tr-c-s { font: 500 13.5px/1.4 var(--font-body); color: var(--muted); }
 .tr-c-b { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
 .tr-c-b .btn { min-height: 42px; padding: 0 18px; }
-.r-carprompt { background: var(--chip, #f2f5f9); border-radius: 14px; padding: 10px 12px; margin-bottom: 10px; }
+.r-carprompt { background: color-mix(in srgb, var(--line) 45%, transparent); border-radius: 14px; padding: 10px 12px; margin-bottom: 10px; }
 .r-row { display: flex; gap: 8px; align-items: center; }
 .r-row .r-input { flex: 1; min-width: 0; }
 .r-row .btn { flex: none; }
+/* Kartes maksājumi */
+.r-price-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0 2px; font-size: 13px; color: var(--muted); }
+.r-price-box { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.r-price-box b { color: var(--fg); }
+.r-input.r-price { width: 74px; text-align: right; padding: 6px 8px; }
+.r-pay-card { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin-bottom: 10px; display: grid; gap: 6px; }
+.r-pay-card.r-pay-ready { border-color: color-mix(in srgb, var(--go) 55%, var(--line)); }
+.r-pay-head { display: flex; align-items: center; gap: 8px; }
+.r-pay-badge { font: 700 11px var(--font-body); letter-spacing: .04em; color: #7a4b00; background: #ffe6a8; border-radius: 99px; padding: 2px 8px; }
+.r-pay-txt { margin: 0; font-size: 14px; }
+.r-pay-wrap { display: grid; gap: 6px; margin-top: 8px; }
+.r-pay-line { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; font-weight: 600; margin-top: 6px; }
+.r-pay-line small { color: var(--muted); font-weight: 500; }
+.r-pay-line.r-paid b { color: var(--go); }
+.r-pay-btn { width: 100%; }
+.r-pay-test { margin: 0; font-size: 12px; color: #7a4b00; background: #fff4d6; border-radius: 10px; padding: 6px 10px; }
+@media (prefers-color-scheme: dark) { .r-pay-test { color: #ffd98a; background: #3a2c10; } .r-pay-badge { color: #ffd98a; background: #4a3510; } }

@@ -7,6 +7,7 @@ const rides = {
   profile: null, myReqs: [], offers: {}, myOffers: [], openList: [],
   timer: null, markers: [], seen: null, from: null, to: null,
   msgs: {}, seenMsg: {}, chat: null, unreadTotal: 0,             // čats
+  pay: {}, payCfg: null, payDrv: null, payAt: 0, payDrvBusy: false,      // kartes maksājumi
   live: { timer: null, lastDrv: null, lastPas: 0, route: null, routeKey: '', routeAt: 0, carMarker: null, pasMarker: null, destMarker: null },
 };
 try { rides.seenMsg = JSON.parse(localStorage.getItem('cz.rides.seenMsg') || '{}'); } catch { rides.seenMsg = {}; }
@@ -39,7 +40,7 @@ async function ridesInit() {
   for (const id of ['settingsBtn', 'reportBtn', 'placesBtn']) { const b = $(id); if (b) b.addEventListener('click', () => { if (rides.open) ridesOpen(false); }); }
   $('ridesDemo').hidden = !rides.store.demo;
   rides.tab = store.get('ridesTab', 'need');
-  if (rides.ready) { await ridesRefresh(true); ridesSchedule(); }
+  if (rides.ready) { await ridesRefresh(true); ridesSchedule(); ridesPayReturn(); }
 }
 // Aktīvs brauciens (pieņemts piedāvājums) — tad dati atjaunojas biežāk un notiek atrašanās vietas apmaiņa.
 function ridesActiveTrip() {
@@ -112,6 +113,7 @@ async function ridesRefresh(first) {
       msgs[id] = have.concat(fresh || []);
     }
     rides.msgs = msgs;
+    await ridesPayRefresh(first);
   } catch (err) { console.warn('Kopbraucieni: neizdevās atjaunot', err); }
   ridesNotify(first);
   ridesRender();
@@ -181,7 +183,8 @@ function ridesViewSig() {
     rides.myReqs.map(r => r.id + r.status + (rides.offers[r.id] || []).map(o => o.id + o.status + o.phone + o.trip + ridesUnread(o.id)).join()),
     rides.myOffers.map(o => o.id + o.status + o.phone + o.trip + ridesUnread(o.id) + (o.request && o.request.status)),
     rides.chat ? rides.chat.offerId : null,
-    rides.tab === 'drive' ? rides.openList.map(r => r.id + r.status) : null]);
+    rides.tab === 'drive' ? rides.openList.map(r => r.id + r.status) : null,
+    rides.pay, rides.payCfg, rides.payDrv]);
 }
 function ridesRender(force = false) {
   if (!rides.open) return;
@@ -350,6 +353,8 @@ function ridesRequestCard(r) {
     card.querySelector('.r-badge').textContent = { matched: 'Šoferis atrasts', coming: 'Šoferis brauc pakaļ', arrived: 'Šoferis ir klāt!', onboard: 'Ceļā' }[st] || 'Šoferis atrasts';
     card.append(ridesPerson(accepted.driver, accepted.phone, ''));
     card.append(rEl('p', { class: 'r-trip', id: 'trip-' + accepted.id, text: ridePassengerStatus(accepted, r) }));
+    const payEl = ridesPassengerPay(accepted);
+    if (payEl) card.append(payEl);
     if (st !== 'onboard') card.append(rEl('p', { class: 'fine', text: 'Pirms iekāpšanas pārliecinies, ka auto atbilst aprakstam.' }));
     const acts = rEl('div', { class: 'r-actions' });
     if (st !== 'onboard') acts.append(rEl('button', { class: 'btn ghost', type: 'button', text: 'Atcelt', onclick: () => ridesConfirmCancel(r) }));
@@ -360,7 +365,7 @@ function ridesRequestCard(r) {
     if (!pending.length) card.append(rEl('p', { class: 'fine r-wait', text: 'Pieprasījumu redz šoferi, kuri brauc tajā pusē. Kad kāds piedāvās, tas parādīsies šeit.' }));
     for (const o of pending) {
       card.append(rEl('div', { class: 'r-offer' },
-        ridesPerson(o.driver, '', o.eta_min != null ? `var paņemt pēc ~${o.eta_min} min` : ''),
+        ridesPerson(o.driver, '', [o.eta_min != null ? `var paņemt pēc ~${o.eta_min} min` : '', o.price_cents ? 'cena ' + rideMoney(o.price_cents) : 'bez maksas / vienosieties'].filter(Boolean).join(' · ')),
         o.note ? rEl('p', { class: 'r-note', text: '“' + o.note + '”' }) : null,
         rEl('div', { class: 'r-actions' },
           ridesChatBtn(o.id, (o.driver && o.driver.name) || 'Šoferis'),
@@ -383,6 +388,8 @@ function ridesConfirmCancel(r) {
 function ridesDriveView() {
   const wrap = rEl('div');
   if (rides.profile && !rides.profile.car) wrap.append(ridesCarPrompt());
+  const payCard = ridesPayDriverCard();
+  if (payCard) wrap.append(payCard);
   const mine = rides.myOffers.filter(o => o.status === 'accepted' || o.status === 'pending');
   if (mine.length) {
     wrap.append(rEl('h3', { class: 'r-h3', text: 'Tavi piedāvājumi' }));
@@ -407,17 +414,28 @@ function ridesEtaMin(r) {
 }
 function ridesOpenCard(x) {
   const r = x.req;
+  const cap = rideFareCapCents(r);
+  const price = rEl('input', { class: 'r-input r-price', type: 'text', inputmode: 'decimal', maxlength: 6, placeholder: '0', 'aria-label': 'Cena eiro' });
+  if (rides.priceDraft && rides.priceDraft[r.id]) price.value = rides.priceDraft[r.id];
+  price.addEventListener('input', () => { (rides.priceDraft || (rides.priceDraft = {}))[r.id] = price.value; });
   const meta = [rideTimeText(r.depart_at), r.seats + ' cilv.',
     x.match ? `+${x.match.detourMin} min apkārtceļš` : x.dist != null ? rideDistText(x.dist) + ' no tevis' : ''].filter(Boolean).join(' · ');
   return rEl('div', { class: 'r-card' },
     ridesPerson(r.passenger, '', meta),
     ridesRoute(r),
     r.note ? rEl('p', { class: 'r-note', text: '“' + r.note + '”' }) : null,
+    rEl('label', { class: 'r-price-row' },
+      rEl('span', { text: `Ceļa izmaksu daļa (neobligāti, līdz ${rideMoney(cap)})` }),
+      rEl('span', { class: 'r-price-box' }, price, rEl('b', { text: '€' }))),
     rEl('div', { class: 'r-actions' },
       rEl('button', { class: 'btn ghost', type: 'button', text: 'Kartē', onclick: () => { map.easeTo({ center: [r.from_lng, r.from_lat], zoom: 15 }); } }),
       rEl('button', { class: 'btn primary', type: 'button', text: 'Paņemšu', onclick: async e => {
+        const cents = rideParsePrice(price.value);
+        if (Number.isNaN(cents)) { setStatus('Cenu ieraksti skaitļos, piem. 4,50'); price.focus(); return; }
+        if (cents != null && cents > cap) { setStatus(`Cena var būt līdz ${rideMoney(cap)} — tās ir aptuvenās ceļa izmaksas.`); price.focus(); return; }
+        if (cents != null && cents > 0 && cents < 100) { setStatus('Mazākā cena ir 1 €.'); price.focus(); return; }
         e.target.disabled = true;
-        try { await rides.store.offer(r.id, { eta_min: ridesEtaMin(r) }); setStatus('Piedāvājums nosūtīts — gaidi pasažiera atbildi.'); }
+        try { await rides.store.offer(r.id, { eta_min: ridesEtaMin(r), price_cents: cents || null }); if (rides.priceDraft) delete rides.priceDraft[r.id]; setStatus('Piedāvājums nosūtīts — gaidi pasažiera atbildi.'); }
         catch (err) { console.warn(err); setStatus('Neizdevās nosūtīt piedāvājumu.'); }
         ridesRefresh(true);
       } })));
@@ -432,6 +450,7 @@ function ridesMyOfferCard(o) {
     ridesPerson(o.passenger, ok ? o.phone : '', ''),
     ridesRoute(r));
   if (ok) card.append(rEl('p', { class: 'r-trip', id: 'trip-' + o.id, text: rideDriverStatus(o, state.me) }));
+  if (o.price_cents) card.append(ridesDriverPayLine(o, ok));
   const acts = rEl('div', { class: 'r-actions' });
   if (st !== 'onboard') acts.append(rEl('button', { class: 'btn ghost', type: 'button', text: 'Atcelt', onclick: async () => { await rides.store.cancelOffer(o.id); ridesRefresh(true); } }));
   acts.append(ridesChatBtn(o.id, (o.passenger && o.passenger.name) || 'Pasažieris'));
@@ -466,6 +485,101 @@ function ridesMyOfferCard(o) {
   card.append(acts);
   return card;
 }
+// ---------- Kartes maksājumi (Stripe caur servera funkciju ride-pay) ----------
+function ridesPayOn() { return !!(rides.store && rides.store.pay) && !(rides.payCfg && rides.payCfg.off); }
+function ridesPayIds() {
+  const ids = [];
+  for (const r of rides.myReqs) for (const o of rides.offers[r.id] || []) if (o.status === 'accepted' && o.price_cents) ids.push(o.id);
+  for (const o of rides.myOffers) if (o.status === 'accepted' && o.price_cents) ids.push(o.id);
+  return ids;
+}
+async function ridesPayRefresh(force) {
+  if (!ridesPayOn()) return;
+  const ids = ridesPayIds();
+  if (!ids.length || (!force && Date.now() - rides.payAt < 20000)) return;
+  rides.payAt = Date.now();
+  try {
+    const j = await rides.store.pay('status', { offer_ids: ids });
+    rides.pay = j.pay || {}; rides.payCfg = { test: !!j.test, fee_pct: j.fee_pct ?? RIDE_FEE_PCT };
+  } catch (e) { if (e.status === 503) rides.payCfg = { off: true }; else console.warn('Maksājumi', e); }
+}
+async function ridesPayDriverLoad() {
+  if (rides.payDrvBusy || !ridesPayOn()) return;
+  rides.payDrvBusy = true;
+  try {
+    const j = await rides.store.pay('driver_status');
+    rides.payDrv = j; rides.payCfg = { test: !!j.test, fee_pct: j.fee_pct ?? RIDE_FEE_PCT };
+  } catch (e) { rides.payDrv = { error: true }; if (e.status === 503) rides.payCfg = { off: true }; }
+  rides.payDrvBusy = false;
+  ridesRender();
+}
+function ridesFeePct() { return rides.payCfg && rides.payCfg.fee_pct != null ? rides.payCfg.fee_pct : RIDE_FEE_PCT; }
+function ridesTestNote() {
+  return rides.payCfg && rides.payCfg.test ? rEl('p', { class: 'r-pay-test', text: 'TESTA REŽĪMS — īsta nauda netiek ņemta. Izmanto testa karti 4242 4242 4242 4242, jebkuru nākotnes datumu un jebkuru CVC.' }) : null;
+}
+function ridesReturnUrl() { return location.origin + location.pathname; }
+// Šoferim: pieslēgt maksājumu saņemšanu
+function ridesPayDriverCard() {
+  if (!ridesPayOn()) return null;
+  if (!rides.payDrv) { ridesPayDriverLoad(); return rEl('div', { class: 'r-pay-card' }, rEl('p', { class: 'fine', text: 'Pārbaudu kartes maksājumus…' })); }
+  const d = rides.payDrv;
+  if (d.error) return null;
+  const pct = ridesFeePct();
+  const go = async e => {
+    e.target.disabled = true;
+    try { const j = await rides.store.pay('connect', { return_url: ridesReturnUrl() }); location.href = j.url; }
+    catch (err) { setStatus(err.message || 'Neizdevās atvērt pieslēgšanu.'); e.target.disabled = false; }
+  };
+  const box = rEl('div', { class: 'r-pay-card' + (d.ready ? ' r-pay-ready' : '') },
+    rEl('div', { class: 'r-pay-head' }, rEl('b', { text: '💳 Kartes maksājumi' }), rides.payCfg && rides.payCfg.test ? rEl('span', { class: 'r-pay-badge', text: 'TESTS' }) : null));
+  if (d.ready) box.append(rEl('p', { class: 'r-pay-txt', text: `Pasažieri var tev samaksāt ar karti. Tu saņem cenu mīnus ${pct} % lietotnes komisija — nauda nonāk tavā bankas kontā caur Stripe.` }));
+  else {
+    box.append(rEl('p', { class: 'r-pay-txt', text: d.connected
+      ? 'Pieslēgšana nav pabeigta — Stripe vēl vajag dažus datus.'
+      : `Lai pasažieri var samaksāt ar karti tieši lietotnē, pieslēdz maksājumu saņemšanu. Datus un bankas kontu pārbauda Stripe; tu saņem cenu mīnus ${pct} % komisija.` }));
+    box.append(rEl('button', { class: 'btn primary', type: 'button', text: d.connected ? 'Turpināt pieslēgšanu' : 'Pieslēgt maksājumus', onclick: go }));
+  }
+  return box;
+}
+// Šoferim: cena un vai samaksāts
+function ridesDriverPayLine(o, ok) {
+  const { driver } = rideSplit(o.price_cents, ridesFeePct());
+  const p = rides.pay[o.id];
+  const text = `Cena ${rideMoney(o.price_cents)}` + (ridesPayOn() ? ` · ar karti tu saņem ${rideMoney(driver)}` : '');
+  return rEl('div', { class: 'r-pay-line' + (p && p.paid ? ' r-paid' : '') },
+    rEl('span', { text }),
+    ok && p && p.paid ? rEl('b', { text: '✓ Samaksāts ar karti' }) : ok ? rEl('small', { text: 'Vēl nav samaksāts (var arī skaidrā)' }) : null);
+}
+// Pasažierim: maksāt ar karti
+function ridesPassengerPay(o) {
+  if (!o.price_cents) return null;
+  const p = rides.pay[o.id];
+  const box = rEl('div', { class: 'r-pay-line' + (p && p.paid ? ' r-paid' : '') }, rEl('span', { text: 'Cena ' + rideMoney(o.price_cents) }));
+  if (p && p.paid) { box.append(rEl('b', { text: '✓ Samaksāts ar karti' })); return box; }
+  if (!ridesPayOn()) { box.append(rEl('small', { text: 'Samaksā šoferim, kā vienojāties.' })); return box; }
+  const btn = rEl('button', { class: 'btn primary r-pay-btn', type: 'button', text: 'Maksāt ar karti', onclick: async e => {
+    e.target.disabled = true; e.target.textContent = 'Atveru…';
+    try { const j = await rides.store.pay('checkout', { offer_id: o.id, return_url: ridesReturnUrl() }); location.href = j.url; }
+    catch (err) { setStatus(err.message || 'Neizdevās atvērt maksājumu.'); e.target.disabled = false; e.target.textContent = 'Maksāt ar karti'; }
+  } });
+  const wrap = rEl('div', { class: 'r-pay-wrap' }, box, btn);
+  const t = ridesTestNote(); if (t) wrap.append(t);
+  return wrap;
+}
+// Atgriešanās no Stripe lapas (?pay=ok / cancel / connected / connect-retry)
+function ridesPayReturn() {
+  const q = new URLSearchParams(location.search), v = q.get('pay');
+  if (!v) return;
+  q.delete('pay');
+  try { history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash); } catch { /* */ }
+  const msg = { ok: 'Paldies! Maksājums pieņemts.', cancel: 'Maksājums atcelts — nauda netika ņemta.',
+    connected: 'Atpakaļ no Stripe — pārbaudu maksājumu pieslēgšanu…', 'connect-retry': 'Saite novecoja — nospied „Turpināt pieslēgšanu” vēlreiz.' }[v];
+  if (msg) setStatus(msg);
+  if (v === 'connected' || v === 'connect-retry') { rides.payDrv = null; if (rides.tab !== 'drive') ridesTab('drive'); }
+  ridesOpen(true);
+  if (v === 'ok') { rides.payAt = 0; ridesRefresh(false); }
+}
+
 // Šofera navigācija uz pasažieri / galamērķi: maršruts uzreiz un navigācija sākas.
 async function ridesNavigate(place) {
   if (state.nav.active) endNav();
