@@ -809,6 +809,38 @@ test('U. Sagatavotie OSM dati: šūnas, stāvlaukums, pārejas', async () => {
   eq(v2.elements.filter(e => e.type === 'way' && e.tags.highway).length, 1, 'iela no vairākām šūnām — vienreiz');
 });
 
+test('V. Sastrēgumi: anonīmi mērījumi, privātuma zonas, līmeņi, maršruta kavējums', () => {
+  const T = require('../traffic.js');
+  const lat0 = 56.95, lng0 = 24.10, cos = Math.cos(lat0 * Math.PI / 180);
+  const at = x => ({ lat: lat0, lng: lng0 + x / (111320 * cos) });
+  const C = new T.TrafficCollector();
+  let t = 0;
+  for (let i = 0; i <= 300; i++) C.add(Object.assign(at(i * 10), { t: t += 1000, kmh: 36, bearing: 90, acc: 5, cls: 3 }));
+  const sent = C.ready(Object.assign({}, C.last, { t }));
+  ok(sent.length > 40, 'mērījumi tiek atdoti: ' + sent.length);
+  ok(sent.every(it => Object.keys(it).sort().join() === 'c,d,k,v'), 'tikai šūna, virziens, ātrums, klase — nekā cita');
+  ok(sent.every(it => it.d === 2 && Math.abs(it.v - 36) < 2), 'virziens uz austrumiem, ~36 km/h');
+  const xOf = c => (Number(c.split('_')[1]) + 0.5) / T.TR_CELL;
+  const xs = sent.map(it => (xOf(it.c) - lng0) * 111320 * cos);
+  ok(Math.min(...xs) > 380, 'pirmie 400 m netiek sūtīti (min ' + Math.round(Math.min(...xs)) + ' m)');
+  // Apstāšanās > 10 min: pēdējie 400 m netiek sūtīti nekad
+  for (let i = 0; i < 70; i++) C.add(Object.assign(at(3000), { t: t += 10000, kmh: 0, bearing: 90, acc: 5, cls: 3 }));
+  const rest = C.ready(Object.assign(at(3000), { t }));
+  const xr = rest.map(it => (xOf(it.c) - lng0) * 111320 * cos);
+  ok(xr.every(x => x < 2600), 'pēdējie 400 m netiek sūtīti (max ' + Math.round(Math.max(...xr)) + ' m)');
+  eq(C.queue.length, 0);
+  // Līmeņi
+  eq(T.trLevel(8, 50, 3), 3); eq(T.trLevel(30, 50, 3), 1); eq(T.trLevel(48, 50, 3), 0);
+  eq(T.trLevel(5, null, 6), 0, 'maza iela bez vēstures — nevērtē');
+  // Maršruta kavējums: 200 m sastrēgums 6 km/h uz galvenās ielas
+  const jams = new Map();
+  for (let x = 400; x < 600; x += 20) { const p = at(x); jams.set(T.trCell(p.lat, p.lng) + '|2', { kmh: 6, typical: 50, cls: 3 }); }
+  const coords = [0, 1000].map(x => { const p = at(x); return [p.lng, p.lat]; });
+  const d = T.trRouteDelay(coords, jams);
+  ok(d.sec > 80 && d.sec < 150, 'kavējums ~1,5 min: ' + d.sec);
+  eq(T.trRouteDelay(coords.slice().reverse(), jams).sec, 0, 'pretējā virzienā sastrēguma nav');
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
