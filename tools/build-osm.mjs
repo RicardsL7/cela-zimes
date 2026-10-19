@@ -1,5 +1,6 @@
 // Latvijas OSM dati stāvēšanas pārbaudei — sagatavo GitHub Action reizi diennaktī.
-//   node tools/build-osm.mjs            (lejupielādē no Overpass)
+//   node tools/build-osm.mjs --geojsonseq f.geojsonseq   (galvenais: Geofabrik PBF → osmium export)
+//   node tools/build-osm.mjs            (rezerve: lejupielādē no Overpass)
 //   node tools/build-osm.mjs in.json    (no saglabātas Overpass atbildes — testiem)
 // Rezultāts: data/osm/index.json un data/osm/c_<rinda>_<kolonna>.json (šūnas pa 0,05°).
 // Lietotne ielādē tikai šūnas ap pārbaudāmo vietu — ātri un bez Overpass gaidīšanas.
@@ -10,6 +11,8 @@
 //   w: [[tagi, [[lat, lng], …]], …]   ielas ar stāvēšanas atzīmēm (parking:*)
 //   p: [[tagi, [[lat, lng], …]], …]   stāvlaukumu kontūras (amenity=parking)
 import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { createInterface } from 'node:readline';
 
 const CELL = 0.05;
 const OUT = new URL('../data/osm/', import.meta.url);
@@ -102,11 +105,45 @@ export function buildCells(json) {
   return { cells, count };
 }
 
+// osmium export -f geojsonseq rezultāts → Overpass līdzīgi elementi (tikai vajadzīgie)
+export function featureToElements(f) {
+  const t = f.properties || {}, g = f.geometry;
+  if (!g) return [];
+  if (g.type === 'Point') return [{ type: 'node', lat: g.coordinates[1], lon: g.coordinates[0], tags: t }];
+  const line = c => c.map(q => ({ lat: q[1], lon: q[0] }));
+  if (g.type === 'LineString' && t.highway && Object.keys(t).some(k => /^parking:/.test(k)))
+    return [{ type: 'way', tags: t, geometry: line(g.coordinates) }];
+  if (t.amenity === 'parking' && (g.type === 'Polygon' || g.type === 'MultiPolygon'))
+    return (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).map(poly => ({ type: 'way', tags: t, geometry: line(poly[0]) }));
+  if (t.highway && Object.keys(t).some(k => /^parking:/.test(k)) && g.type === 'Polygon')
+    return [{ type: 'way', tags: t, geometry: line(g.coordinates[0]) }];
+  return [];
+}
+async function readGeojsonseq(file) {
+  const elements = [];
+  const rl = createInterface({ input: createReadStream(file), crlfDelay: Infinity });
+  for await (let ln of rl) {
+    ln = ln.replace(/^\x1e/, '').trim();
+    if (!ln) continue;
+    let f;
+    try { f = JSON.parse(ln); } catch { continue; }
+    const t = f.properties || {};
+    // Punktiem tikai tie, kas vajadzīgi (osmium eksportē arī ceļu mezglus ar citiem tagiem)
+    if (f.geometry && f.geometry.type === 'Point' && !(t.highway === 'crossing' || t.highway === 'bus_stop' || t.railway === 'tram_stop' ||
+      t.railway === 'level_crossing' || (t.public_transport === 'platform' && (t.bus === 'yes' || t.trolleybus === 'yes')))) continue;
+    elements.push(...featureToElements(f));
+  }
+  return { osm3s: { timestamp_osm_base: process.env.OSM_TS || new Date().toISOString() }, elements };
+}
+
 async function main() {
-  const json = process.argv[2] ? JSON.parse(await readFile(process.argv[2], 'utf8')) : await download();
+  const gi = process.argv.indexOf('--geojsonseq');
+  const json = gi > 0 ? await readGeojsonseq(process.argv[gi + 1])
+    : process.argv[2] ? JSON.parse(await readFile(process.argv[2], 'utf8')) : await download();
+  const strict = gi > 0 || !process.argv[2];
   const { cells, count } = buildCells(json);
   console.log('Atrasts:', JSON.stringify(count), 'šūnas:', cells.size);
-  if (!process.argv[2]) for (const [k, v] of Object.entries(MIN)) {
+  if (strict) for (const [k, v] of Object.entries(MIN)) {
     if (count[k] < v) throw new Error(`Par maz datu (${k}: ${count[k]} < ${v}) — vecie dati paliek.`);
   }
   await rm(OUT, { recursive: true, force: true });
