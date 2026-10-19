@@ -642,3 +642,7 @@ html:not(.navigating):not(.previewing) .loader { top: calc(env(safe-area-inset-t
 .tr-c-s { font: 500 13.5px/1.4 var(--font-body); color: var(--muted); }
 .tr-c-b { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
 .tr-c-b .btn { min-height: 42px; padding: 0 18px; }
+.r-carprompt { background: var(--chip, #f2f5f9); border-radius: 14px; padding: 10px 12px; margin-bottom: 10px; }
+.r-row { display: flex; gap: 8px; align-items: center; }
+.r-row .r-input { flex: 1; min-width: 0; }
+.r-row .btn { flex: none; }

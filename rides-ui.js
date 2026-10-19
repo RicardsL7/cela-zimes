@@ -209,24 +209,48 @@ function ridesRender(force = false) {
 
 function ridesProfileForm(editing = false) {
   const p = rides.profile || {};
-  const name = rEl('input', { class: 'r-input', id: 'rpName', maxlength: 40, autocomplete: 'given-name', placeholder: 'Piem. Ilze' }); name.value = p.name || '';
-  const phone = rEl('input', { class: 'r-input', id: 'rpPhone', type: 'tel', maxlength: 20, autocomplete: 'tel', placeholder: '+371 2…' }); phone.value = p.phone || '';
-  const car = rEl('input', { class: 'r-input', id: 'rpCar', maxlength: 60, placeholder: 'Piem. pelēks Škoda Octavia (ja vadīsi)' }); car.value = p.car || '';
+  // Auto jautā tikai šoferim (cilnē „Es braucu, varu paņemt”). Ierakstīto saglabā, pārslēdzot cilnes.
+  const driver = rides.tab === 'drive';
+  const d = rides.draft || (rides.draft = { name: p.name || '', phone: p.phone || '', car: p.car || '' });
+  const field = (key, attrs) => {
+    const el = rEl('input', { class: 'r-input', ...attrs }); el.value = d[key] || '';
+    el.addEventListener('input', () => { d[key] = el.value; });
+    return el;
+  };
+  const name = field('name', { id: 'rpName', maxlength: 40, autocomplete: 'given-name', placeholder: 'Piem. Ilze' });
+  const phone = field('phone', { id: 'rpPhone', type: 'tel', maxlength: 20, autocomplete: 'tel', placeholder: '+371 2…' });
+  const car = driver ? field('car', { id: 'rpCar', maxlength: 60, placeholder: 'Piem. pelēka Škoda Octavia' }) : null;
   const err = rEl('p', { class: 'r-err', hidden: true });
   const save = async () => {
-    const v = { name: name.value, phone: phone.value, car: car.value };
+    const v = { name: name.value, phone: phone.value, car: car ? car.value : (p.car || '') };
     const e = rideProfileValid(v);
     if (e) { err.textContent = e; err.hidden = false; return; }
-    try { await rides.store.saveProfile(v); await ridesRefresh(true); ridesRender(true); }
+    try { await rides.store.saveProfile(v); rides.draft = null; await ridesRefresh(true); ridesRender(true); }
     catch (x) { err.textContent = 'Neizdevās saglabāt. Pamēģini vēlreiz.'; err.hidden = false; console.warn(x); }
   };
   return rEl('div', { class: 'r-form' },
     rEl('p', { class: 'r-lead', text: editing ? 'Tavs profils' : 'Vispirms pastāsti, kā tevi sauc — to redzēs otrs brauciena dalībnieks.' }),
     rEl('label', { class: 'r-label', for: 'rpName', text: 'Vārds' }), name,
     rEl('label', { class: 'r-label', for: 'rpPhone', text: 'Tālrunis (redzams tikai tam, ar kuru vienosieties)' }), phone,
-    rEl('label', { class: 'r-label', for: 'rpCar', text: 'Auto (tikai šoferiem, neobligāti)' }), car,
+    ...(car ? [rEl('label', { class: 'r-label', for: 'rpCar', text: 'Tavs auto (neobligāti — pēc tā pasažieris tevi atpazīs)' }), car] : []),
     err,
     rEl('button', { class: 'btn primary r-wide', type: 'button', onclick: save, text: 'Saglabāt' }));
+}
+
+// Šoferim bez norādīta auto — neliels lauks, lai pasažieris viņu atpazītu.
+function ridesCarPrompt() {
+  const car = rEl('input', { class: 'r-input', id: 'rdCar', maxlength: 60, placeholder: 'Piem. pelēka Škoda Octavia' });
+  const err = rEl('p', { class: 'r-err', hidden: true });
+  const save = async () => {
+    if (!car.value.trim()) { car.focus(); return; }
+    try { await rides.store.saveProfile({ ...rides.profile, car: car.value }); await ridesRefresh(true); ridesRender(true); }
+    catch (x) { err.textContent = 'Neizdevās saglabāt. Pamēģini vēlreiz.'; err.hidden = false; console.warn(x); }
+  };
+  car.addEventListener('keydown', e => { if (e.key === 'Enter') save(); });
+  return rEl('div', { class: 'r-form r-carprompt' },
+    rEl('label', { class: 'r-label', for: 'rdCar', text: 'Kāds ir tavs auto? Pēc tā pasažieris tevi atpazīs (neobligāti).' }),
+    rEl('div', { class: 'r-row' }, car, rEl('button', { class: 'btn primary', type: 'button', onclick: save, text: 'Saglabāt' })),
+    err);
 }
 
 // Adreses lauks ar ieteikumiem (tā pati meklēšana, kas galamērķim).
@@ -358,6 +382,7 @@ function ridesConfirmCancel(r) {
 
 function ridesDriveView() {
   const wrap = rEl('div');
+  if (rides.profile && !rides.profile.car) wrap.append(ridesCarPrompt());
   const mine = rides.myOffers.filter(o => o.status === 'accepted' || o.status === 'pending');
   if (mine.length) {
     wrap.append(rEl('h3', { class: 'r-h3', text: 'Tavi piedāvājumi' }));
