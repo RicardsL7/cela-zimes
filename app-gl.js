@@ -24,6 +24,11 @@ const store = {
   },
 };
 
+// Kopīgā Mapillary atslēga visiem (mly-config.js); lietotāja paša atslēga (iestatījumos) ir noteicošā.
+function mlyPublicToken() {
+  const t = typeof MLY_CONFIG !== 'undefined' && MLY_CONFIG && typeof MLY_CONFIG.token === 'string' ? MLY_CONFIG.token.trim() : '';
+  return /^MLY\|/.test(t) ? t : '';
+}
 const state = {
   signsOn: store.get('signsOn', true),
   cats: Object.assign(
@@ -34,7 +39,7 @@ const state = {
   profile: 'car',   // vienmēr vieglais automobilis (izvēle no iestatījumiem noņemta)
   mapMode: 'alerts', // kartē vienmēr tikai brīdinājumi (kā Waze); visu zīmju režīms vairs netiek piedāvāts
   basemap: store.get('basemap', 'auto'),
-  mlyToken: store.get('mlyToken', ''),
+  mlyToken: store.get('mlyToken', '') || mlyPublicToken(),
   testMode: false,
   follow: true,
   me: null,            // { lat, lng, speedKmh }
@@ -2020,12 +2025,17 @@ function wireUi() {
 
   // Mapillary atslēga
   const tokenInput = $('mlyToken');
-  tokenInput.value = state.mlyToken;
-  const note = () => { $('mlyNote').textContent = state.mlyToken ? 'Atslēga saglabāta šajā ierīcē. Mapillary zīmes ir ieslēgtas.' : 'Bez atslēgas rāda tikai OpenStreetMap zīmes.'; };
+  tokenInput.value = store.get('mlyToken', '');
+  const note = () => {
+    const own = !!store.get('mlyToken', ''), pub = !!mlyPublicToken();
+    $('mlyNote').textContent = own ? 'Tava atslēga saglabāta šajā ierīcē. Mapillary zīmes ir ieslēgtas.'
+      : pub && state.mlyToken ? 'Izmanto lietotnes kopīgo atslēgu — Mapillary zīmes ir ieslēgtas. Savu atslēgu ievadīt nav obligāti.'
+      : 'Bez atslēgas rāda tikai OpenStreetMap zīmes.';
+  };
   $('mlySave').addEventListener('click', () => {
     const v = tokenInput.value.trim();
     if (v && !v.startsWith('MLY|')) { $('mlyNote').textContent = 'Atslēgai jāsākas ar MLY| — nokopē "Client Token" no Mapillary.'; return; }
-    state.mlyToken = v; store.set('mlyToken', v); state.mlyTiles.clear(); note(); loadMapillaryForView();
+    store.set('mlyToken', v); state.mlyToken = v || mlyPublicToken(); state.mlyTiles.clear(); note(); loadMapillaryForView();
   });
   note();
 }
