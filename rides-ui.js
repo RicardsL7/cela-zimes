@@ -525,9 +525,14 @@ function ridesPayDriverCard() {
   const d = rides.payDrv;
   if (d.error) return null;
   const pct = ridesFeePct();
+  // Jaunam kontam Stripe vajag e-pastu (izmaksu paziņojumiem)
+  const email = d.connected ? null : rEl('input', { class: 'r-input', id: 'rpPayEmail', type: 'email', autocomplete: 'email', maxlength: 120, placeholder: 'tavs@epasts.lv' });
+  if (email && rides.payEmail) email.value = rides.payEmail;
+  if (email) email.addEventListener('input', () => { rides.payEmail = email.value; });
   const go = async e => {
+    if (email && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email.value.trim())) { setStatus('Ieraksti savu e-pastu.'); email.focus(); return; }
     e.target.disabled = true;
-    try { const j = await rides.store.pay('connect', { return_url: ridesReturnUrl() }); location.href = j.url; }
+    try { const j = await rides.store.pay('connect', { return_url: ridesReturnUrl(), email: email ? email.value.trim() : '' }); location.href = j.url; }
     catch (err) { setStatus(err.message || 'Neizdevās atvērt pieslēgšanu.'); e.target.disabled = false; }
   };
   const box = rEl('div', { class: 'r-pay-card' + (d.ready ? ' r-pay-ready' : '') },
@@ -537,6 +542,7 @@ function ridesPayDriverCard() {
     box.append(rEl('p', { class: 'r-pay-txt', text: d.connected
       ? 'Pieslēgšana nav pabeigta — Stripe vēl vajag dažus datus.'
       : `Lai pasažieri var samaksāt ar karti tieši lietotnē, pieslēdz maksājumu saņemšanu. Datus un bankas kontu pārbauda Stripe; tu saņem cenu mīnus ${pct} % komisija.` }));
+    if (email) box.append(rEl('label', { class: 'r-label', for: 'rpPayEmail', text: 'Tavs e-pasts (uz to Stripe sūtīs paziņojumus par izmaksām)' }), email);
     box.append(rEl('button', { class: 'btn primary', type: 'button', text: d.connected ? 'Turpināt pieslēgšanu' : 'Pieslēgt maksājumus', onclick: go }));
   }
   return box;
