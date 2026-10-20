@@ -1,6 +1,6 @@
 // Ceļa Zīmes — kopbraucienu maksājumi ar karti (Supabase Edge Function "ride-pay").
 //
-// Stripe Connect "destination charges": pasažieris maksā cenu, Stripe nosūta šoferim cenu mīnus
+// Stripe Connect (Accounts v2 „recipient” konti) + "destination charges": pasažieris maksā cenu, Stripe nosūta šoferim cenu mīnus
 // lietotnes komisiju (PAY_FEE_PERCENT, noklusēti 10 %), komisija paliek lietotnes Stripe kontā.
 //
 // Iestatījumi (Supabase → Edge Functions → Secrets) — tos ieliek lietotnes īpašnieks pats:
@@ -11,7 +11,7 @@
 // Datubāzei funkcija piekļūst AR LIETOTĀJA PAŠA pieteikšanos (RLS noteikumi supabase/rides-3-pay.sql),
 // nevis ar servisa atslēgu. Vai brauciens samaksāts, funkcija vienmēr jautā Stripe.
 
-const SK = Deno.env.get('STRIPE_SECRET_KEY') ?? '';
+const SK = (Deno.env.get('STRIPE_SECRET_KEY') ?? '').trim();
 const LIVE_OK = Deno.env.get('PAY_LIVE') === 'yes';
 const SB = (Deno.env.get('SUPABASE_URL') ?? '').replace(/\/$/, '');
 const FEE_PCT = Math.min(30, Math.max(0, Number(Deno.env.get('PAY_FEE_PERCENT') ?? '10') || 0));
@@ -60,6 +60,30 @@ function withQ(url: string, q: string) {
   for (const [k, v] of new URLSearchParams(q)) u.searchParams.set(k, v);
   return u.toString();
 }
+// Accounts v2 (šoferu konti): JSON + Stripe-Version
+const V2 = '2026-09-30.endive';
+// deno-lint-ignore no-explicit-any
+async function stripeV2(path: string, body?: Record<string, unknown>): Promise<any> {
+  const r = await fetch('https://api.stripe.com/v2/' + path, {
+    method: body ? 'POST' : 'GET',
+    headers: { Authorization: 'Bearer ' + SK, 'Stripe-Version': V2, ...(body ? { 'content-type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    console.error('Stripe v2', path, r.status, j?.error?.message);
+    throw new Fail('Stripe: ' + (j?.error?.message || r.status), 502);
+  }
+  return j;
+}
+// Šofera konts: vai pieder šim lietotājam un vai var saņemt pārskaitījumus
+// deno-lint-ignore no-explicit-any
+async function driverAccount(acct: string): Promise<{ owner: string | null; ready: boolean } | null> {
+  const a = await stripeV2(`core/accounts/${acct}?include=configuration.recipient`).catch(() => null);
+  if (!a) return null;
+  const st = a.configuration?.recipient?.capabilities?.stripe_balance?.stripe_transfers?.status;
+  return { owner: a.metadata?.cz_user ?? null, ready: st === 'active' };
+}
 const short = (s: string) => (s || '').split(',')[0].slice(0, 40) || '—';
 
 Deno.serve(async (req) => {
@@ -67,7 +91,12 @@ Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') throw new Fail('Tikai POST', 405);
     const test = /^(sk|rk)_test_/.test(SK);
-    if (!test && !(LIVE_OK && /^(sk|rk)_live_/.test(SK))) throw new Fail('Kartes maksājumi vēl nav ieslēgti.', 503);
+    if (!test && !(LIVE_OK && /^(sk|rk)_live_/.test(SK))) {
+      // Kāda veida atslēga ielikta — tikai veids, nekad pati atslēga
+      const kind = !SK ? 'nav ielikta' : /^pk_/.test(SK) ? 'ielikta publiskā (pk_) atslēga — vajag slepeno sk_test_' :
+        /^(sk|rk)_live_/.test(SK) ? 'ielikta īstā (live) atslēga — testam vajag sk_test_' : 'atslēga neizskatās pēc Stripe slepenās atslēgas (sk_test_…)';
+      throw new Fail('Kartes maksājumi vēl nav ieslēgti: ' + kind + '.', 503);
+    }
 
     // Lietotājs — no viņa paša pieteikšanās
     const apikey = req.headers.get('apikey') ?? '';
@@ -100,25 +129,32 @@ Deno.serve(async (req) => {
         if (!retOk) throw new Fail('Nederīga atgriešanās adrese');
         let [row] = await db(`driver_accounts?user_id=eq.${uid}&select=acct`);
         if (row) {
-          const a = await stripe('accounts/' + row.acct).catch(() => null);
-          if (!a || a.metadata?.cz_user !== uid) {
+          const a = await driverAccount(row.acct);
+          if (!a || a.owner !== uid) {
             await db(`driver_accounts?user_id=eq.${uid}`, { method: 'DELETE' });
             row = null;
           }
         }
         if (!row) {
-          const a = await stripe('accounts', {
-            type: 'express', country: 'LV', business_type: 'individual',
-            capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
-            business_profile: { product_description: 'Kopbraucienu ceļa izmaksu dalīšana (Ceļa Zīmes)' },
+          const email = String(body.email ?? '').trim().toLowerCase();
+          if (!/^[^\s@]{1,64}@[^\s@]{1,190}\.[a-z]{2,24}$/.test(email)) throw new Fail('Ieraksti savu e-pastu — uz to Stripe sūtīs paziņojumus par izmaksām.');
+          const [prof] = await db(`profiles?id=eq.${uid}&select=name`);
+          const a = await stripeV2('core/accounts', {
+            contact_email: email, display_name: (prof?.name || 'Šoferis').slice(0, 40),
+            dashboard: 'express',
+            identity: { country: 'lv', entity_type: 'individual' },
+            defaults: { currency: 'eur', responsibilities: { fees_collector: 'application', losses_collector: 'application' } },
+            configuration: { recipient: { capabilities: { stripe_balance: { stripe_transfers: { requested: true } } } } },
             metadata: { cz_user: uid },
           });
           await db('driver_accounts', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ user_id: uid, acct: a.id }) });
           row = { acct: a.id };
         }
-        const link = await stripe('account_links', {
-          account: row.acct, type: 'account_onboarding',
-          refresh_url: withQ(ret, 'pay=connect-retry'), return_url: withQ(ret, 'pay=connected'),
+        const link = await stripeV2('core/account_links', {
+          account: row.acct,
+          use_case: { type: 'account_onboarding', account_onboarding: {
+            refresh_url: withQ(ret, 'pay=connect-retry'), return_url: withQ(ret, 'pay=connected'),
+          } },
         });
         return json({ url: link.url });
       }
@@ -126,9 +162,9 @@ Deno.serve(async (req) => {
       case 'driver_status': {
         const [row] = await db(`driver_accounts?user_id=eq.${uid}&select=acct`);
         if (!row) return json({ connected: false, test, fee_pct: FEE_PCT });
-        const a = await stripe('accounts/' + row.acct).catch(() => null);
+        const a = await driverAccount(row.acct);
         if (!a) return json({ connected: false, test, fee_pct: FEE_PCT });
-        return json({ connected: true, ready: !!a.charges_enabled, details: !!a.details_submitted, test, fee_pct: FEE_PCT });
+        return json({ connected: true, ready: a.ready, test, fee_pct: FEE_PCT });
       }
 
       // Pasažieris: maksājuma lapa saskaņotam braucienam
@@ -149,8 +185,8 @@ Deno.serve(async (req) => {
         }
         const acct = await db('rpc/ride_driver_acct', { method: 'POST', body: JSON.stringify({ oid }) });
         if (!acct) throw new Fail('Šoferis vēl nav pieslēdzis kartes maksājumus — vari samaksāt skaidrā naudā.', 409);
-        const a = await stripe('accounts/' + acct).catch(() => null);
-        if (!a || !a.charges_enabled || a.metadata?.cz_user !== o.driver_id) {
+        const a = await driverAccount(acct);
+        if (!a || !a.ready || a.owner !== o.driver_id) {
           throw new Fail('Šoferis vēl nav pabeidzis kartes maksājumu pieslēgšanu — vari samaksāt skaidrā naudā.', 409);
         }
         const fee = Math.round(o.price_cents * FEE_PCT / 100);
