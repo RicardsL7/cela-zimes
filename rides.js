@@ -393,6 +393,12 @@ SupabaseRideStore.prototype.passengerUpdate = function (offerId, lat, lng) {
   return this._rest('rpc/ride_passenger_update', { method: 'POST', body: JSON.stringify({ oid: offerId, p_lat: lat, p_lng: lng }) });
 };
 
+// Novecojuši braucieni: datubāze tos atceļ vai pabeidz (supabase/rides-4-expire.sql)
+SupabaseRideStore.prototype.expire = function () {
+  return this._rest('rpc/ride_expire', { method: 'POST', body: '{}' });
+};
+LocalRideStore.prototype.expire = async function () { return 0; };
+
 // Kartes maksājumi (servera funkcija supabase/functions/ride-pay). Demo režīmā to nav.
 SupabaseRideStore.prototype.pay = async function (action, body = {}) {
   await this._ensure();

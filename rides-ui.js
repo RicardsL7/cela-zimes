@@ -98,6 +98,11 @@ function ridesTab(tab) {
 async function ridesRefresh(first) {
   if (!rides.ready) return ridesRender();
   try {
+    // Ik 5 min sakārto novecojušos braucienus (neapstiprināti, nesākti vai "aizmirsti" ceļā)
+    if (rides.store.expire && Date.now() - (rides.expireAt || 0) > 5 * 60000) {
+      rides.expireAt = Date.now();
+      try { await rides.store.expire(); } catch (e) { console.warn('Braucienu tīrīšana', e); }
+    }
     rides.profile = await rides.store.profile();
     rides.myReqs = await rides.store.myRequests();
     rides.offers = {};
@@ -291,6 +296,9 @@ function ridesNeedView() {
     return wrap;
   }
   wrap.append(ridesNeedForm());
+  wrap.append(rEl('div', { class: 'r-pay-info' },
+    rEl('b', { text: '💳 Kā samaksāt?' }),
+    rEl('span', { text: 'Kartes dati iepriekš nav jāievada. Kad šoferis pieņems braucienu ar cenu, parādīsies poga „Maksāt ar karti” — tā atvērs drošu Stripe lapu. Vari samaksāt arī skaidrā naudā.' })));
   return wrap;
 }
 function ridesNeedForm() {
