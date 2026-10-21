@@ -189,16 +189,91 @@ function radarMemGet() {
   if (!radarMem) { try { radarMem = JSON.parse(localStorage.getItem(RADAR_MEM_KEY) || '{}') || {}; } catch { radarMem = {}; } }
   return radarMem;
 }
-function radarRemember(id, lat, lng, value) {
+function radarRemember(id, lat, lng, value, fromShared = false) {
   const m = radarMemGet(), old = m[id];
-  if (old && Date.now() - old[3] < 86400000) return;
-  m[id] = [Math.round(lat * 1e6) / 1e6, Math.round(lng * 1e6) / 1e6, value, Date.now()];
+  if (!fromShared) radarShare(id, lat, lng, value, old && old[4]);
+  if (old && !fromShared && Date.now() - old[3] < 86400000) return;
+  m[id] = [Math.round(lat * 1e6) / 1e6, Math.round(lng * 1e6) / 1e6, value, Date.now(), fromShared ? Date.now() : old ? old[4] || 0 : 0];
+  radarMemSave();
+}
+function radarMemSave() {
+  const m = radarMemGet();
   clearTimeout(radarMemTimer);
   radarMemTimer = setTimeout(() => {
     const cut = Date.now() - RADAR_MEM_DAYS * 86400000;
     for (const [k, v] of Object.entries(m)) if (!v || v[3] < cut) delete m[k];
     try { localStorage.setItem(RADAR_MEM_KEY, JSON.stringify(m)); } catch { /* pilna atmiņa — nav svarīgi */ }
   }, 2000);
+}
+// 3) Kopīgais radaru saraksts visiem lietotājiem (supabase/radars.sql). Tajā ir tikai Mapillary
+//    zīmju numuri — pirms parādīšanas katru pārbauda pašā Mapillary (vieta un veids no turienes),
+//    tāpēc viltotu radaru tur iesūtīt nevar.
+const radarShared = { ids: new Set(), loaded: false, queue: new Map(), timer: null };
+function radarRpc(name, body) {
+  const cfg = typeof RIDES_CONFIG !== 'undefined' ? RIDES_CONFIG : null;
+  if (!cfg || !cfg.url || !cfg.anonKey) return Promise.reject(new Error('nav servera'));
+  return fetch(cfg.url.replace(/\/$/, '') + '/rest/v1/rpc/' + name, {
+    method: 'POST', headers: { apikey: cfg.anonKey, 'content-type': 'application/json' }, body: JSON.stringify(body || {}),
+  }).then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)));
+}
+// Mapillary pārbauda līdz 50 zīmēm reizē. Ja kāds numurs neeksistē, tas noraida visu grupu —
+// tad grupu dala uz pusēm, līdz atrod nederīgos.
+async function mlyVerify(ids, token, bad) {
+  if (!ids.length) return [];
+  const r = await fetch(`https://graph.mapillary.com/?ids=${ids.join(',')}&fields=id,object_value,geometry&access_token=${encodeURIComponent(token)}`);
+  if (r.ok) { const j = await r.json(); return ids.map(id => j[id]).filter(Boolean); }
+  if (r.status === 400) {
+    if (ids.length === 1) { bad.push(ids[0]); return []; }
+    const h = ids.length >> 1;
+    return [...await mlyVerify(ids.slice(0, h), token, bad), ...await mlyVerify(ids.slice(h), token, bad)];
+  }
+  throw new Error('Mapillary HTTP ' + r.status);
+}
+async function loadSharedRadars() {
+  let list;
+  try { list = await radarRpc('radar_list'); } catch (e) { console.warn('Kopīgie radari nav ielādēti', e); return; }
+  for (const x of list || []) radarShared.ids.add(String(x.mly_id));
+  radarShared.loaded = true;
+  if (!state.mlyToken) return;
+  const todo = [...radarShared.ids].filter(id => !mlyIds.has(id));
+  const bad = [];
+  let added = 0;
+  for (let i = 0; i < todo.length; i += 50) {
+    let got;
+    try { got = await mlyVerify(todo.slice(i, i + 50), state.mlyToken, bad); } catch (e) { console.warn(e); break; }
+    for (const f of got) {
+      const id = String(f.id), v = String(f.object_value || ''), c = f.geometry && f.geometry.coordinates;
+      const cls = classifyMapillary(v);
+      if (!c || cls.cat !== 'camera') { bad.push(id); continue; }
+      if (mlyIds.has(id)) continue;
+      mlyIds.add(id);
+      radarRemember(id, c[1], c[0], v, true);
+      if (addSign(c[1], c[0], cls, v, id)) added++;
+    }
+    if (added) { signs.refresh(); added = 0; }
+  }
+  if (bad.length) radarRpc('radar_bad', { ids: bad.slice(0, 50) }).catch(() => {});
+}
+// Paziņo citiem: jauns radars (vai ilgi nav apstiprināts — reizi nedēļā)
+function radarShare(id, lat, lng, value, reportedAt) {
+  if (!radarShared.loaded) { setTimeout(() => radarShare(id, lat, lng, value, reportedAt), 5000); return; }
+  if (radarShared.ids.has(id) && Date.now() - (reportedAt || 0) < 7 * 86400000) return;
+  if (radarShared.queue.has(id)) return;
+  radarShared.queue.set(id, { id, v: value, lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6 });
+  clearTimeout(radarShared.timer);
+  radarShared.timer = setTimeout(radarFlush, 4000);
+}
+async function radarFlush() {
+  const items = [...radarShared.queue.values()].slice(0, 30);
+  if (!items.length) return;
+  items.forEach(it => radarShared.queue.delete(it.id));
+  try {
+    await radarRpc('radar_report', { items });
+    const m = radarMemGet();
+    for (const it of items) { radarShared.ids.add(it.id); if (m[it.id]) m[it.id][4] = Date.now(); }
+    radarMemSave();
+  } catch (e) { console.warn('Radaru paziņošana neizdevās', e); }
+  if (radarShared.queue.size) radarShared.timer = setTimeout(radarFlush, 1000);
 }
 async function loadKnownRadars() {
   let added = 0;
@@ -2448,7 +2523,7 @@ async function init() {
   wireUi();
   buildCategoryList();
   loadVerifiedSigns();
-  loadKnownRadars();
+  loadKnownRadars().then(loadSharedRadars);
   loadPlateTimes();
   wireAlerts();
   wirePlaces();
