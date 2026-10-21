@@ -860,6 +860,52 @@ test('W. Kopbraucienu cena: izmaksu griesti, ievade, komisija', async () => {
   eq(JSON.parse(mem[Object.keys(mem)[0]]).offers[0].price_cents, 350, 'cena saglabāta');
 });
 
+// ---------- Alternatīvie maršruti ----------
+{
+  const parseOsrmRoute = G('parseOsrmRoute'), pickAlternatives = G('pickAlternatives'), labelRoutes = G('labelRoutes');
+  const routeLabelPoint = G('routeLabelPoint'), detourPoints = G('detourPoints');
+  // Vienkāršs OSRM maršruts caur punktiem (metros); legs — punktu grupas (starppunkts = jauna grupa)
+  const osrm = (legs, duration) => ({ distance: 0, duration, legs: legs.map((pts, li) => ({ steps: [
+    { maneuver: { type: li === 0 ? 'depart' : 'depart' }, geometry: { coordinates: pts.map(([x, y]) => P(x, y)) } },
+    { maneuver: { type: 'arrive' }, geometry: { coordinates: [P(...pts[pts.length - 1]), P(...pts[pts.length - 1])] } }] })) });
+  const mk = (legs, dur) => { const r = parseOsrmRoute(osrm(legs, dur)); r.distance = r.cum[r.cum.length - 1]; return r; };
+  const A = mk([[[0, 0], [3000, 0]]], 300);                       // taisni
+  const B = mk([[[0, 0], [0, 800], [3000, 800], [3000, 0]]], 380); // apkārt ziemeļos
+  const C = mk([[[0, 0], [10, 3], [3000, 5]]], 310);              // gandrīz tas pats, kas A
+  const D = mk([[[0, 0], [0, 6000], [3000, 6000], [3000, 0]]], 1500); // pārāk garš
+  test('alternatīvas: atšķirīgos atstāj, līdzīgos un pārāk garos izmet', () => {
+    const out = pickAlternatives([B, C, A, D], 3);
+    eq(out.length, 2); ok(out[0] === A && out[1] === B, 'A ātrākais, tad B');
+  });
+  test('alternatīva ar starppunktu: starp-"ieradies" soļa nav', () => {
+    const r = mk([[[0, 0], [1500, 800]], [[1500, 800], [3000, 0]]], 400);
+    eq(r.steps.filter(s => s.maneuver.type === 'arrive').length, 1);
+    eq(r.steps.filter(s => s.maneuver.type === 'depart').length, 1);
+    eq(r.steps[r.steps.length - 1].maneuver.type, 'arrive');
+  });
+  test('alternatīva, kas brauc turp un atpakaļ, netiek piedāvāta', () => {
+    const E = mk([[[0, 0], [1500, 0], [1500, 900], [1500, 0], [3000, 0]]], 420);
+    const F = mk([[[0, 0], [0, 400], [1500, 400], [1500, 1400], [1500, 400], [3000, 400], [3000, 0]]], 450);
+    const out = pickAlternatives([A, F], 3);
+    eq(out.length, 1); void E;
+  });
+  test('nosaukumi: ātrākais, īsākais, mazāk sastrēgumu', () => {
+    const a = { duration: 600, distance: 9000, jamSec: 300 }, b = { duration: 700, distance: 7000, jamSec: 0 }, c = { duration: 650, distance: 9500, jamSec: 0 };
+    const l = labelRoutes([a, b, c]);
+    eq(l[2], 'Ātrākais'); eq(l[1], 'Īsākais'); eq(l[0], 'Alternatīva');
+    const l2 = labelRoutes([{ duration: 600, distance: 9000, jamSec: 400 }, { duration: 650, distance: 9800, jamSec: 100 }, { duration: 1500, distance: 9900, jamSec: 0 }]);
+    eq(l2[1], 'Ātrākais'); eq(l2[2], 'Mazāk sastrēgumu');
+  });
+  test('uzraksts alternatīvai — tās atšķirīgajā daļā', () => {
+    const p = routeLabelPoint(B, [A]);
+    ok(p[1] > P(0, 600)[1], 'uzraksts ziemeļu daļā');
+  });
+  test('apkārtceļu starppunkti abās pusēs', () => {
+    const v = detourPoints(LL(0, 0), LL(5000, 0));
+    eq(v.length, 4); ok(v[0].lat > LAT0 && v[1].lat < LAT0, 'viens ziemeļos, otrs dienvidos');
+  });
+}
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
