@@ -172,18 +172,19 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .fab-stack {
   position: fixed; z-index: 10; right: 12px;
   top: calc(env(safe-area-inset-top, 0px) + 84px);
-  display: flex; flex-direction: column; gap: 10px;
+  display: flex; flex-direction: column; gap: 8px;
   transition: top .3s ease;
 }
+.fab svg { width: 21px; height: 21px; }
 .navigating .fab-stack { top: calc(env(safe-area-inset-top, 0px) + 112px); }
 .fab {
-  width: 62px; padding: 10px 0 7px; border: 0; border-radius: 18px;
+  width: 52px; padding: 7px 0 5px; border: 0; border-radius: 15px;
   background: var(--panel); box-shadow: var(--shadow); color: var(--accent);
   display: grid; justify-items: center; gap: 3px;
   transition: transform .12s ease;
 }
 .fab:active { transform: scale(.94); }
-.fab-label { font: 600 11px var(--font-body); color: var(--muted); letter-spacing: .02em; }
+.fab-label { font: 600 10px var(--font-body); color: var(--muted); letter-spacing: .02em; }
 .fab.off { color: var(--muted); }
 .fab.off svg { opacity: .55; }
 .fab.off .fab-label { color: var(--danger); }
@@ -681,3 +682,15 @@ html:not(.navigating):not(.previewing) .loader { top: calc(env(safe-area-inset-t
 .alt-bubble small { font: 700 11px var(--font-body); color: #5a6b80; }
 .alt-bubble.sel { background: #1f6fe0; border-color: #fff; color: #fff; z-index: 2; }
 html.navigating .alt-bubble { display: none; }
+
+/* "Vairāk" poga: zīmes/brīdinājumi un iestatījumi izslīd pa kreisi */
+.fab-more { position: relative; }
+.fab-more-btn { padding: 4px 0; border-radius: 12px; color: var(--muted); }
+.fab-more-btn svg { width: 22px; height: 22px; }
+.fab-more-btn[aria-expanded="true"] { color: var(--accent); }
+.fab-more-btn.dot::after { content: ""; position: absolute; top: 3px; right: 5px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--danger); box-shadow: 0 0 0 2px var(--panel); }
+.fab-more-items { position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%);
+  display: flex; gap: 8px; animation: fabMoreIn .18s ease-out; }
+.fab-more-items[hidden] { display: none; }
+@keyframes fabMoreIn { from { opacity: 0; transform: translate(14px, -50%); } to { opacity: 1; transform: translate(0, -50%); } }

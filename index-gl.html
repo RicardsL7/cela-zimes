@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=88">
+  <link rel="stylesheet" href="style-gl.css?v=89">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -71,10 +71,6 @@
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="8.5" cy="7.5" r="3" fill="currentColor"/><circle cx="16" cy="8.5" r="2.5" fill="currentColor" opacity=".75"/><path d="M2.5 19c.5-3.8 2.9-6 6-6s5.5 2.2 6 6Z" fill="currentColor"/><path d="M15.2 12.6c2.8 0 5 1.9 5.6 5.4h-4.7c-.2-2-1-3.8-2.4-5.2.5-.1 1-.2 1.5-.2Z" fill="currentColor" opacity=".75"/></svg>
       <span class="fab-label">Kopā</span>
     </button>
-    <button id="toggleSigns" class="fab" aria-pressed="true" title="Ieslēgt / izslēgt ceļa zīmes">
-      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5v6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16.6" r="1.3" fill="currentColor"/></svg>
-      <span class="fab-label" id="toggleSignsLabel">Zīmes</span>
-    </button>
     <button id="reportBtn" class="fab report-fab" title="Ziņot par notikumu uz ceļa">
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 3 21.5 19.5h-19Z" fill="currentColor"/><path d="M12 9v5" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16.8" r="1.2" fill="#fff"/></svg>
       <span class="fab-label">Ziņot</span>
@@ -87,10 +83,21 @@
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 3 19 20l-7-4-7 4Z" fill="currentColor"/></svg>
       <span class="fab-label">Es</span>
     </button>
-    <button id="settingsBtn" class="fab" title="Iestatījumi" aria-expanded="false" aria-controls="settings">
-      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="17" r="2.3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-      <span class="fab-label">Iestat.</span>
-    </button>
+    <div class="fab-more" id="fabMore">
+      <button id="fabMoreBtn" class="fab fab-more-btn" type="button" title="Vairāk" aria-expanded="false" aria-controls="fabMoreItems">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="5.5" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="18.5" cy="12" r="2" fill="currentColor"/></svg>
+      </button>
+      <div class="fab-more-items" id="fabMoreItems" hidden>
+      <button id="toggleSigns" class="fab" aria-pressed="true" title="Ieslēgt / izslēgt ceļa zīmes">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 2.5 21.5 12 12 21.5 2.5 12Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5v6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16.6" r="1.3" fill="currentColor"/></svg>
+        <span class="fab-label" id="toggleSignsLabel">Zīmes</span>
+      </button>
+      <button id="settingsBtn" class="fab" title="Iestatījumi" aria-expanded="false" aria-controls="settings">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="17" r="2.3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        <span class="fab-label">Iestat.</span>
+      </button>
+    </div>
+    </div>
   </nav>
 
   <!-- Maršruta priekšskatījums -->
@@ -246,26 +253,26 @@
   </section>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script src="cache.js?v=88"></script>
-  <script src="signs.js?v=88"></script>
-  <script src="mapillary.js?v=88"></script>
-  <script src="roads-gl.js?v=88"></script>
-  <script src="basemap-gl.js?v=88"></script>
-  <script src="signs-gl.js?v=88"></script>
-  <script src="nav.js?v=88"></script>
-  <script src="times.js?v=88"></script>
-  <script src="parking.js?v=88"></script>
-  <script src="alerts.js?v=88"></script>
-  <script src="places.js?v=88"></script>
-  <script src="model.js?v=88"></script>
-  <script src="rides-config.js?v=88"></script>
-  <script src="mly-config.js?v=88"></script>
-  <script src="traffic.js?v=88"></script>
-  <script src="rides.js?v=88"></script>
-  <script src="rides-ui.js?v=88"></script>
-  <script src="app-gl.js?v=88"></script>
-  <script src="park-gl.js?v=88"></script>
-  <script src="park-dest-gl.js?v=88"></script>
-  <script src="traffic-gl.js?v=88"></script>
+  <script src="cache.js?v=89"></script>
+  <script src="signs.js?v=89"></script>
+  <script src="mapillary.js?v=89"></script>
+  <script src="roads-gl.js?v=89"></script>
+  <script src="basemap-gl.js?v=89"></script>
+  <script src="signs-gl.js?v=89"></script>
+  <script src="nav.js?v=89"></script>
+  <script src="times.js?v=89"></script>
+  <script src="parking.js?v=89"></script>
+  <script src="alerts.js?v=89"></script>
+  <script src="places.js?v=89"></script>
+  <script src="model.js?v=89"></script>
+  <script src="rides-config.js?v=89"></script>
+  <script src="mly-config.js?v=89"></script>
+  <script src="traffic.js?v=89"></script>
+  <script src="rides.js?v=89"></script>
+  <script src="rides-ui.js?v=89"></script>
+  <script src="app-gl.js?v=89"></script>
+  <script src="park-gl.js?v=89"></script>
+  <script src="park-dest-gl.js?v=89"></script>
+  <script src="traffic-gl.js?v=89"></script>
 </body>
 </html>

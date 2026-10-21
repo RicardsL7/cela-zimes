@@ -2141,6 +2141,8 @@ function applySignVisibility() {
   btn.setAttribute('aria-pressed', String(state.signsOn));
   btn.classList.toggle('off', !state.signsOn);
   $('toggleSignsLabel').textContent = !state.signsOn ? 'Izslēgts' : alertsMode ? 'Brīdin.' : 'Zīmes';
+  const more = $('fabMoreBtn');
+  if (more) more.classList.toggle('dot', !state.signsOn);     // sarkans punkts — zīmes izslēgtas
   $('masterSwitch').checked = state.signsOn;
   $('catList').classList.toggle('disabled', !state.signsOn);
   $('catList').hidden = alertsMode;
@@ -2165,6 +2167,22 @@ function buildCategoryList() {
     });
     list.appendChild(row);
   }
+}
+
+// "Vairāk" poga: atver / aizver zīmju un iestatījumu pogas
+function fabMore(open) {
+  const items = $('fabMoreItems'), btn = $('fabMoreBtn');
+  if (!items) return;
+  items.hidden = !open;
+  btn.setAttribute('aria-expanded', String(open));
+}
+function wireFabMore() {
+  const btn = $('fabMoreBtn');
+  if (!btn) return;
+  btn.addEventListener('click', e => { e.stopPropagation(); fabMore($('fabMoreItems').hidden); });
+  $('settingsBtn').addEventListener('click', () => fabMore(false));
+  $('toggleSigns').addEventListener('click', () => setTimeout(() => fabMore(false), 700));   // lai redz, kas mainījās
+  document.addEventListener('pointerdown', e => { if (!e.target.closest('#fabMore')) fabMore(false); });
 }
 
 function toggleSettings(open) {
@@ -2203,6 +2221,7 @@ function wireUi() {
     if (state.me) followCamera(800);
     else { setStatus(gpsProblem || 'Meklē atrašanās vietu…'); startGps(); }
   });
+  wireFabMore();
   $('settingsBtn').addEventListener('click', () => { if ($('settings').hidden) closePlaces(); toggleSettings($('settings').hidden); });
   $('closeSettings').addEventListener('click', () => toggleSettings(false));
 
