@@ -21,7 +21,7 @@ const QUERY = `[out:json][timeout:600][maxsize:1073741824];
 area["ISO3166-1"="LV"][admin_level=2]->.lv;
 (
   way(area.lv)["highway"][~"^parking:(left|right|both|lane|condition)"~"."];
-  node(area.lv)["highway"~"^(crossing|bus_stop)$"];
+  node(area.lv)["highway"~"^(crossing|bus_stop|speed_camera)$"];
   node(area.lv)["railway"~"^(tram_stop|level_crossing)$"];
   node(area.lv)["public_transport"="platform"]["bus"="yes"];
   node(area.lv)["public_transport"="platform"]["trolleybus"="yes"];
@@ -33,6 +33,9 @@ out tags geom qt;`;
 const MIN = { x: 10000, b: 6000, p: 6000 };
 
 const r5 = v => Math.round(v * 1e5) / 1e5;
+// Ātruma kameras (radari) — visa Latvija vienā failā cameras.json, lai lietotne tās rāda uzreiz
+export const isCamera = t => t.highway === 'speed_camera' || /^(maxspeed|average_speed|traffic_signals|mindistance)$/.test(t.enforcement || '');
+const CAM_KEYS = ['highway', 'enforcement', 'maxspeed', 'direction', 'name'];
 const cellKey = (lat, lng) => Math.floor(lat / CELL) + '_' + Math.floor(lng / CELL);
 const PARK_AREA_KEYS = ['name', 'fee', 'fee:conditional', 'access', 'opening_hours', 'maxstay', 'parking', 'operator'];
 
@@ -66,9 +69,16 @@ export function buildCells(json) {
       for (let b = Math.floor(w / CELL); b <= Math.floor(e / CELL); b++) ks.add(a + '_' + b);
     return ks;
   };
-  const count = { x: 0, b: 0, t: 0, r: 0, w: 0, p: 0 };
+  const count = { x: 0, b: 0, t: 0, r: 0, w: 0, p: 0, c: 0 };
+  const cams = [];
   for (const el of json.elements || []) {
     const t = el.tags || {};
+    if (el.type === 'node' && isCamera(t) && el.lat != null) {
+      const keep = {};
+      for (const k of CAM_KEYS) if (t[k]) keep[k] = t[k];
+      cams.push([el.id || null, r5(el.lat), r5(el.lon), keep]);
+      count.c++;
+    }
     if (el.type === 'node') {
       const code = t.highway === 'crossing' ? 'x' : t.railway === 'level_crossing' ? 'r' : t.railway === 'tram_stop' ? 't'
         : (t.highway === 'bus_stop' || t.public_transport === 'platform') ? 'b' : null;
@@ -102,14 +112,17 @@ export function buildCells(json) {
       count.p++;
     }
   }
-  return { cells, count };
+  return { cells, count, cams };
 }
 
 // osmium export -f geojsonseq rezultāts → Overpass līdzīgi elementi (tikai vajadzīgie)
 export function featureToElements(f) {
   const t = f.properties || {}, g = f.geometry;
   if (!g) return [];
-  if (g.type === 'Point') return [{ type: 'node', lat: g.coordinates[1], lon: g.coordinates[0], tags: t }];
+  if (g.type === 'Point') {
+    const id = /^n\d+$/.test(String(f.id || '')) ? Number(String(f.id).slice(1)) : undefined;   // osmium --add-unique-id=type_id
+    return [{ type: 'node', id, lat: g.coordinates[1], lon: g.coordinates[0], tags: t }];
+  }
   const line = c => c.map(q => ({ lat: q[1], lon: q[0] }));
   if (g.type === 'LineString' && t.highway && Object.keys(t).some(k => /^parking:/.test(k)))
     return [{ type: 'way', tags: t, geometry: line(g.coordinates) }];
@@ -130,7 +143,7 @@ async function readGeojsonseq(file) {
     const t = f.properties || {};
     // Punktiem tikai tie, kas vajadzīgi (osmium eksportē arī ceļu mezglus ar citiem tagiem)
     if (f.geometry && f.geometry.type === 'Point' && !(t.highway === 'crossing' || t.highway === 'bus_stop' || t.railway === 'tram_stop' ||
-      t.railway === 'level_crossing' || (t.public_transport === 'platform' && (t.bus === 'yes' || t.trolleybus === 'yes')))) continue;
+      t.railway === 'level_crossing' || isCamera(t) || (t.public_transport === 'platform' && (t.bus === 'yes' || t.trolleybus === 'yes')))) continue;
     elements.push(...featureToElements(f));
   }
   return { osm3s: { timestamp_osm_base: process.env.OSM_TS || new Date().toISOString() }, elements };
@@ -141,7 +154,7 @@ async function main() {
   const json = gi > 0 ? await readGeojsonseq(process.argv[gi + 1])
     : process.argv[2] ? JSON.parse(await readFile(process.argv[2], 'utf8')) : await download();
   const strict = gi > 0 || !process.argv[2];
-  const { cells, count } = buildCells(json);
+  const { cells, count, cams } = buildCells(json);
   console.log('Atrasts:', JSON.stringify(count), 'šūnas:', cells.size);
   if (strict) for (const [k, v] of Object.entries(MIN)) {
     if (count[k] < v) throw new Error(`Par maz datu (${k}: ${count[k]} < ${v}) — vecie dati paliek.`);
@@ -155,6 +168,8 @@ async function main() {
     await writeFile(new URL(`c_${k}.json`, OUT), JSON.stringify({ v: 1, n: c.n, w: c.w, p: c.p }));
   }
   const stamp = json.osm3s && json.osm3s.timestamp_osm_base || new Date().toISOString();
+  cams.sort((a, b) => a[1] - b[1] || a[2] - b[2]);
+  await writeFile(new URL('cameras.json', OUT), JSON.stringify({ v: 1, osm: stamp, n: cams }));
   await writeFile(new URL('index.json', OUT), JSON.stringify({ v: 1, cell: CELL, osm: stamp, counts: count, cells: keys }));
   console.log('Gatavs:', keys.length, 'šūnas, OSM laiks', stamp);
 }
