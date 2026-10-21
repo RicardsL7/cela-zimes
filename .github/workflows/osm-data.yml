@@ -30,9 +30,9 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
           curl -fsSL --retry 5 --retry-delay 30 -o lv.osm.pbf https://download.geofabrik.de/europe/latvia-latest.osm.pbf
           echo "OSM_TS=$(osmium fileinfo -g header.option.osmosis_replication_timestamp lv.osm.pbf)" >> "$GITHUB_ENV"
-          osmium tags-filter lv.osm.pbf n/highway=crossing,bus_stop n/railway=tram_stop,level_crossing n/public_transport=platform \
+          osmium tags-filter lv.osm.pbf n/highway=crossing,bus_stop,speed_camera n/enforcement n/railway=tram_stop,level_crossing n/public_transport=platform \
             wr/amenity=parking w/highway -o f.osm.pbf --overwrite
-          osmium export f.osm.pbf -f geojsonseq -o f.geojsonseq --overwrite
+          osmium export f.osm.pbf -f geojsonseq --add-unique-id=type_id -o f.geojsonseq --overwrite
       - name: Sagatavo datus pa šūnām
         run: node tools/build-osm.mjs --geojsonseq f.geojsonseq
       - name: Saglabā izmaiņas
