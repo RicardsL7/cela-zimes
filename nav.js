@@ -81,6 +81,12 @@ function routeOverlap(a, b) {
 }
 function nearCell(c, dy, dx) { const [y, x] = c.split(':').map(Number); return (y + dy) + ':' + (x + dx); }
 
+// Apgriešanās skaits ne pašā sākumā/galā.
+function routeUturns(r) {
+  const total = r.cum[r.cum.length - 1];
+  return r.steps.filter(st => st.maneuver && st.maneuver.modifier === 'uturn' && st.maneuver.type !== 'depart'
+    && r.cum[st._start] > 400 && r.cum[st._start] < total - 400).length;
+}
 // Atlasa līdz max maršrutiem: tikai tādus, kas tiešām atšķiras un nav daudz garāki par ātrāko.
 function pickAlternatives(routes, max = 3) {
   const list = routes.filter(r => r && r.coords && r.coords.length > 1).sort((a, b) => a.duration - b.duration);
@@ -89,7 +95,7 @@ function pickAlternatives(routes, max = 3) {
   for (const r of list.slice(1)) {
     if (out.length >= max) break;
     if (r.duration > best.duration * 1.45 + 120 || r.distance > best.distance * 1.6 + 1000) continue;
-    if (r.steps.some(st => st.maneuver && st.maneuver.modifier === 'uturn')) continue;   // apgriešanās nav alternatīva
+    if (routeUturns(r) > routeUturns(best)) continue;        // lieka apgriešanās (apkārtceļš turp un atpakaļ)
     if (out.some(o => routeOverlap(r, o) > 0.8)) continue;
     if (r._cells.backtrack > 0.05) continue;                 // brauc turp un atpakaļ pa to pašu ceļu
     out.push(r);
