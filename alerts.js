@@ -166,12 +166,11 @@ function alertSvg(type, size = 64) {
     `<filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="1.5"/><feOffset dy="1.4"/>` +
     `<feComponentTransfer><feFuncA type="linear" slope=".3"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
   if (type === 'traffic-light') {
-    // Luksofors: kompakts tumši zils korpuss ar baltu malu un trim spilgtām lampām (bez staba)
+    // Luksofors: kompakts tumši zils korpuss (bez baltas malas) ar trim spilgtām lampām (bez staba)
     const lampDef = (id, c0, c1) => `<radialGradient id="${id}" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="${c0}"/><stop offset="1" stop-color="${c1}"/></radialGradient>`;
     return head + lampDef('lr', '#ff8a8a', '#f2484f') + lampDef('ly', '#ffe27a', '#f7c21c') + lampDef('lg', '#6ff0a6', '#22c46a') +
       `<linearGradient id="b" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2c3a50"/><stop offset="1" stop-color="#1a2536"/></linearGradient></defs>` +
-      `<g filter="url(#s)"><rect x="15" y="1" width="34" height="62" rx="12" fill="#fff"/>` +
-      `<rect x="18" y="4" width="28" height="56" rx="9.4" fill="url(#b)"/></g>` +
+      `<g filter="url(#s)"><rect x="16.5" y="2.5" width="31" height="59" rx="10.5" fill="url(#b)"/></g>` +
       `<rect x="20" y="6" width="4.6" height="52" rx="2.3" fill="#fff" opacity=".07"/>` +
       [[14.6, 'lr'], [32, 'ly'], [49.4, 'lg']].map(([cy, id]) =>
         `<circle cx="32" cy="${cy}" r="8.4" fill="url(#${id})"/><ellipse cx="29.6" cy="${cy - 2.9}" rx="3.1" ry="1.9" fill="#fff" opacity=".45"/>`).join('') +
