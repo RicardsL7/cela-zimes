@@ -2112,7 +2112,9 @@ function reportAlert(type) {
   const it = alerts.add(makeReport(type, p.lat, p.lng, state.heading));
   $('reportSheet').hidden = true;
   refreshAlerts();
-  setStatus(`Paldies! „${ALERT_TYPES[type].label}” būs redzams ${ALERT_TYPES[type].ttl >= 120 ? Math.round(ALERT_TYPES[type].ttl / 60) + ' h' : ALERT_TYPES[type].ttl + ' min'} (tikai šajā ierīcē).`);
+  const ttl = ALERT_TYPES[type].ttl;
+  const dur = ttl >= 2880 ? Math.round(ttl / 1440) + ' dienas' : ttl >= 120 ? Math.round(ttl / 60) + ' h' : ttl + ' min';
+  setStatus(`Paldies! „${ALERT_TYPES[type].label}” būs redzams ${dur} (tikai šajā ierīcē).`);
   return it;
 }
 

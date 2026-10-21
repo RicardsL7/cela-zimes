@@ -21,8 +21,8 @@ const ALERT_GROUP_COLORS = {
 const ALERT_TYPES = {
   'police':         { label: 'Policija',                    group: 'police',   ttl: 60,  report: true },
   'police-hidden':  { label: 'Slēptā policija',             group: 'police',   ttl: 60,  report: true },
+  'camera-fixed':   { label: 'Ātruma kamera',               group: 'camera',   ttl: 43200, report: true },   // 30 dienas
   'camera-mobile':  { label: 'Mobilais fotoradars',         group: 'camera',   ttl: 120, report: true },
-  'camera-fixed':   { label: 'Ātruma kamera',               group: 'camera',   ttl: null },
   'accident':       { label: 'Ceļu satiksmes negadījums',   group: 'accident', ttl: 90,  report: true },
   'jam':            { label: 'Sastrēgums / lēna satiksme',  group: 'jam',      ttl: 30,  report: true },
   'roadworks':      { label: 'Ceļa remontdarbi',            group: 'works',    ttl: 720, report: true },
@@ -33,11 +33,11 @@ const ALERT_TYPES = {
   'stopped-vehicle':{ label: 'Apstājies transportlīdzeklis', group: 'hazard',  ttl: 60,  report: true },
   'signal-broken':  { label: 'Bojāts luksofors',            group: 'hazard',   ttl: 240, report: true },
   'hazard':         { label: 'Bīstama vieta',               group: 'hazard',   ttl: 120, report: true },
-  'weather':        { label: 'Slikti laikapstākļi',         group: 'weather',  ttl: 120, report: true },
+  'weather':        { label: 'Lietus / slikti laikapstākļi', group: 'weather', ttl: 120, report: true },
   'fog':            { label: 'Migla',                       group: 'weather',  ttl: 120, report: true },
   'flood':          { label: 'Plūdi',                       group: 'weather',  ttl: 360, report: true },
   'ice':            { label: 'Apledojums / slidens ceļš',   group: 'weather',  ttl: 240, report: true },
-  'rain':           { label: 'Stiprs lietus',               group: 'weather',  ttl: 60,  report: true },
+  'rain':           { label: 'Stiprs lietus',               group: 'weather',  ttl: 60 },   // ziņo ar „Lietus / slikti laikapstākļi”; šo dod laika prognoze
   'snow':           { label: 'Sniegs',                      group: 'weather',  ttl: 180, report: true },
   'rail':           { label: 'Dzelzceļa pārbrauktuve',      group: 'infra',    ttl: null },
   'traffic-light':  { label: 'Luksofors',                   group: 'infra',    ttl: null },
@@ -48,8 +48,8 @@ const ALERT_TYPES = {
 
 // Ziņošanas grupas (kartes pogas): satiksmes notikumi un bīstamības / laikapstākļi.
 const REPORT_GROUPS = {
-  traffic: ['police', 'police-hidden', 'camera-mobile', 'accident', 'jam', 'roadworks', 'closure', 'lane-closed'],
-  hazard: ['hazard', 'object', 'pothole', 'stopped-vehicle', 'signal-broken', 'obstacle', 'ice', 'fog', 'rain', 'snow', 'flood', 'weather'],
+  traffic: ['police', 'police-hidden', 'camera-fixed', 'camera-mobile', 'accident', 'jam', 'roadworks', 'closure', 'lane-closed'],
+  hazard: ['hazard', 'object', 'pothole', 'stopped-vehicle', 'signal-broken', 'obstacle', 'ice', 'fog', 'snow', 'flood', 'weather'],
 };
 
 // Simboli 24×24 koordinātās. W — balts, C — grupas krāsa (detaļām), D — tumšs.
