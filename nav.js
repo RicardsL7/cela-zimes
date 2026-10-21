@@ -14,31 +14,152 @@ function navTime(sec) {
 }
 
 // Pieprasa maršrutu un sagatavo to sekošanai.
-async function requestRoute(from, to) {
-  const url = `${OSRM_URL}${from.lng},${from.lat};${to.lng},${to.lat}?overview=false&geometries=geojson&steps=true`;
+async function osrmFetch(pts, extra = '') {
+  const url = `${OSRM_URL}${pts.map(p => p.lng + ',' + p.lat).join(';')}?overview=false&geometries=geojson&steps=true${extra}`;
   const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = ctrl && setTimeout(() => ctrl.abort(), 15000);     // ilgāk par 15 s negaida
-  let data;
   try {
     const res = await fetch(url, ctrl ? { signal: ctrl.signal } : {});
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    data = await res.json();
+    return await res.json();
   } finally { if (timer) clearTimeout(timer); }
-  if (!data.routes || !data.routes.length) throw new Error('Maršruts nav atrasts');
-  const r = data.routes[0];
-  const steps = r.legs.flatMap(l => l.steps);
-  // Visu soļu līnijas vienā sarakstā + kur katrs solis sākas.
+}
+
+// OSRM maršruts → { coords, cum, steps, distance, duration }.
+// Ja maršrutam ir starppunkts (alternatīvai), tā "ieradies/sāc" soļus izmet — vadītājam tie nav vajadzīgi.
+function parseOsrmRoute(r) {
+  const all = r.legs.flatMap(l => l.steps);
   const coords = [];
-  for (const st of steps) {
+  for (const st of all) {
     const c = st.geometry.coordinates;
     st._start = Math.max(0, coords.length - 1);
     for (let i = coords.length ? 1 : 0; i < c.length; i++) coords.push(c[i]);
   }
+  const last = all.length - 1;
+  const steps = all.filter((st, i) => {
+    const t = st.maneuver && st.maneuver.type;
+    return !((t === 'arrive' && i < last) || (t === 'depart' && i > 0));
+  });
   const cum = [0];
   for (let i = 1; i < coords.length; i++) {
     cum.push(cum[i - 1] + metersBetween(coords[i - 1][1], coords[i - 1][0], coords[i][1], coords[i][0]));
   }
   return { coords, cum, steps, distance: r.distance, duration: r.duration, lastIdx: 0 };
+}
+
+async function requestRoute(from, to) {
+  const data = await osrmFetch([from, to]);
+  if (!data.routes || !data.routes.length) throw new Error('Maršruts nav atrasts');
+  return parseOsrmRoute(data.routes[0]);
+}
+
+// ---------- Alternatīvie maršruti ----------
+// Maršruta "pēdas" — ~50 m režģa šūnas, pa kurām tas iet.
+function routeCells(route) {
+  const set = new Set(), first = new Map(), { coords, cum } = route;
+  let samples = 0, again = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const n = Math.max(1, Math.ceil((cum[i] - cum[i - 1]) / 25));
+    for (let k = 0; k <= n; k++) {
+      const lng = coords[i - 1][0] + (coords[i][0] - coords[i - 1][0]) * k / n;
+      const lat = coords[i - 1][1] + (coords[i][1] - coords[i - 1][1]) * k / n;
+      const c = Math.round(lat / 0.00045) + ':' + Math.round(lng / 0.0008), at = cum[i - 1] + (cum[i] - cum[i - 1]) * k / n;
+      samples++;
+      if (!first.has(c)) first.set(c, at); else if (at - first.get(c) > 250) again++;   // atgriežas tur, kur jau bijis
+      set.add(c);
+    }
+  }
+  set.backtrack = samples ? again / samples : 0;
+  return set;
+}
+// Cik liela daļa no maršruta a iet pa to pašu ceļu, kur b (0…1).
+function routeOverlap(a, b) {
+  const ca = a._cells || (a._cells = routeCells(a)), cb = b._cells || (b._cells = routeCells(b));
+  let same = 0;
+  for (const c of ca) if (cb.has(c) || cb.has(nearCell(c, 1, 0)) || cb.has(nearCell(c, -1, 0)) || cb.has(nearCell(c, 0, 1)) || cb.has(nearCell(c, 0, -1))) same++;
+  return ca.size ? same / ca.size : 1;
+}
+function nearCell(c, dy, dx) { const [y, x] = c.split(':').map(Number); return (y + dy) + ':' + (x + dx); }
+
+// Atlasa līdz max maršrutiem: tikai tādus, kas tiešām atšķiras un nav daudz garāki par ātrāko.
+function pickAlternatives(routes, max = 3) {
+  const list = routes.filter(r => r && r.coords && r.coords.length > 1).sort((a, b) => a.duration - b.duration);
+  if (!list.length) return [];
+  const best = list[0], out = [best];
+  for (const r of list.slice(1)) {
+    if (out.length >= max) break;
+    if (r.duration > best.duration * 1.45 + 120 || r.distance > best.distance * 1.6 + 1000) continue;
+    if (r.steps.some(st => st.maneuver && st.maneuver.modifier === 'uturn')) continue;   // apgriešanās nav alternatīva
+    if (out.some(o => routeOverlap(r, o) > 0.8)) continue;
+    if (r._cells.backtrack > 0.05) continue;                 // brauc turp un atpakaļ pa to pašu ceļu
+    out.push(r);
+  }
+  for (const r of out) delete r._cells;     // kešatmiņā nav vajadzīgs
+  return out;
+}
+
+// Starppunkti apkārtceļiem: abās pusēs taisnei starp sākumu un galu.
+function detourPoints(from, to) {
+  const cos = Math.cos(from.lat * Math.PI / 180);
+  const dx = (to.lng - from.lng) * cos, dy = to.lat - from.lat, d = Math.hypot(dx, dy);
+  if (!d) return [];
+  const off = Math.min(Math.max(d * 0.22, 0.006), 0.03);        // ~0,7–3,3 km sānis
+  const out = [];
+  for (const f of [0.5, 0.35]) for (const side of [1, -1]) {
+    const mx = from.lng + (to.lng - from.lng) * f, my = from.lat + (to.lat - from.lat) * f;
+    out.push({ lat: my + side * off * dx / d, lng: mx - side * off * dy / d / cos });
+  }
+  return out;
+}
+
+// Laiks ar sastrēgumiem.
+const routeEta = r => r.duration + (r.jamSec || 0);
+
+// Nosaukumi sarakstam: Ātrākais / Īsākais / Mazāk sastrēgumu / Alternatīva.
+function labelRoutes(routes) {
+  if (!routes.length) return [];
+  const fast = routes.reduce((a, b) => routeEta(b) < routeEta(a) ? b : a);
+  const lbl = new Map([[fast, 'Ātrākais']]);
+  const short = routes.reduce((a, b) => b.distance < a.distance ? b : a);
+  if (short !== fast && short.distance < fast.distance - 300) lbl.set(short, 'Īsākais');
+  if ((fast.jamSec || 0) >= 60) {
+    const calm = routes.filter(r => !lbl.has(r)).sort((a, b) => (a.jamSec || 0) - (b.jamSec || 0))[0];
+    if (calm && (calm.jamSec || 0) < fast.jamSec - 60) lbl.set(calm, 'Mazāk sastrēgumu');
+  }
+  return routes.map(r => lbl.get(r) || 'Alternatīva');
+}
+
+// Vieta uzrakstam uz maršruta: tās daļas vidū, kur tas atšķiras no pārējiem.
+function routeLabelPoint(route, others) {
+  const cells = others.map(o => routeCells(o));
+  const { coords, cum } = route, own = [];
+  for (let i = 0; i < coords.length; i++) {
+    const c = Math.round(coords[i][1] / 0.00045) + ':' + Math.round(coords[i][0] / 0.0008);
+    if (!cells.some(set => set.has(c) || set.has(nearCell(c, 1, 0)) || set.has(nearCell(c, -1, 0)) || set.has(nearCell(c, 0, 1)) || set.has(nearCell(c, 0, -1)))) own.push(i);
+  }
+  if (own.length) return coords[own[Math.floor(own.length / 2)]];
+  const half = cum[cum.length - 1] / 2;
+  const p = routePointAt(route, half);
+  return [p.lng, p.lat];
+}
+
+// 2–3 maršruti: OSRM alternatīvas; ja to nav, mēģina caur starppunktiem.
+async function requestRoutes(from, to, max = 3) {
+  const data = await osrmFetch([from, to], '&alternatives=' + max);
+  if (!data.routes || !data.routes.length) throw new Error('Maršruts nav atrasts');
+  let routes = pickAlternatives(data.routes.map(parseOsrmRoute), max);
+  if (routes.length < 2 && metersBetween(from.lat, from.lng, to.lat, to.lng) > 1500) {
+    const vias = detourPoints(from, to);
+    const extra = [];
+    for (let i = 0; i < vias.length && extra.length < 2; i += 2) {      // vispirms vidū, tad tuvāk sākumam
+      const got = await Promise.all(vias.slice(i, i + 2).map(v =>
+        osrmFetch([from, v, to], '&continue_straight=true').then(d => d.routes && d.routes[0] && parseOsrmRoute(d.routes[0])).catch(() => null)));
+      extra.push(...got.filter(Boolean));
+      routes = pickAlternatives(routes.concat(extra), max);
+      if (routes.length >= 2) break;
+    }
+  }
+  return routes;
 }
 
 function metersBetween(lat1, lng1, lat2, lng2) {
@@ -167,4 +288,4 @@ function smoothProgress(prev, next, maxBack = 30) {
   return prev - next <= maxBack ? prev : next;
 }
 
-if (typeof module !== 'undefined') module.exports = { routePointAt, routeRemaining, smoothProgress, locateOnRoute, routeProgress };
+if (typeof module !== 'undefined') module.exports = { routeEta, labelRoutes, routeLabelPoint, parseOsrmRoute, pickAlternatives, routeOverlap, detourPoints, routePointAt, routeRemaining, smoothProgress, locateOnRoute, routeProgress };

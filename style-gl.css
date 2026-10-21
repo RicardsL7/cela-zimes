@@ -666,3 +666,18 @@ html:not(.navigating):not(.previewing) .loader { top: calc(env(safe-area-inset-t
 .r-pay-info { display: grid; gap: 2px; margin-top: 12px; padding: 10px 12px; border-radius: 12px; font-size: 13px; color: var(--muted);
   background: color-mix(in srgb, var(--line) 40%, transparent); }
 .r-pay-info b { color: var(--fg); font-size: 14px; }
+
+/* Alternatīvie maršruti */
+.route-alts { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 0; }
+.route-alt { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 12px; border: 2px solid transparent;
+  border-radius: 12px; background: color-mix(in srgb, #3d93ff 8%, transparent); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.route-alt.sel { border-color: #3d93ff; background: color-mix(in srgb, #3d93ff 16%, transparent); }
+.route-alt .ra-time { min-width: 64px; font: 800 18px var(--font-body); color: #1f6fe0; }
+.route-alt .ra-txt { display: flex; flex-direction: column; min-width: 0; }
+.route-alt .ra-lbl { font: 700 14px var(--font-body); }
+.route-alt .ra-meta { font: 500 13px var(--font-body); opacity: .75; }
+.alt-bubble { display: flex; flex-direction: column; align-items: center; padding: 4px 9px; border: 2px solid #3d93ff; border-radius: 12px;
+  background: #fff; color: #1f6fe0; font: 800 14px/1.15 var(--font-body); box-shadow: 0 2px 8px rgba(0,0,0,.25); cursor: pointer; white-space: nowrap; }
+.alt-bubble small { font: 700 11px var(--font-body); color: #5a6b80; }
+.alt-bubble.sel { background: #1f6fe0; border-color: #fff; color: #fff; z-index: 2; }
+html.navigating .alt-bubble { display: none; }

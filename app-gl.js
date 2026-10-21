@@ -1183,7 +1183,18 @@ const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 
 function installRouteLayers() {
   if (map.getSource('route')) return;
+  map.addSource('route-alt', { type: 'geojson', data: EMPTY_FC });
   map.addSource('route', { type: 'geojson', data: EMPTY_FC });
+  // Alternatīvie maršruti — gaiši zili, puscaurspīdīgi, zem izvēlētā
+  map.addLayer({ id: 'route-alt-casing', type: 'line', source: 'route-alt',
+    layout: { 'line-join': 'round', 'line-cap': 'round' },
+    paint: { 'line-color': '#2f7be0', 'line-opacity': 0.35, 'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 10, 5, 15, 11, 18, 26] } });
+  map.addLayer({ id: 'route-alt-line', type: 'line', source: 'route-alt',
+    layout: { 'line-join': 'round', 'line-cap': 'round' },
+    paint: { 'line-color': '#9cc8ff', 'line-opacity': 0.75, 'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 10, 3, 15, 7, 18, 18] } });
+  map.addLayer({ id: 'route-alt-hit', type: 'line', source: 'route-alt',      // plats, neredzams — vieglāk uzspiest
+    layout: { 'line-join': 'round', 'line-cap': 'round' },
+    paint: { 'line-color': '#000', 'line-opacity': 0, 'line-width': 28 } });
   map.addLayer({ id: 'route-casing', type: 'line', source: 'route',
     layout: { 'line-join': 'round', 'line-cap': 'round' },
     paint: { 'line-color': '#0b4fb8', 'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 10, 5, 15, 11, 18, 26] } });
@@ -1242,6 +1253,91 @@ async function cachedRoute(from, to) {
   return route;
 }
 
+async function cachedRoutes(from, to) {
+  const key = from.lat.toFixed(4) + ',' + from.lng.toFixed(4) + '>' + to.lat.toFixed(5) + ',' + to.lng.toFixed(5);
+  const hit = await cacheGet('routes', key, 10 * 60000);
+  if (hit && hit.length) return structuredClone(hit);
+  const routes = await onceInflight('routes|' + key, () => requestRoutes(from, to, 3));
+  cachePut('routes', key, structuredClone(routes));
+  return routes;
+}
+
+// ---------- Alternatīvie maršruti (kā Waze) ----------
+// Izvēlētais — pilnā zilā; pārējie — gaiši zili zem tā ar laika uzrakstu. Uzspiežot — izvēlas.
+let altMarkers = [];
+function clearAltRoutes() {
+  for (const m of altMarkers) m.remove();
+  altMarkers = [];
+  const src = map.getSource('route-alt');
+  if (src) src.setData(EMPTY_FC);
+  const box = $('routeAlts');
+  if (box) { box.hidden = true; box.textContent = ''; }
+}
+function drawAltRoutes() {
+  for (const m of altMarkers) m.remove();
+  altMarkers = [];
+  const routes = state.nav.routes || [], sel = state.nav.route;
+  const src = map.getSource('route-alt');
+  if (!routes.length || routes.length < 2 || state.nav.active) { clearAltRoutes(); return; }
+  if (src) src.setData({ type: 'FeatureCollection', features: routes.map((r, i) => r === sel ? null :
+    { type: 'Feature', geometry: { type: 'LineString', coordinates: r.coords }, properties: { i } }).filter(Boolean) });
+  const selEta = routeEta(sel);
+  routes.forEach((r, i) => {
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'alt-bubble' + (r === sel ? ' sel' : '');
+    const d = Math.round((routeEta(r) - selEta) / 60);
+    el.innerHTML = `<b>${navTime(routeEta(r))}</b>` + (r === sel ? '' : `<small>${d > 0 ? '+' + d + ' min' : d < 0 ? '−' + (-d) + ' min' : 'tikpat'}</small>`);
+    el.addEventListener('click', ev => { ev.stopPropagation(); chooseRoute(i, true); });
+    const at = routeLabelPoint(r, routes.filter(o => o !== r));
+    altMarkers.push(new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat(at).addTo(map));
+  });
+  const box = $('routeAlts');
+  if (!box) return;
+  const labels = labelRoutes(routes);
+  box.textContent = '';
+  routes.map((r, i) => ({ r, i, l: labels[i] })).sort((a, b) => routeEta(a.r) - routeEta(b.r)).forEach(({ r, i, l }) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'route-alt' + (r === sel ? ' sel' : '');
+    const jam = r.jamSec == null ? '' : r.jamSec >= 60 ? ` · 🚦 +${Math.round(r.jamSec / 60)} min` : ' · bez sastrēgumiem';
+    b.innerHTML = `<span class="ra-time"></span><span class="ra-txt"><span class="ra-lbl"></span><span class="ra-meta"></span></span>`;
+    b.querySelector('.ra-time').textContent = navTime(routeEta(r));
+    b.querySelector('.ra-lbl').textContent = l;
+    b.querySelector('.ra-meta').textContent = navDist(r.distance) + jam;
+    b.addEventListener('click', () => chooseRoute(i, true));
+    box.append(b);
+  });
+  box.hidden = false;
+}
+// Izvēlas maršrutu no saraksta (byUser — lietotājs pats izvēlējās; tad automātiski vairs nemaina).
+function chooseRoute(i, byUser) {
+  const r = (state.nav.routes || [])[i];
+  if (!r || state.nav.active) return;
+  if (byUser) state.nav.altPicked = true;
+  if (r === state.nav.route) return;
+  state.nav.route = r;
+  drawRoute(r);
+  signs.setRoute(r);
+  prepareRoute(r);
+  fillRouteCard(r);
+  drawAltRoutes();
+  updateRouteSummary();
+}
+function fillRouteCard(route) {
+  $('routeTime').textContent = navTime(routeEta(route));
+  $('routeMeta').textContent = `${navDist(route.distance)} · ieradīsies ${clockIn(routeEta(route))}`;
+  if (typeof trafficLine === 'function') trafficLine(route);
+}
+// Sastrēgumi visiem maršrutiem; ja cits maršruts ar sastrēgumiem ir ātrāks (≥1 min) — izvēlas to.
+async function trafficForPreview(routes) {
+  if (typeof trafficForRoutes !== 'function' || !(await trafficForRoutes(routes))) return;
+  if (state.nav.routes !== routes || state.nav.active) return;
+  const best = routes.reduce((a, b) => routeEta(b) < routeEta(a) ? b : a);
+  if (!state.nav.altPicked && best !== state.nav.route && routeEta(state.nav.route) - routeEta(best) >= 60) chooseRoute(routes.indexOf(best), false);
+  else { fillRouteCard(state.nav.route); drawAltRoutes(); }
+}
+
 async function selectDestination(place) {
   $('results').hidden = true;
   $('searchInput').value = place.name;
@@ -1261,7 +1357,7 @@ async function selectDestination(place) {
 function fitRoute() {
   const route = state.nav.route;
   if (!route || state.nav.active) return;
-  const pts = route.coords.slice();
+  const pts = (state.nav.routes && state.nav.routes.length ? state.nav.routes : [route]).flatMap(r => r.coords);
   if (state.me) pts.push([state.me.lng, state.me.lat]);
   const lngs = pts.map(c => c[0]), lats = pts.map(c => c[1]);
   const card = $('routeCard').hidden ? 0 : $('routeCard').offsetHeight;
@@ -1279,7 +1375,11 @@ async function previewRoute() {
   const from = state.me || { lat: map.getCenter().lat, lng: map.getCenter().lng };
   setBusy('route', 'Meklē maršrutu…');
   try {
-    const route = await cachedRoute(from, dest);
+    const routes = await cachedRoutes(from, dest);
+    if (state.nav.dest !== dest) return;           // kamēr meklēja, izvēlēts cits galamērķis
+    const route = routes[0];
+    state.nav.routes = routes;
+    state.nav.altPicked = false;
     state.nav.route = route;
     drawRoute(route);
     signs.setRoute(route);     // rāda tikai maršruta zīmes manā virzienā
@@ -1288,13 +1388,14 @@ async function previewRoute() {
     $('routeDest').textContent = dest.name;
     $('routeSub').textContent = state.me ? (dest.sub || '')
       : 'Tava atrašanās vieta vēl nav zināma — maršruts no kartes centra. Atļauj atrašanās vietu.';
-    $('routeTime').textContent = navTime(route.duration);
-    $('routeMeta').textContent = `${navDist(route.distance)} · ieradīsies ${clockIn(route.duration)}`;
+    fillRouteCard(route);
     $('routeCard').hidden = false;
     $('bottombar').hidden = true;
     document.documentElement.classList.add('previewing');
+    drawAltRoutes();
     updateRouteSummary();
-    if (typeof trafficOnRoute === 'function') trafficOnRoute(route);   // sastrēgumi maršrutā (traffic-gl.js)
+    if ($('routeTraffic')) $('routeTraffic').hidden = true;
+    trafficForPreview(routes);                     // sastrēgumi visos maršrutos (traffic-gl.js)
     // Telefonā tastatūra vēl aizveras — karti pielāgo, kad ekrāns ir pilnā izmērā.
     setTimeout(fitRoute, 350);
   } catch (err) {
@@ -1333,6 +1434,7 @@ function startNav() {
   screenAwake.on();                  // ekrāns neizslēdzas, kamēr navigē
   state.nav.active = true;
   state.nav.offCount = 0;
+  clearAltRoutes();
   document.documentElement.classList.add('navigating');
   document.documentElement.classList.remove('previewing');
   $('routeCard').hidden = true;
@@ -1359,6 +1461,7 @@ function endNav() {
   $('nextSign').hidden = true;
   state.nav = { dest: null, route: null, active: false, offCount: 0, lastReroute: 0, along: null };
   drawRoute(null);
+  clearAltRoutes();
   if (destMarker) { destMarker.remove(); destMarker = null; }
   document.documentElement.classList.remove('navigating');
   $('navBanner').hidden = true;
@@ -2156,7 +2259,8 @@ function wireUi() {
 }
 
 function cancelPreview() {
-  state.nav.route = null; state.nav.dest = null;
+  state.nav.route = null; state.nav.dest = null; state.nav.routes = null;
+  clearAltRoutes();
   routePrepId++;
   setBusy('prep', null);
   signs.setRoute(null);
@@ -2464,6 +2568,7 @@ async function init() {
     roadIndex.ready = false; roadIndex.coverage = null;
     signs.setRoads(state.vector ? roadIndex : null);
     if (state.nav.route) drawRoute(state.nav.route);
+    if (state.nav.routes && !state.nav.active) drawAltRoutes();
     applySignVisibility();
   });
   // Ceļi zīmju piesaistei: pārbūvē, kad kartē ielādēti jauni ceļi — arī braucot
@@ -2514,9 +2619,15 @@ async function init() {
   });
   map.on('mouseenter', 'signs', () => { map.getCanvas().style.cursor = 'pointer'; });
   map.on('mouseleave', 'signs', () => { map.getCanvas().style.cursor = ''; });
+  map.on('mouseenter', 'route-alt-hit', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave', 'route-alt-hit', () => { map.getCanvas().style.cursor = ''; });
   map.on('click', e => {
     $('results').hidden = true;
     if (map.getLayer('signs') && map.queryRenderedFeatures(e.point, { layers: ['signs', 'alerts', 'radar-icon', 'radar-core'].filter(l => map.getLayer(l)) }).length) return;
+    if (!state.nav.active && state.nav.routes && map.getLayer('route-alt-hit')) {     // uzspiests uz alternatīvā maršruta
+      const f = map.queryRenderedFeatures(e.point, { layers: ['route-alt-hit'] })[0];
+      if (f) { chooseRoute(f.properties.i, true); return; }
+    }
     if (state.testMode && !state.nav.active) { state.follow = false; onFix(e.lngLat.lat, e.lngLat.lng, 55, null, 300); }
   });
 

@@ -157,24 +157,36 @@ async function trRefresh(force) {
 
 // ---------- Maršruta kavējums ----------
 // Izsauc app-gl.js previewRoute() pēc maršruta parādīšanas.
-async function trafficOnRoute(route) {
-  const el = $('routeTraffic');
-  if (!el) return;
-  el.hidden = true;
-  if (!trafficCfg || !route || !route.coords) return;
+// Sastrēgumu kavējums vairākiem maršrutiem ar vienu pieprasījumu. Katram maršrutam ieliek
+// route.jamSec (sekundes) vai null, ja datu nav. Atgriež true, ja dati bija.
+async function trafficForRoutes(routes) {
+  routes = (routes || []).filter(r => r && r.coords);
+  if (!trafficCfg || !routes.length) return false;
   let s = 90, w = 180, n = -90, e = -180;
-  for (const [lo, la] of route.coords) { s = Math.min(s, la); n = Math.max(n, la); w = Math.min(w, lo); e = Math.max(e, lo); }
-  if (n - s > 0.6 || e - w > 0.6) return;
+  for (const r of routes) for (const [lo, la] of r.coords) { s = Math.min(s, la); n = Math.max(n, la); w = Math.min(w, lo); e = Math.max(e, lo); }
+  if (n - s > 0.6 || e - w > 0.6) return false;
   let jams;
-  try { jams = await trFetch([s - 0.002, w - 0.003, n + 0.002, e + 0.003]); } catch { return; }
-  if (state.nav.route !== route) return;
-  if (!jams.size) return;                       // datu vēl nav — neko nerāda
-  const d = trRouteDelay(route.coords, jams);
-  el.hidden = false;
-  el.className = 'route-traffic ' + (d.sec >= 300 ? 'bad' : d.sec >= 60 ? 'mid' : 'ok');
-  el.textContent = d.sec >= 60 ? `🚦 Sastrēgumi maršrutā: +${Math.round(d.sec / 60)} min` : '🚦 Sastrēgumu maršrutā nav';
+  try { jams = await trFetch([s - 0.002, w - 0.003, n + 0.002, e + 0.003]); } catch { return false; }
+  if (!jams.size) return false;                       // datu vēl nav — neko nerāda
+  for (const r of routes) { const d = trRouteDelay(r.coords, jams); r.jamSec = d.sec; r.jamWorst = d.worst; }
   for (const [k, v] of jams) trJams.set(k, v);
   trDraw();
+  return true;
+}
+// Rinda maršruta kartītē par izvēlētā maršruta sastrēgumiem.
+function trafficLine(route) {
+  const el = $('routeTraffic');
+  if (!el) return;
+  if (!route || route.jamSec == null) { el.hidden = true; return; }
+  const sec = route.jamSec;
+  el.hidden = false;
+  el.className = 'route-traffic ' + (sec >= 300 ? 'bad' : sec >= 60 ? 'mid' : 'ok');
+  el.textContent = sec >= 60 ? `🚦 Sastrēgumi maršrutā: +${Math.round(sec / 60)} min` : '🚦 Sastrēgumu maršrutā nav';
+}
+async function trafficOnRoute(route) {
+  const el = $('routeTraffic');
+  if (el) el.hidden = true;
+  if (await trafficForRoutes([route]) && state.nav.route === route) trafficLine(route);
 }
 
 // ---------- Pieslēgšana ----------
