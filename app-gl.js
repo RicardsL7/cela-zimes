@@ -180,6 +180,44 @@ async function loadVerifiedSigns() {
   if (records.length) signs.refresh();
 }
 
+// ---------- Radari uzreiz (bez gaidīšanas uz zīmju ielādi) ----------
+// 1) Visas Latvijas ātruma kameras no OpenStreetMap (data/osm/cameras.json, atjauno katru nakti).
+// 2) Šajā ierīcē jau redzētās Mapillary kameras (atceras, lai nākamreiz tās rādītu uzreiz).
+const RADAR_MEM_KEY = 'cz.radars.v1', RADAR_MEM_DAYS = 120;
+let radarMem = null, radarMemTimer = null;
+function radarMemGet() {
+  if (!radarMem) { try { radarMem = JSON.parse(localStorage.getItem(RADAR_MEM_KEY) || '{}') || {}; } catch { radarMem = {}; } }
+  return radarMem;
+}
+function radarRemember(id, lat, lng, value) {
+  const m = radarMemGet(), old = m[id];
+  if (old && Date.now() - old[3] < 86400000) return;
+  m[id] = [Math.round(lat * 1e6) / 1e6, Math.round(lng * 1e6) / 1e6, value, Date.now()];
+  clearTimeout(radarMemTimer);
+  radarMemTimer = setTimeout(() => {
+    const cut = Date.now() - RADAR_MEM_DAYS * 86400000;
+    for (const [k, v] of Object.entries(m)) if (!v || v[3] < cut) delete m[k];
+    try { localStorage.setItem(RADAR_MEM_KEY, JSON.stringify(m)); } catch { /* pilna atmiņa — nav svarīgi */ }
+  }, 2000);
+}
+async function loadKnownRadars() {
+  let added = 0;
+  for (const [id, v] of Object.entries(radarMemGet())) {
+    if (!v || mlyIds.has(id)) continue;
+    mlyIds.add(id);
+    if (addSign(v[0], v[1], classifyMapillary(v[2]), v[2], id)) added++;
+  }
+  if (added) signs.refresh();
+  try {
+    const r = await fetch('data/osm/cameras.json', { cache: 'no-cache' });
+    if (!r.ok) return;
+    const j = await r.json();
+    const els = (j.n || []).map(([id, lat, lon, tags]) => ({ type: 'node', id: id || 'cam:' + lat + ',' + lon, lat, lon, tags }));
+    const n = processOsmElements(els);
+    if (n) osmApplied(n);
+  } catch (e) { console.warn('Radaru saraksts nav ielādēts', e); }
+}
+
 // ---------- No foto nolasītie plāksnīšu laiki (data/plate-times.json) ----------
 // Mapillary atrod zīmi, bet plāksnītes tekstu (laiku) nenolasa. Šie laiki ir nolasīti
 // no Mapillary foto un piesaistīti tāda paša veida zīmēm 8 m rādiusā.
@@ -688,10 +726,12 @@ async function loadMlyTiles(tiles) {
     }
     state.mlyTiles.add(key);
     for (const z of r.value) {
+      const cls = classifyMapillary(z.value);
+      if (cls.cat === 'camera' && isPlausibleSign(z.value, z.lat, z.lng)) radarRemember(z.id, z.lat, z.lng, z.value);   // arī jau zināmām — atjauno laiku
       if (mlyIds.has(z.id)) continue;
       mlyIds.add(z.id);
       if (!isPlausibleSign(z.value, z.lat, z.lng)) continue; // acīmredzamas atpazīšanas kļūdas
-      if (addSign(z.lat, z.lng, classifyMapillary(z.value), z.value, z.id)) added++;
+      if (addSign(z.lat, z.lng, cls, z.value, z.id)) added++;
     }
   });
   if (added) {
@@ -2408,6 +2448,7 @@ async function init() {
   wireUi();
   buildCategoryList();
   loadVerifiedSigns();
+  loadKnownRadars();
   loadPlateTimes();
   wireAlerts();
   wirePlaces();
