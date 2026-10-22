@@ -103,13 +103,10 @@ function rideTimeText(iso, now = Date.now()) {
   if (dd === 1) return 'rīt ' + hm;
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}. ${hm}`;
 }
-// Maksa par braucienu (izmaksu dalīšana): maksimums = attālums × 1,3 (pa ceļiem) × 12 c/km, vismaz 2 €.
-// Tāpat aprēķina arī datubāze (supabase/rides-3-pay.sql → ride_fare_cap_cents).
+// Maksa par braucienu: šoferis var norādīt cenu līdz 300 € (tāpat datubāzē: supabase/rides-6-price.sql).
 const RIDE_FEE_PCT = 10;
-function rideFareCapCents(r) {
-  const km = rideDist(r.from_lat, r.from_lng, r.to_lat, r.to_lng) / 1000;
-  return Math.max(200, Math.floor(km * 1.3 * 12));   // uz leju — lai nekad nepārsniedz datubāzes robežu
-}
+const RIDE_PRICE_MAX = 30000;
+function rideFareCapCents(r) { return RIDE_PRICE_MAX; }
 // "4,50" / "4.5" / "4" → 450 (centi); tukšs → null; nederīgs → NaN
 function rideParsePrice(text) {
   const t = String(text ?? '').trim().replace(/\s|€|eur/gi, '').replace(',', '.');
