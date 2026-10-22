@@ -694,3 +694,9 @@ html.navigating .alt-bubble { display: none; }
   display: flex; gap: 8px; animation: fabMoreIn .18s ease-out; }
 .fab-more-items[hidden] { display: none; }
 @keyframes fabMoreIn { from { opacity: 0; transform: translate(14px, -50%); } to { opacity: 1; transform: translate(0, -50%); } }
+
+/* Ziņa kopbrauciena kartītē */
+.r-msg { margin: 8px 0 0; padding: 7px 10px; border-radius: 10px; font: 600 13.5px/1.35 var(--font-body);
+  background: color-mix(in srgb, var(--go) 12%, transparent); color: var(--go); }
+.r-msg.bad { background: color-mix(in srgb, #c81e3a 12%, transparent); color: #c81e3a; }
+.r-msg[hidden] { display: none; }

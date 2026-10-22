@@ -426,6 +426,7 @@ function ridesOpenCard(x) {
   const price = rEl('input', { class: 'r-input r-price', type: 'text', inputmode: 'decimal', maxlength: 6, placeholder: '0', 'aria-label': 'Cena eiro' });
   if (rides.priceDraft && rides.priceDraft[r.id]) price.value = rides.priceDraft[r.id];
   price.addEventListener('input', () => { (rides.priceDraft || (rides.priceDraft = {}))[r.id] = price.value; });
+  const msg = rEl('p', { class: 'r-msg', hidden: '' });     // ziņa tieši kartītē (statusa josla ir aiz loga)
   const meta = [rideTimeText(r.depart_at), r.seats + ' cilv.',
     x.match ? `+${x.match.detourMin} min apkārtceļš` : x.dist != null ? rideDistText(x.dist) + ' no tevis' : ''].filter(Boolean).join(' · ');
   return rEl('div', { class: 'r-card' },
@@ -438,15 +439,29 @@ function ridesOpenCard(x) {
     rEl('div', { class: 'r-actions' },
       rEl('button', { class: 'btn ghost', type: 'button', text: 'Kartē', onclick: () => { map.easeTo({ center: [r.from_lng, r.from_lat], zoom: 15 }); } }),
       rEl('button', { class: 'btn primary', type: 'button', text: 'Paņemšu', onclick: async e => {
+        const say = (text, bad = true) => { msg.textContent = text; msg.className = 'r-msg' + (bad ? ' bad' : ''); msg.hidden = false; setStatus(text); };
         const cents = rideParsePrice(price.value);
-        if (Number.isNaN(cents)) { setStatus('Cenu ieraksti skaitļos, piem. 4,50'); price.focus(); return; }
-        if (cents != null && cents > cap) { setStatus(`Cena var būt līdz ${rideMoney(cap)} — tās ir aptuvenās ceļa izmaksas.`); price.focus(); return; }
-        if (cents != null && cents > 0 && cents < 100) { setStatus('Mazākā cena ir 1 €.'); price.focus(); return; }
-        e.target.disabled = true;
-        try { await rides.store.offer(r.id, { eta_min: ridesEtaMin(r), price_cents: cents || null }); if (rides.priceDraft) delete rides.priceDraft[r.id]; setStatus('Piedāvājums nosūtīts — gaidi pasažiera atbildi.'); }
-        catch (err) { console.warn(err); setStatus('Neizdevās nosūtīt piedāvājumu.'); }
+        if (Number.isNaN(cents)) { say('Cenu ieraksti skaitļos, piem. 4,50'); price.focus(); return; }
+        if (cents != null && cents > cap) { say(`Cena var būt līdz ${rideMoney(cap)} — tās ir aptuvenās ceļa izmaksas.`); price.focus(); return; }
+        if (cents != null && cents > 0 && cents < 100) { say('Mazākā cena ir 1 €.'); price.focus(); return; }
+        const btn = e.currentTarget;
+        btn.disabled = true; say('Sūta piedāvājumu…', false);
+        try {
+          await rides.store.offer(r.id, { eta_min: ridesEtaMin(r), price_cents: cents || null });
+          if (rides.priceDraft) delete rides.priceDraft[r.id];
+          say('✓ Piedāvājums nosūtīts — gaidi pasažiera atbildi.', false);
+        } catch (err) {
+          console.warn(err);
+          const t = String(err && err.message || '');
+          say(/ 409 |23505|duplicate/.test(t) ? 'Tu šim braucienam jau esi piedāvājis (vai pasažieris to atteica).'
+            : /pārsniedz/.test(t) ? `Cena pārsniedz ceļa izmaksas (maks. ${rideMoney(cap)}).`
+            : 'Neizdevās nosūtīt piedāvājumu — pārbaudi internetu un mēģini vēlreiz.');
+          btn.disabled = false;
+          return;
+        }
         ridesRefresh(true);
-      } })));
+      } })),
+    msg);
 }
 function ridesMyOfferCard(o) {
   const r = o.request, ok = o.status === 'accepted', st = rideStage(o);
