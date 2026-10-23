@@ -7,7 +7,7 @@ const vm = require('vm');
 
 const ctx = vm.createContext({ console, Intl, Date, Math, Map, Set, JSON, Number, String, Array, Object, isNaN, setTimeout, clearTimeout,
   signSvg: () => '<svg/>', encodeURIComponent, decodeURIComponent, escape, URLSearchParams, Buffer, Error, Promise });
-for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'nav.js', 'alerts.js', 'places.js', 'cache.js', 'auth.js', 'rides.js', 'reports.js']) {
+for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'nav.js', 'speedlimit.js', 'alerts.js', 'places.js', 'cache.js', 'auth.js', 'rides.js', 'reports.js']) {
   // Klases un const deklarācijas padara pieejamas testam.
   const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/if \(typeof module[\s\S]*?\n}\n?$/m, '');
   vm.runInContext(src + '\n;globalThis.__exp = (globalThis.__exp || {});', ctx, { filename: f });
@@ -1276,6 +1276,94 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
     const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
     ok(/id="routeTraffic"[^\n]*\n\s*<div class="route-barrier" id="routeBarrier" hidden><\/div>/.test(html), '#routeBarrier pie #routeTraffic');
     eq(html, fs.readFileSync(path.join(__dirname, '..', 'index-gl.html'), 'utf8'), 'index.html = index-gl.html');
+  });
+}
+
+// ---------- F7: ātruma ierobežojums bez maršruta ----------
+{
+  const decideSpeedLimit = G('decideSpeedLimit'), isOverspeed = G('isOverspeed'), SpeedLimitHold = G('SpeedLimitHold'), speedSignKind = G('speedSignKind');
+  const sp = (x, y, n, face) => sign(x, y, `regulatory--maximum-speed-limit-${n}--g1`, face, 'speed');
+  const run = (st, from, to, y = 0, h = 90, step = 20) => { for (let x = from; h === 90 ? x <= to : x >= to; x += h === 90 ? step : -step) drive(st, x, y, h); };
+  test('F7: pēc zīmes 30 garām pabraukšanas ierobežojums paliek 30 arī 300 m tālāk', () => {
+    roadIndex.setSegments(road(-200, 0, 900, 0, 'A'), COVER);
+    const st = store(); st.add(sp(100, -7, 30, 270));
+    run(st, 0, 60);
+    eq(st.speedMemory(), null, 'pirms zīmes — vēl nav');
+    run(st, 80, 420);
+    ok(st.speedMemory() && st.speedMemory().limit === 30, 'pēc 300 m: ' + JSON.stringify(st.speedMemory() && st.speedMemory().limit));
+    const r = decideSpeedLimit({ sign: st.speedMemory().limit, osm: { limit: 50 }, urban: true });
+    eq(r.limit, 30); eq(r.source, 'sign'); eq(r.approx, false);
+  });
+  test('F7: nogriežoties uz citu ceļu, iepriekšējā zīme vairs nav spēkā; taisni (cits kartes fragments) — paliek', () => {
+    roadIndex.setSegments([...road(-200, 0, 500, 0, 'A'), ...road(500, 0, 900, 0, 'A2'), ...road(500, 0, 500, 400, 'B')], COVER);
+    const st = store(); st.add(sp(100, -7, 30, 270));
+    run(st, 0, 480);
+    ok(st.speedMemory() && st.speedMemory().limit === 30, 'uz A');
+    run(st, 520, 700);
+    ok(st.speedMemory() && st.speedMemory().limit === 30, 'taisni uz A2 — paliek');
+    const st2 = store(); st2.add(sp(100, -7, 30, 270));
+    run(st2, 0, 480);
+    ok(st2.speedMemory() && st2.speedMemory().limit === 30, 'pirms nogriešanās');
+    drive(st2, 500, 30, 0);
+    ok(st2.speedMemory(), 'viens mērījums citā ceļā (iespējams GPS lēciens) — vēl paliek');
+    for (let y = 50; y <= 200; y += 20) drive(st2, 500, y, 0);
+    eq(st2.speedMemory(), null, 'nogriezies uz B');
+  });
+  test('F7: pretējā virziena zīme neietekmē; ierobežojuma beigas un jauna zīme', () => {
+    roadIndex.setSegments(road(-200, 0, 900, 0, 'A'), COVER);
+    const st = store(); st.add(sp(100, 7, 30, 90));          // otrā pusē, skatās uz austrumiem (braucējiem uz rietumiem)
+    run(st, 0, 400);
+    eq(st.speedMemory(), null, 'pretējā virziena zīme');
+    const st2 = store(); st2.add(sp(100, -7, 30, 270)); st2.add(sign(300, -7, 'regulatory--end-of-maximum-speed-limit-30--g1', 270, 'other'));
+    run(st2, 0, 200); ok(st2.speedMemory() && st2.speedMemory().limit === 30);
+    run(st2, 220, 420); eq(st2.speedMemory(), null, 'pēc beigu zīmes');
+    const st3 = store(); st3.add(sp(100, -7, 30, 270)); st3.add(sp(300, -7, 70, 270));
+    run(st3, 0, 420); eq(st3.speedMemory().limit, 70, 'jaunā zīme');
+    const gen = sp(100, -7, 30, 270); gen.wayStart = true;  // lietotnes uzlikta OSM ceļa sākuma zīme — nav fiziska zīme
+    const st4 = store(); st4.add(gen); run(st4, 0, 300); eq(st4.speedMemory(), null, 'wayStart neņem');
+  });
+  test('F7: apdzīvotas vietas zīme nosaka noklusējumu un atceļ iepriekšējo zīmi', () => {
+    roadIndex.setSegments(road(-200, 0, 900, 0, 'A'), COVER);
+    const st = store(); st.add(sp(100, -7, 70, 270)); st.add(sign(300, -7, 'information--end-of-built-up-area--g1', 270, 'other'));
+    run(st, 0, 420);
+    eq(st.speedMemory(), null); ok(st.settlement && st.settlement.urban === false, 'ārpus apdzīvotas vietas');
+    eq(speedSignKind({ value: 'information--built-up-area--g1', cat: 'other' }).kind, 'urban');
+    eq(speedSignKind({ cat: 'other', kind: 'city', title: 'Apdzīvotas vietas sākums' }).kind, 'urban');
+  });
+  test('F7: nav zīmes un OSM maxspeed → 50 ~ (pilsēta) / 90 ~ (ārpus)', () => {
+    const u = decideSpeedLimit({ urban: true, cls: 'primary' }); eq(u.limit, 50); eq(u.approx, true); eq(u.source, 'default');
+    const r = decideSpeedLimit({ urban: false, cls: 'primary' }); eq(r.limit, 90); eq(r.approx, true);
+    eq(decideSpeedLimit({ cls: 'minor' }).limit, 50, 'nezināms, maza iela → 50');
+    eq(decideSpeedLimit({ cls: 'primary' }), null, 'nezināms, liels ceļš → nerāda');
+    const o = decideSpeedLimit({ osm: { limit: 70 }, urban: true }); eq(o.limit, 70); eq(o.source, 'osm'); eq(o.approx, false);
+    const i = decideSpeedLimit({ osm: { limit: 50, implicit: true } }); eq(i.limit, 50); eq(i.approx, true, 'LV:urban — aptuveni');
+    eq(decideSpeedLimit({ living: true }).limit, 20);
+  });
+  test('F7: pārsniegšana — 75 pie 50 → brīdina; ātrums nav zināms → nē', () => {
+    eq(isOverspeed(75, { limit: 50 }), true); eq(isOverspeed(75, { limit: 50, approx: true }), true, 'arī aptuvenam');
+    eq(isOverspeed(null, { limit: 50 }), false); eq(isOverspeed(53, { limit: 50 }), false, '+3 pielaide');
+    eq(isOverspeed(75, { limit: 50 }, false), false, 'brīdinājums izslēgts'); eq(isOverspeed(75, null), false);
+  });
+  test('F7: aizture pret mirgošanu — ~5 s vai ~100 m', () => {
+    const h = new SpeedLimitHold(), a = LL(0, 0), b = LL(50, 0), c = LL(160, 0);
+    eq(h.update({ limit: 50 }, 0, a.lat, a.lng).limit, 50);
+    eq(h.update(null, 3000, b.lat, b.lng).limit, 50, '3 s, 50 m — vēl rāda');
+    eq(h.update(null, 6000, b.lat, b.lng), null, 'pēc 5 s');
+    h.update({ limit: 30 }, 7000, a.lat, a.lng);
+    eq(h.update(null, 8000, c.lat, c.lng), null, 'pēc 100 m');
+  });
+  test('F7: updateLimit strādā bez navigācijas, testa ātrums no iestatījumiem, notikumi', () => {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+    const fn = name => { const i = app.indexOf('function ' + name + '('); return app.slice(i, app.indexOf('\n}\n', i)); };
+    const ul = fn('updateLimit'), rs = fn('resolveSpeedLimit');
+    ok(/resolveSpeedLimit\(\)/.test(ul) && !/state\.nav\.active/.test(ul), 'updateLimit nav atkarīgs no navigācijas');
+    ok(/isOverspeed\(state\.me\.speedKmh, res, state\.warn\)/.test(ul) && /speedHold\.update/.test(ul));
+    ok(/'speedlimitchange'/.test(ul) && /'overspeed'/.test(ul) && !/setStatus/.test(ul + rs), 'notikumi, nav setStatus');
+    ok(/signs\.speedMemory/.test(rs) && /lastRouteSignBefore/.test(rs) && /decideSpeedLimit/.test(rs));
+    ok(/onFix\(la, lo, state\.testSpeed, hd, 300\)/.test(app), 'klikšķis — testa ātrums un kurss');
+    ok(/LIMIT_MATCH_M = 20/.test(app) && /\["maxspeed:type"\]/.test(app) && /"living_street"/.test(app));
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    ok(/id="testSpeed"/.test(html) && /class="limit-approx"/.test(html) && /speedlimit\.js\?v=\d+/.test(html));
   });
 }
 
