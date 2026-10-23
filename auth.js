@@ -2,8 +2,8 @@
 //
 // Principi (F1):
 //   • Atverot lietotni, konts NETIEK veidots. Esoša sesija tiek tikai atjaunota.
-//   • Jaunu (anonīmu) kontu izveido tikai pēc lietotāja darbības — atverot „Kopā” vai ieslēdzot
-//     ātruma dalīšanu — un tikai tad, ja lietotājs ir piekritis noteikumiem un privātuma politikai.
+//   • Jaunu (anonīmu) kontu izveido tikai pēc lietotāja darbības — atverot „Kopā”, ziņojot par
+//     notikumu vai ieslēdzot ātruma dalīšanu — un tikai tad, ja lietotājs ir piekritis noteikumiem un privātuma politikai.
 //   • Anonīmu kontu var „saglabāt” ar e-pastu (Magic Link) vai Google — lietotāja ID nemainās.
 //   • Ja e-pasts jau pieder citam kontam: pieslēdzas tam, un anonīmā konta dati tiek pārcelti
 //     ar vienreizēju pārcelšanas kodu (SQL funkcijas supabase/rides-7-account.sql).
@@ -11,7 +11,7 @@
 // cz.traffic.session tiek pārņemtas, nevis izmestas).
 
 const CZ_TERMS_VERSION = '2026-10-23';
-const CZ_PRIVACY_VERSION = '2026-10-23';
+const CZ_PRIVACY_VERSION = '2026-10-23.2';     // .2 — kopīgi ziņojumi uz ceļa (F10)
 const CZ_AUTH_KEY = 'cz.auth.session';
 const CZ_CONSENT_KEY = 'cz.consent';
 const CZ_TRANSFER_KEY = 'cz.auth.transfer';

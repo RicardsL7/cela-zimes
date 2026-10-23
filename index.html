@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=93">
+  <link rel="stylesheet" href="style-gl.css?v=95">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -149,9 +149,10 @@
       <h2 id="reportTitle">Ziņot par notikumu</h2>
       <button id="closeReport" class="link-btn">Aizvērt</button>
     </div>
+    <p id="reportMsg" class="rep-msg" role="status" hidden></p>
     <div id="reportGrid" class="report-grid"></div>
-    <p class="fine">Ziņojums tiek pievienots tavā vietā uz ceļa un pazūd pats (piem. policija pēc 1 h).
-      Lietotnei nav sava servera, tāpēc ziņojumi redzami tikai šajā ierīcē.</p>
+    <p class="fine">Ziņojums tiek pievienots tavā vietā uz ceļa, to redz visi lietotāji tuvumā, un tas pazūd pats
+      (piem. policija pēc 1 h) vai tad, kad divi citi lietotāji atzīmē „vairs nav”. Kas ziņoja, citi neredz.</p>
   </section>
 
   <!-- Vietas tuvumā -->
@@ -265,7 +266,7 @@
       <p>Ceļa Zīmes rāda ceļa zīmes, ātruma ierobežojumus un radarus, ved pa maršrutu un palīdz braukt kopā. Lai lietotu lietotni, jāpiekrīt lietošanas noteikumiem un privātuma politikai.</p>
       <ul class="consent-list">
         <li>Atrašanās vietu lietotne izmanto kartei, navigācijai un brīdinājumiem; maršruta aprēķinam un meklēšanai vieta tiek nosūtīta karšu pakalpojumiem.</li>
-        <li>Konts tiek izveidots tikai tad, ja izmanto „Kopā” (kopbraucienus) vai pats ieslēdz ātruma dalīšanu.</li>
+        <li>Konts tiek izveidots tikai tad, ja izmanto „Kopā” (kopbraucienus), ziņo par notikumu uz ceļa vai pats ieslēdz ātruma dalīšanu.</li>
         <li>Ātruma dalīšana sastrēgumu kartei ir atsevišķa, brīvprātīga izvēle — to vari ieslēgt vai izslēgt jebkurā brīdī.</li>
       </ul>
       <p class="consent-links"><a href="terms.html" target="_blank" rel="noopener">Lietošanas noteikumi</a> · <a href="privacy.html" target="_blank" rel="noopener">Privātuma politika</a></p>
@@ -291,16 +292,17 @@
   <script src="nav.js?v=93"></script>
   <script src="times.js?v=93"></script>
   <script src="parking.js?v=93"></script>
-  <script src="alerts.js?v=93"></script>
+  <script src="alerts.js?v=95"></script>
+  <script src="reports.js?v=95"></script>
   <script src="places.js?v=93"></script>
   <script src="model.js?v=93"></script>
   <script src="rides-config.js?v=93"></script>
-  <script src="auth.js?v=93"></script>
+  <script src="auth.js?v=95"></script>
   <script src="mly-config.js?v=93"></script>
   <script src="traffic.js?v=93"></script>
   <script src="rides.js?v=93"></script>
-  <script src="rides-ui.js?v=94"></script>
-  <script src="app-gl.js?v=93"></script>
+  <script src="rides-ui.js?v=95"></script>
+  <script src="app-gl.js?v=95"></script>
   <script src="park-gl.js?v=93"></script>
   <script src="park-dest-gl.js?v=93"></script>
   <script src="traffic-gl.js?v=93"></script>

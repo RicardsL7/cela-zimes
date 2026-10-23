@@ -7,10 +7,8 @@
 //     luksofori, skolas zonas (brīdinājuma zīmes), laika ierobežojumi, kas ŠOBRĪD ir spēkā;
 //   • OpenStreetMap: būvējami / slēgti ceļi (highway=construction), bīstamas vietas (hazard=*);
 //   • Open-Meteo: laikapstākļi tavā atrašanās vietā (migla, stiprs lietus, sniegs, apledojums, vētra);
-//   • lietotāja ziņojumi (policija, negadījums, sastrēgums, bedre u.c.) — ar derīguma laiku.
-//     Lietotnei nav sava servera, tāpēc ziņojumi glabājas tikai šajā ierīcē.
-// Veidi, kuriem pašlaik nav datu avota (piem. citu lietotāju ziņojumi, reāllaika sastrēgumi,
-// plūdi), ir aprakstīti ALERT_TYPES, bet kartē parādās tikai tad, ja tos kāds avots dod.
+//   • lietotāju ziņojumi (policija, negadījums, sastrēgums, bedre u.c.) — kopīgi visiem, glabājas
+//     serverī ar derīguma laiku (reports.js, supabase/reports.sql; ttl šeit = report_ttl serverī).
 
 const ALERT_GROUP_COLORS = {
   police: '#2563eb', camera: '#334155', accident: '#dc2626', jam: '#be123c', works: '#f97316',
@@ -23,9 +21,9 @@ const ALERT_TYPES = {
   'police-hidden':  { label: 'Slēptā policija',             group: 'police',   ttl: 60,  report: true },
   'camera-fixed':   { label: 'Ātruma kamera',               group: 'camera',   ttl: 43200, report: true },   // 30 dienas
   'camera-mobile':  { label: 'Mobilais fotoradars',         group: 'camera',   ttl: 120, report: true },
-  'accident':       { label: 'Ceļu satiksmes negadījums',   group: 'accident', ttl: 90,  report: true },
+  'accident':       { label: 'Ceļu satiksmes negadījums',   group: 'accident', ttl: 120,  report: true },
   'jam':            { label: 'Sastrēgums / lēna satiksme',  group: 'jam',      ttl: 30,  report: true },
-  'roadworks':      { label: 'Ceļa remontdarbi',            group: 'works',    ttl: 720, report: true },
+  'roadworks':      { label: 'Ceļa remontdarbi',            group: 'works',    ttl: 1440, report: true },
   'closure':        { label: 'Ceļš slēgts',                 group: 'closure',  ttl: 360, report: true },
   'lane-closed':    { label: 'Slēgta josla',                group: 'closure',  ttl: 240, report: true },
   'object':         { label: 'Priekšmets uz ceļa',          group: 'hazard',   ttl: 60,  report: true },

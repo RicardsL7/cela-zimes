@@ -10,7 +10,7 @@
 <main class="legal">
   <p class="back"><a href="./">← Atpakaļ uz lietotni</a></p>
   <h1>Privātuma politika</h1>
-  <p class="ver">Versija 2026-10-23 · Ceļa Zīmes</p>
+  <p class="ver">Versija 2026-10-23.2 · Ceļa Zīmes</p>
   <p class="todo">Šī politika vēl jāpapildina: laukus <b>[AIZPILDĪT]</b> lietotnes īpašnieks aizpilda pirms publiskošanas.</p>
 
   <h2>1. Kas apstrādā datus</h2>
@@ -24,12 +24,12 @@
       kartes attēli — OpenFreeMap; meklēšana — Photon (komoot) un Nominatim (OpenStreetMap), saņem ierakstīto tekstu;
       maršruti — OSRM (project-osrm.org), saņem sākuma un galamērķa koordinātas; ceļa zīmes — Mapillary (Meta), saņem redzamo kartes apgabalu;
       ielu dati — OpenStreetMap / Overpass; laikapstākļi — Open-Meteo, saņem aptuvenu atrašanās vietu (~100 m); burti — Google Fonts.</li>
-    <li><b>Ierīcē</b> (pārlūka atmiņā) glabājas iestatījumi, tavi ziņojumi par notikumiem (policija, bedre u.c. — tie pašlaik netiek sūtīti uz serveri), redzēto radaru saraksts un kešatmiņa.</li>
+    <li><b>Ierīcē</b> (pārlūka atmiņā) glabājas iestatījumi, redzēto radaru saraksts un kešatmiņa.</li>
     <li>Kad ierīce kartē atrod ātruma kameras zīmi, tās Mapillary numurs un koordinātas tiek nosūtīti kopīgajam radaru sarakstam — bez jebkādas informācijas par tevi.</li>
   </ul>
 
   <h2>3. Konts (kopbraucieni „Kopā”)</h2>
-  <p>Konts tiek izveidots tikai tad, kad atver „Kopā” vai pats ieslēdz ātruma dalīšanu. Sākumā tas ir anonīms (bez e-pasta). Ja izvēlies to saglabāt, tiek piesaistīts tavs e-pasts vai Google konts.</p>
+  <p>Konts tiek izveidots tikai tad, kad atver „Kopā”, ziņo par notikumu uz ceļa vai pats ieslēdz ātruma dalīšanu. Sākumā tas ir anonīms (bez e-pasta). Ja izvēlies to saglabāt, tiek piesaistīts tavs e-pasts vai Google konts.</p>
   <ul>
     <li><b>Konta dati:</b> konta ID, e-pasts vai Google identitāte (ja piesaistīta), piekrišanas noteikumiem un privātuma politikai (versija un laiks).</li>
     <li><b>Profils:</b> vārds, tālrunis, auto apraksts (ja norādīts). Vārdu un auto redz citi kopbraucienu lietotāji; tālruni — tikai tas, ar kuru brauciens ir saskaņots.</li>
@@ -42,10 +42,13 @@
   <h2>4. Kartes maksājumi</h2>
   <p>Maksājumus apstrādā <b>Stripe</b> (Stripe Payments Europe, Ltd.) kā neatkarīgs pārzinis. Kartes datus redz tikai Stripe. Šofera identitātes un bankas konta datus pieslēgšanās laikā ievāc Stripe. Lietotne glabā tikai Stripe konta numuru (acct_…) un maksājuma sesijas numuru. Lietotne pašlaik darbojas testa režīmā — īsta nauda netiek iekasēta.</p>
 
-  <h2>5. Ātruma dalīšana sastrēgumu kartei (brīvprātīga)</h2>
+  <h2>5. Ziņojumi par notikumiem uz ceļa</h2>
+  <p>Kad ziņo par notikumu (policija, negadījums, bedre u.c.), serverī tiek saglabāts notikuma veids, vieta uz ceļa, braukšanas virziens, laiks un tava konta ID. Citi lietotāji redz notikumu kartē, bet <b>neredz, kas ziņoja</b>. Ja atzīmē „vēl ir” / „vairs nav”, tiek saglabāta atzīme ar tava konta ID (lai katrs varētu atzīmēt tikai vienreiz). Konta ID vajadzīgs, lai ierobežotu viltotus ziņojumus (līdz 10 stundā) un lai tu varētu izdzēst savu ziņojumu. Nolūks: brīdināt citus vadītājus (leģitīmās intereses — ceļu satiksmes drošība).</p>
+
+  <h2>6. Ātruma dalīšana sastrēgumu kartei (brīvprātīga)</h2>
   <p>Tikai ja to ieslēdz: tiek sūtīts braukšanas ātrums pa ielu posmiem (~posma šūna, virziens, ceļa klase, laiks). Mērījumos <b>nav</b> tava konta ID, vārda vai maršruta; pirmie un pēdējie 400 m netiek sūtīti. Mērījumi glabājas 28 dienas. Lai ierobežotu ļaunprātīgu izmantošanu, pie konta 1 dienu glabājas nosūtīto mērījumu skaits. Atsaukt var jebkurā brīdī iestatījumos.</p>
 
-  <h2>6. Kur dati glabājas un kas tos apstrādā</h2>
+  <h2>7. Kur dati glabājas un kas tos apstrādā</h2>
   <ul>
     <li><b>Supabase</b> — datubāze un konti, serveri Īrijā (ES).</li>
     <li><b>GitHub Pages</b> — lietotnes lapu mitināšana (var reģistrēt IP adreses).</li>
@@ -54,18 +57,19 @@
   </ul>
   <p>Dati netiek pārdoti un netiek izmantoti reklāmai.</p>
 
-  <h2>7. Cik ilgi</h2>
+  <h2>8. Cik ilgi</h2>
   <ul>
     <li>Konta, profila, braucienu, čata un piekrišanu dati — līdz konta dzēšanai.</li>
+    <li>Ziņojumi par notikumiem un atzīmes — līdz derīguma beigām (policija 1 h, bedre 3 dienas u.c.) un vēl 2 dienas, tad tiek dzēsti; dzēšot kontu — uzreiz.</li>
     <li>Ātruma mērījumi — 28 dienas; mērījumu skaita ieraksts — 1 diena.</li>
     <li>Stripe maksājumu ieraksti — saskaņā ar Stripe un grāmatvedības prasībām (pēc konta dzēšanas tie paliek Stripe).</li>
   </ul>
 
-  <h2>8. Tavas tiesības</h2>
+  <h2>9. Tavas tiesības</h2>
   <p>Tev ir tiesības piekļūt saviem datiem, tos labot (profils „Kopā”), dzēst (<b>„Kopā” → Konts → Dzēst kontu</b> vai iestatījumos „Konts un dati”), ierobežot apstrādi un iebilst, kā arī saņemt savus datus. Rakstiet uz <b>[AIZPILDĪT: e-pasts]</b>. Sūdzību var iesniegt Datu valsts inspekcijai (www.dvi.gov.lv).</p>
-  <p>Dzēšot kontu, tiek dzēsts konts un visi ar to saistītie dati 3. punktā; šofera Stripe konts tiek slēgts. Paliek anonīmie ātruma mērījumi (tos nevar sasaistīt ar tevi) un Stripe maksājumu ieraksti.</p>
+  <p>Dzēšot kontu, tiek dzēsts konts un visi ar to saistītie dati 3. un 5. punktā; šofera Stripe konts tiek slēgts. Paliek anonīmie ātruma mērījumi (tos nevar sasaistīt ar tevi) un Stripe maksājumu ieraksti.</p>
 
-  <h2>9. Izmaiņas</h2>
+  <h2>10. Izmaiņas</h2>
   <p>Ja politika būtiski mainās, lietotne to parāda un lūdz piekrist jaunajai versijai.</p>
 </main>
 </body>

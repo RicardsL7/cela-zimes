@@ -922,7 +922,7 @@ function ridesAccountView() {
     } });
     wrap.append(rEl('div', { class: 'r-acc-danger' },
       rEl('b', { text: 'Dzēst kontu?' }),
-      rEl('p', { text: 'Tiks dzēsts: tavs vārds, tālrunis, auto apraksts, braucienu pieprasījumi un piedāvājumi, čata ziņas, piekrišanu ieraksti un e-pasta / Google piesaiste. Ja esi šoferis — kartes maksājumu (Stripe) konts tiks slēgts.' }),
+      rEl('p', { text: 'Tiks dzēsts: tavs vārds, tālrunis, auto apraksts, braucienu pieprasījumi un piedāvājumi, čata ziņas, tavi ziņojumi uz ceļa un atzīmes, piekrišanu ieraksti un e-pasta / Google piesaiste. Ja esi šoferis — kartes maksājumu (Stripe) konts tiks slēgts.' }),
       rEl('p', { text: 'Paliek: ar karti veikto maksājumu ieraksti Stripe sistēmā (tos prasa grāmatvedības likumi) un anonīmie sastrēgumu mērījumi (tajos nav tava vārda vai konta). Šo darbību nevar atsaukt.' }),
       rEl('div', { class: 'r-actions' }, rEl('button', { class: 'btn ghost', type: 'button', text: 'Atcelt', onclick: () => { rides.accountMode = null; rides.accountMsg = null; ridesRender(true); } }), yes)), msg);
     return wrap;

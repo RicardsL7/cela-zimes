@@ -737,3 +737,23 @@ html.navigating .alt-bubble { display: none; }
 .r-acc-danger p { margin: 6px 0; font: 500 14px/1.45 var(--font-body); }
 .r-acc-legal a, .set-legal a { color: var(--accent); }
 .acc-row .fine { font-weight: 500; }
+
+/* ---- Kopīgi ziņojumi (F10) ---- */
+.rep-msg { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; font-weight: 600; font-size: 14.5px; line-height: 1.35; }
+.rep-msg.err { background: color-mix(in srgb, var(--danger) 14%, var(--panel)); color: var(--danger); }
+.rep-msg.info { background: var(--bg); color: var(--muted); }
+.report-btn:disabled { opacity: .55; }
+.popup-actions { display: flex; gap: 8px; margin-top: 8px; }
+.popup-actions .popup-btn { margin-top: 0; flex: 1; padding: 9px 10px; font-size: 14px; }
+.popup-msg { margin-top: 6px; font-size: 13px; font-weight: 600; }
+.popup-msg.err { color: var(--danger); }
+.popup-msg.ok { color: var(--go); }
+.popup-msg.info { color: var(--muted); }
+.rep-ask { position: fixed; z-index: 58; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 112px); transform: translate(-50%, 20px);
+  opacity: 0; pointer-events: none; display: flex; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 24px);
+  padding: 8px 8px 8px 10px; border-radius: 16px; background: var(--panel); color: var(--fg); box-shadow: var(--shadow);
+  font-weight: 600; font-size: 15px; transition: opacity .25s, transform .25s; }
+.rep-ask.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.rep-ask span { min-width: 0; }
+.rep-ask .btn.small { padding: 8px 11px; font-size: 14px; white-space: nowrap; }
+.rep-ask-x { border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; padding: 4px 6px; cursor: pointer; }
