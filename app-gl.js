@@ -1305,7 +1305,8 @@ function drawAltRoutes() {
     b.innerHTML = `<span class="ra-time"></span><span class="ra-txt"><span class="ra-lbl"></span><span class="ra-meta"></span></span>`;
     b.querySelector('.ra-time').textContent = navTime(routeEta(r));
     b.querySelector('.ra-lbl').textContent = l;
-    b.querySelector('.ra-meta').textContent = navDist(r.distance) + jam;
+    const bar = !r.barriers ? '' : r.barriers.length ? ' · ⚠ barjera' : ' · bez barjerām';
+    b.querySelector('.ra-meta').textContent = navDist(r.distance) + jam + bar;
     b.addEventListener('click', () => chooseRoute(i, true));
     box.append(b);
   });
@@ -1329,6 +1330,7 @@ function fillRouteCard(route) {
   $('routeTime').textContent = navTime(routeEta(route));
   $('routeMeta').textContent = `${navDist(route.distance)} · ieradīsies ${clockIn(routeEta(route))}`;
   if (typeof trafficLine === 'function') trafficLine(route);
+  showBarrierCard();                               // F4: barjeras brīdinājums šim maršrutam
 }
 // Sastrēgumi visiem maršrutiem; ja cits maršruts ar sastrēgumiem ir ātrāks (≥1 min) — izvēlas to.
 async function trafficForPreview(routes) {
@@ -1337,6 +1339,147 @@ async function trafficForPreview(routes) {
   const best = routes.reduce((a, b) => routeEta(b) < routeEta(a) ? b : a);
   if (!state.nav.altPicked && best !== state.nav.route && routeEta(state.nav.route) - routeEta(best) >= 60) chooseRoute(routes.indexOf(best), false);
   else { fillRouteCard(state.nav.route); drawAltRoutes(); }
+}
+
+// ---------- F4: barjeras un privāti ceļi maršrutā ----------
+// Pēc priekšskatījuma (asinhroni, nebloķē „Sākt”) vienā Overpass vaicājumā gar visiem maršrutiem meklē vārtus /
+// barjeras / privātus ceļus. Brīdinājums — maršruta kartītē (ne statusa joslā, F9), barjera — marķieris kartē.
+// Ja kāda alternatīva iet bez barjerām — izvēlas to; citādi piedāvā apbraukt vai braukt līdz ieejai.
+const BARRIER_WAIT_MS = 45000;
+const barrierCache = new Map();      // Overpass vaicājums → elementi (sesijas laikā)
+let barrierMarkers = [];
+async function barrierElements(routes) {
+  const q = barrierQuery(routes);
+  if (barrierCache.has(q)) return barrierCache.get(q);
+  // Asinhroni — „Sākt” negaida. Overpass serveri bieži pārslogoti (mērīts: 16–44 s), tāpēc gaida līdz 45 s.
+  const j = await fetchOverpass(q, BARRIER_WAIT_MS);
+  // Pārslogots serveris var atdot tukšu sarakstu ar piezīmi „Query timed out” — tas nav „barjeru nav”
+  if (!j || !Array.isArray(j.elements) || /error|timed out/i.test(j.remark || '')) throw new Error('overpass');
+  const els = j.elements;
+  if (barrierCache.size > 30) barrierCache.delete(barrierCache.keys().next().value);
+  barrierCache.set(q, els);
+  return els;
+}
+function clearBarriers() {
+  for (const m of barrierMarkers) m.remove();
+  barrierMarkers = [];
+  const box = $('routeBarrier');
+  if (box) { box.hidden = true; box.textContent = ''; }
+}
+async function barriersForPreview(routes, dest) {
+  let els;
+  try { els = await barrierElements(routes); } catch { return; }        // Overpass neatbild — maršruts kā līdz šim
+  if (state.nav.routes !== routes || state.nav.dest !== dest || state.nav.active) return;   // vecs rezultāts
+  for (const r of routes) r.barriers = routeBarriers(r, els);
+  state.nav.barrierEls = els;
+  const sel = state.nav.route;
+  if (!state.nav.altPicked && sel.barriers.length) {
+    const clean = routes.filter(r => !r.barriers.length && routeEta(r) <= routeEta(sel) * 1.45)
+      .sort((a, b) => routeEta(a) - routeEta(b))[0];
+    if (clean) { chooseRoute(routes.indexOf(clean), false); return; }   // chooseRoute pārzīmē arī kartīti
+  }
+  fillRouteCard(state.nav.route);
+  drawAltRoutes();
+}
+const BARRIER_PIN = '<svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="7" width="4" height="20" rx="1.5" fill="#333"/><rect x="6" y="10" width="24" height="6" rx="2" fill="#fff" stroke="#c81e3a" stroke-width="1.5"/><path d="M11 10l-3 6M17 10l-3 6M23 10l-3 6M29 10l-3 6" stroke="#c81e3a" stroke-width="2.2"/></svg>';
+function barrierText(b) {
+  return b.kind === 'private' ? '⚠ Maršruts iet caur privātu teritoriju — iespējams, iebraukt nevar.'
+    : '⚠ Maršrutā ir barjera — iespējams, iebraukt nevar.';
+}
+// Kartītes brīdinājums un marķieri izvēlētajam maršrutam
+function showBarrierCard() {
+  const box = $('routeBarrier');
+  if (!box) return;
+  for (const m of barrierMarkers) m.remove();
+  barrierMarkers = [];
+  box.textContent = '';
+  const r = state.nav.route;
+  if (!r || state.nav.active || !r.barriers) { box.hidden = true; return; }
+  const say = (cls, text) => { const p = document.createElement('div'); p.className = cls; p.textContent = text; box.append(p); return p; };
+  if (r.barrierNote) say('rb-note', r.barrierNote);
+  if (r.barrierMsg) say('rb-note rb-fail', r.barrierMsg);
+  const list = r.barriers;
+  box.classList.toggle('ok', !list.length);
+  if (!list.length) { box.hidden = !r.barrierNote && !r.barrierMsg; return; }
+  const first = list[0];
+  say('rb-txt', barrierText(first) + ` (pēc ${navDist(first.along)})`);
+  for (const b of list) {
+    const el = document.createElement('div');
+    el.className = 'barrier-pin';
+    el.title = b.kind === 'private' ? 'Privāts ceļš' : 'Barjera';
+    el.innerHTML = BARRIER_PIN;
+    barrierMarkers.push(new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([b.lng, b.lat]).addTo(map));
+  }
+  if (!r.barrierTried) {
+    const atDest = barrierAtDestination(r, first);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn rb-btn';
+    btn.textContent = atDest ? 'Maršruts līdz ieejai' : 'Apbraukt barjeru';
+    btn.addEventListener('click', () => (atDest ? barrierToEntry : barrierDetour)(btn));
+    box.append(btn);
+  }
+  box.hidden = false;
+}
+// Jaunu maršrutu pievieno sarakstam un izvēlas (lietotājs pats to lūdza)
+function addBarrierRoute(route) {
+  state.nav.routes = (state.nav.routes || []).concat(route);
+  chooseRoute(state.nav.routes.length - 1, true);
+}
+function barrierFailed(r, text) {
+  r.barrierTried = true;
+  r.barrierMsg = text;
+  showBarrierCard();
+}
+// Apbraukšana: 2–4 starppunkti ~200–300 m sāniski no barjeras; pirmais maršruts, kas pēc pārbaudes ir tīrs
+async function barrierDetour(btn) {
+  const r = state.nav.route, dest = state.nav.dest, routes = state.nav.routes;
+  if (!r || !r.barriers || !r.barriers.length) return;
+  btn.disabled = true; btn.textContent = 'Meklē apbraucamo ceļu…';
+  const from = { lat: r.coords[0][1], lng: r.coords[0][0] };
+  const vias = barrierDetourPoints(r, r.barriers[0]);
+  const known = state.nav.barrierEls || [];
+  let found = null;
+  for (let i = 0; i < vias.length && !found; i += 2) {
+    const got = (await Promise.all(vias.slice(i, i + 2).map(v =>
+      osrmFetch([from, v, dest], '&continue_straight=true').then(d => d.routes && d.routes[0] && parseOsrmRoute(d.routes[0])).catch(() => null))))
+      .filter(c => c && !routeBarriers(c, known).length)                // jau zināmo barjeru neapbrauc — neder
+      .sort((a, b) => a.duration - b.duration);
+    if (state.nav.routes !== routes || state.nav.dest !== dest || state.nav.active) return;
+    if (!got.length) continue;
+    let els = null;
+    try { els = await barrierElements(got); } catch { /* Overpass neatbild — ņem to, kas apbrauc zināmo barjeru */ }
+    if (state.nav.routes !== routes || state.nav.dest !== dest || state.nav.active) return;
+    found = els ? got.find(c => !routeBarriers(c, els).length) : got[0];
+    if (found) {
+      found.barriers = [];
+      if (!els) found.barrierNote = 'Apbrauc zināmo barjeru (pārējo ceļu pārbaudīt neizdevās).';
+    }
+  }
+  if (!found) return barrierFailed(r, 'Maršrutu bez barjeras atrast neizdevās — pie barjeras, iespējams, būs jāapgriežas.');
+  r.barrierTried = true;
+  found.barrierTried = true;
+  addBarrierRoute(found);
+}
+// Galamērķis aiz barjeras (slēgta teritorija): maršruts līdz pēdējam punktam pirms barjeras
+async function barrierToEntry(btn) {
+  const r = state.nav.route, dest = state.nav.dest, routes = state.nav.routes;
+  if (!r || !r.barriers || !r.barriers.length) return;
+  btn.disabled = true; btn.textContent = 'Meklē maršrutu līdz ieejai…';
+  const from = { lat: r.coords[0][1], lng: r.coords[0][0] };
+  const entry = barrierEntryPoint(r, r.barriers[0]);
+  let route = null;
+  try {
+    const d = await osrmFetch([from, entry]);
+    route = d.routes && d.routes[0] && parseOsrmRoute(d.routes[0]);
+  } catch { /* */ }
+  if (state.nav.routes !== routes || state.nav.dest !== dest || state.nav.active) return;
+  if (!route) return barrierFailed(r, 'Maršrutu līdz ieejai atrast neizdevās. Pamēģini vēlreiz.');
+  route.barriers = routeBarriers(route, state.nav.barrierEls || []);
+  route.barrierNote = 'Galamērķis aiz barjeras — maršruts līdz ieejai.';
+  route.barrierTried = true;
+  r.barrierTried = true;
+  addBarrierRoute(route);
 }
 
 async function selectDestination(place) {
@@ -1381,6 +1524,8 @@ async function previewRoute() {
     const route = routes[0];
     state.nav.routes = routes;
     state.nav.altPicked = false;
+    state.nav.barrierEls = null;
+    clearBarriers();
     state.nav.route = route;
     drawRoute(route);
     signs.setRoute(route);     // rāda tikai maršruta zīmes manā virzienā
@@ -1397,6 +1542,7 @@ async function previewRoute() {
     updateRouteSummary();
     if ($('routeTraffic')) $('routeTraffic').hidden = true;
     trafficForPreview(routes);                     // sastrēgumi visos maršrutos (traffic-gl.js)
+    barriersForPreview(routes, dest);              // F4: barjeras / privāti ceļi (Overpass, asinhroni)
     // Telefonā tastatūra vēl aizveras — karti pielāgo, kad ekrāns ir pilnā izmērā.
     setTimeout(fitRoute, 350);
   } catch (err) {
@@ -1464,6 +1610,7 @@ function endNav() {
   state.nav = { dest: null, route: null, active: false, offCount: 0, lastReroute: 0, along: null };
   drawRoute(null);
   clearAltRoutes();
+  clearBarriers();
   if (destMarker) { destMarker.remove(); destMarker = null; }
   document.documentElement.classList.remove('navigating');
   $('navBanner').hidden = true;
@@ -2459,6 +2606,7 @@ function wireUi() {
 function cancelPreview() {
   state.nav.route = null; state.nav.dest = null; state.nav.routes = null;
   clearAltRoutes();
+  clearBarriers();
   routePrepId++;
   setBusy('prep', null);
   signs.setRoute(null);

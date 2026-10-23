@@ -118,6 +118,164 @@ function detourPoints(from, to) {
   return out;
 }
 
+// ---------- Barjeras un privāti ceļi maršrutā (F4) ----------
+// OSRM demo serveris vārtus / barjeras bez access atzīmes uzskata par izbraucamiem, un aizliegt tos tur nevar.
+// Tāpēc maršrutu pārbauda pret OpenStreetMap datiem (Overpass) un brīdina / meklē apbraucamo ceļu ar starppunktiem.
+// Ilgtermiņā labāk būtu savs maršrutētājs ar stingrāku profilu — tad šī pārbaude kļūtu par drošības tīklu.
+const BARRIER_TYPES = new Set(['lift_gate', 'gate', 'swing_gate', 'sliding_gate', 'entrance', 'bollard']);
+const BARRIER_OPEN = /^(yes|permissive|destination)$/;
+const BARRIER_CLOSED = /^(private|no)$/;
+const BARRIER_NODE_M = 4;      // barjeras punkts uz maršruta līnijas (OSRM līnija iet tieši caur ceļa punktiem;
+                               // stabiņi gar ietvi parasti ir 5–8 m sānis — tos neskaita)
+const BARRIER_WAY_M = 3;       // privāts ceļš: maršruts iet pa to (≤ 3 m no tā līnijas)…
+const BARRIER_WAY_MIN_M = 25;  // …vismaz 25 m (šķērsojot citu ceļu, pārklājas tikai ~10 m)
+const BARRIER_END_SKIP_M = 30; // pēdējie 30 m pirms galamērķa — paša galamērķa iebrauktuve, neskaita
+const BARRIER_NO_CAR = /^(footway|path|cycleway|steps|pedestrian|bridleway|corridor|elevator|platform)$/;
+
+// Vai šim elementam (pēc tagiem) automašīnai iebraukt nevar? Svarīgākā ir konkrētākā atzīme: motorcar → motor_vehicle → access.
+function barrierAccess(tags) {
+  for (const k of ['motorcar', 'motor_vehicle', 'access']) {
+    const v = tags && tags[k];
+    if (v == null || v === '') continue;
+    if (BARRIER_OPEN.test(v)) return 'open';
+    if (BARRIER_CLOSED.test(v)) return 'closed';
+  }
+  return null;
+}
+function barrierNodeBlocks(tags) {
+  if (!tags || !BARRIER_TYPES.has(tags.barrier)) return false;
+  const acc = barrierAccess(tags);
+  if (acc === 'open') return false;
+  // "entrance" — tikai, ja atzīmes norāda vārtus (vai ka iebraukt nedrīkst)
+  if (tags.barrier === 'entrance') return acc === 'closed' || /gate/.test(tags.entrance || '') || tags.gate != null;
+  return true;
+}
+function barrierWayBlocks(tags) {
+  return !!tags && !!tags.highway && !BARRIER_NO_CAR.test(tags.highway) && barrierAccess(tags) === 'closed';
+}
+
+// Attālums (m) no punkta līdz nogrieznim a–b (lng/lat masīvi) un t (0…1) — vietējā plaknē.
+function segDist(lat, lng, a, b) {
+  const k = 111320, cos = Math.cos(lat * Math.PI / 180);
+  const ax = (a[0] - lng) * k * cos, ay = (a[1] - lat) * k, bx = (b[0] - lng) * k * cos, by = (b[1] - lat) * k;
+  const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+  const t = l2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)) : 0;
+  return { off: Math.hypot(ax + t * dx, ay + t * dy), t };
+}
+// Tuvākā vieta uz maršruta visā tā garumā: { off, along }.
+function nearestOnRoute(route, lat, lng) {
+  const { coords, cum } = route;
+  let best = { off: Infinity, along: 0 };
+  for (let i = 0; i < coords.length - 1; i++) {
+    const s = segDist(lat, lng, coords[i], coords[i + 1]);
+    if (s.off < best.off) best = { off: s.off, along: cum[i] + s.t * (cum[i + 1] - cum[i]) };
+  }
+  return best;
+}
+
+// Barjeras un privātie ceļi, pa kuriem maršruts iet. elements — Overpass "out body geom" elementi.
+// Atgriež [{ kind: 'barrier'|'private', id, type, lat, lng, along, off }] pēc attāluma no sākuma.
+function routeBarriers(route, elements) {
+  if (!route || !route.coords || route.coords.length < 2 || !Array.isArray(elements)) return [];
+  const { coords, cum } = route, total = cum[cum.length - 1];
+  const end = coords[coords.length - 1];
+  let s = 90, w = 180, n = -90, e = -180;
+  for (const c of coords) { s = Math.min(s, c[1]); n = Math.max(n, c[1]); w = Math.min(w, c[0]); e = Math.max(e, c[0]); }
+  const pad = 0.0004, inBox = (la, lo) => la >= s - pad && la <= n + pad && lo >= w - pad * 2 && lo <= e + pad * 2;
+  const out = [];
+  for (const el of elements) {
+    if (!el || !el.tags) continue;
+    if (el.type === 'node') {
+      if (el.lat == null || !inBox(el.lat, el.lon) || !barrierNodeBlocks(el.tags)) continue;
+      const p = nearestOnRoute(route, el.lat, el.lon);
+      if (p.off > BARRIER_NODE_M || p.along > total - BARRIER_END_SKIP_M) continue;
+      out.push({ kind: 'barrier', id: el.id, type: el.tags.barrier, lat: el.lat, lng: el.lon, along: p.along, off: p.off });
+    } else if (el.type === 'way') {
+      const g = (el.geometry || []).filter(Boolean).map(x => [x.lon, x.lat]);
+      if (g.length < 2 || !barrierWayBlocks(el.tags) || !g.some(x => inBox(x[1], x[0]))) continue;
+      // Piebrauktuve pašā galamērķī (service=driveway) — tas ir galamērķis, nevis šķērslis
+      if (el.tags.service === 'driveway' && g.some(x => metersBetween(x[1], x[0], end[1], end[0]) < 60)) continue;
+      let on = 0, first = null, at = null;
+      for (let i = 0; i < coords.length - 1; i++) {
+        const len = cum[i + 1] - cum[i];
+        if (!len) continue;
+        const steps = Math.max(1, Math.ceil(len / 5));
+        for (let j = 0; j < steps; j++) {
+          const t = (j + 0.5) / steps, along = cum[i] + len * t;
+          if (along > total - BARRIER_END_SKIP_M) break;
+          const lng = coords[i][0] + (coords[i + 1][0] - coords[i][0]) * t, lat = coords[i][1] + (coords[i + 1][1] - coords[i][1]) * t;
+          let off = Infinity;
+          for (let q = 0; q < g.length - 1 && off > BARRIER_WAY_M; q++) off = Math.min(off, segDist(lat, lng, g[q], g[q + 1]).off);
+          if (off <= BARRIER_WAY_M) { on += len / steps; if (first == null) { first = along; at = { lat, lng }; } }
+        }
+      }
+      if (on >= BARRIER_WAY_MIN_M) out.push({ kind: 'private', id: el.id, type: el.tags.highway, lat: at.lat, lng: at.lng, along: first, off: 0 });
+    }
+  }
+  // Vairāki stabiņi / vārti vienā vietā — viens ieraksts
+  out.sort((a, b) => a.along - b.along);
+  return out.filter((b, i) => !out.slice(0, i).some(o => o.kind === b.kind && Math.abs(o.along - b.along) < 25));
+}
+
+// Maršruta līnija Overpass "around" filtram (lat,lng,…): vienkāršota (Douglas–Peucker, 2 m pielaide — līkumi
+// paliek precīzi, taisnos posmos punktu maz), lai garam maršrutam vaicājums nav milzīgs. Vaicā tikai gar pašu līniju.
+function routeAroundLine(route, tolM = 2, maxPts = 600) {
+  const c = route.coords;
+  if (c.length < 3) return c.map(p => p[1].toFixed(5) + ',' + p[0].toFixed(5)).join(',');
+  const keep = new Uint8Array(c.length);
+  keep[0] = keep[c.length - 1] = 1;
+  const stack = [[0, c.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop();
+    let far = -1, fd = tolM;
+    for (let i = a + 1; i < b; i++) { const d = segDist(c[i][1], c[i][0], c[a], c[b]).off; if (d > fd) { fd = d; far = i; } }
+    if (far > 0) { keep[far] = 1; stack.push([a, far], [far, b]); }
+  }
+  let pts = c.filter((_, i) => keep[i]);
+  if (pts.length > maxPts) return routeAroundLine(route, tolM * 2, maxPts);
+  return pts.map(p => p[1].toFixed(5) + ',' + p[0].toFixed(5)).join(',');
+}
+// Kuras maršruta daļas pārbaudīt: īsu (≤ 12 km) — visu; garu — pirmos un pēdējos 3 km (barjeras / slēgtas teritorijas
+// gandrīz vienmēr ir pie sākuma vai galamērķa; starppilsētu posmos maršrutētājs ņem lielos ceļus, un viss maršruts
+// vienā Overpass vaicājumā pārslogotam serverim nepaspēj).
+const BARRIER_FULL_M = 12000, BARRIER_END_M = 3000;
+function routeCheckParts(route) {
+  const { coords, cum } = route, total = cum[cum.length - 1];
+  if (total <= BARRIER_FULL_M) return [{ coords }];
+  const part = (a, b) => {
+    const pa = routePointAt(route, a), pb = routePointAt(route, b), out = [[pa.lng, pa.lat]];
+    for (let i = pa.idx + 1; i <= pb.idx; i++) out.push(coords[i]);
+    out.push([pb.lng, pb.lat]);
+    return { coords: out };
+  };
+  return [part(0, BARRIER_END_M), part(total - BARRIER_END_M, total)];
+}
+// Viens vaicājums visiem maršrutiem: ceļi gar līniju (kopa .w) → no tiem privātie; barjeru punkti gar līniju.
+function barrierQuery(routes) {
+  const lines = [...new Set(routes.flatMap(r => routeCheckParts(r).map(p => routeAroundLine(p))))];
+  const ways = lines.map(l => `way(around:${BARRIER_WAY_M + 2},${l})["highway"];`).join('');
+  const nodes = lines.map(l => `node(around:${BARRIER_NODE_M + 2},${l})["barrier"~"^(lift_gate|gate|swing_gate|sliding_gate|entrance|bollard)$"];`).join('');
+  return `[out:json][timeout:25];(${ways})->.w;(${nodes}way.w["access"~"^(private|no)$"];way.w["motor_vehicle"~"^(private|no)$"];way.w["motorcar"~"^(private|no)$"];);out body geom;`;
+}
+
+// Starppunkti barjeras apbraukšanai: ~200 un ~300 m sāniski no barjeras abās pusēs (perpendikulāri maršrutam).
+function barrierDetourPoints(route, bar) {
+  const a = routePointAt(route, Math.max(0, bar.along - 15)), b = routePointAt(route, bar.along + 15);
+  const cos = Math.cos(bar.lat * Math.PI / 180);
+  const dx = (b.lng - a.lng) * cos, dy = b.lat - a.lat, d = Math.hypot(dx, dy) || 1;
+  const out = [];
+  for (const m of [200, 300]) for (const side of [1, -1]) {
+    const off = m / 111320;
+    out.push({ lat: bar.lat + side * off * dx / d, lng: bar.lng - side * off * dy / d / cos });
+  }
+  return out;
+}
+// Barjera pie paša galamērķa (galamērķis slēgtā teritorijā) — pēdējie 400 m.
+const BARRIER_DEST_M = 400;
+function barrierAtDestination(route, bar) { return route.cum[route.cum.length - 1] - bar.along <= BARRIER_DEST_M; }
+// Punkts maršrutā tieši pirms barjeras (ieeja) — tur beidzas „maršruts līdz ieejai”.
+function barrierEntryPoint(route, bar) { const p = routePointAt(route, Math.max(0, bar.along - 15)); return { lat: p.lat, lng: p.lng }; }
+
 // Laiks ar sastrēgumiem.
 const routeEta = r => r.duration + (r.jamSec || 0);
 
@@ -294,4 +452,5 @@ function smoothProgress(prev, next, maxBack = 30) {
   return prev - next <= maxBack ? prev : next;
 }
 
-if (typeof module !== 'undefined') module.exports = { routeEta, labelRoutes, routeLabelPoint, parseOsrmRoute, pickAlternatives, routeOverlap, detourPoints, routePointAt, routeRemaining, smoothProgress, locateOnRoute, routeProgress };
+if (typeof module !== 'undefined') module.exports = { routeBarriers, barrierNodeBlocks, barrierWayBlocks, barrierQuery, routeAroundLine, routeCheckParts,
+  barrierDetourPoints, barrierAtDestination, barrierEntryPoint, nearestOnRoute, routeEta, labelRoutes, routeLabelPoint, parseOsrmRoute, pickAlternatives, routeOverlap, detourPoints, routePointAt, routeRemaining, smoothProgress, locateOnRoute, routeProgress };

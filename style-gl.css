@@ -208,6 +208,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   max-width: 540px; margin-inline: auto;
   background: var(--panel); border-radius: 22px; box-shadow: var(--shadow);
   padding: 16px 16px 14px; display: grid; gap: 12px;
+  max-height: calc(100dvh - 120px); overflow-y: auto;   /* F4: garāka kartīte nepazūd aiz ekrāna augšas */
   animation: slide-up .3s cubic-bezier(.2, .9, .3, 1.1);
 }
 @keyframes slide-up { from { transform: translateY(110%); opacity: 0; } }
@@ -637,6 +638,15 @@ html:not(.navigating):not(.previewing) .loader { top: calc(env(safe-area-inset-t
 .route-traffic.ok { background: color-mix(in srgb, var(--go) 12%, transparent); color: var(--go); }
 .route-traffic.mid { background: color-mix(in srgb, #f07800 14%, transparent); color: #c25e00; }
 .route-traffic.bad { background: color-mix(in srgb, #c81e3a 14%, transparent); color: #c81e3a; }
+/* F4: barjeras maršrutā */
+.route-barrier { margin: 6px 0 0; padding: 7px 10px; border-radius: 10px; font: 700 14px/1.35 var(--font-body);
+  background: color-mix(in srgb, #c81e3a 14%, transparent); color: #c81e3a; display: flex; flex-direction: column; gap: 6px; }
+.route-barrier.ok { background: color-mix(in srgb, var(--go) 12%, transparent); color: var(--go); }
+.route-barrier .rb-note { font: 600 13.5px/1.35 var(--font-body); }
+.route-barrier .rb-fail { color: #c81e3a; }
+.route-barrier .rb-btn { align-self: flex-start; min-height: 38px; padding: 0 14px; font-size: 14px; }
+.barrier-pin { width: 32px; height: 32px; border-radius: 50%; background: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.35); display: grid; place-items: center; pointer-events: none; }
+.barrier-pin svg { width: 24px; height: 24px; }
 .tr-consent { position: fixed; z-index: 55; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); max-width: 520px; margin-inline: auto;
   background: var(--panel); color: var(--fg); border-radius: 18px; box-shadow: var(--shadow); padding: 14px 16px; animation: slide-up .28s ease-out; }
 .tr-c-t { font: 700 18px var(--font-sign); margin-bottom: 4px; }
