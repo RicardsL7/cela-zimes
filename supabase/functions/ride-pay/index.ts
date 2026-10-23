@@ -116,6 +116,16 @@ Deno.serve(async (req) => {
       return t ? JSON.parse(t) : null;
     };
 
+    // Stripe konta īpašnieks: konta ID metadatos vai — ja anonīmais konts apvienots ar pastāvīgo (F1) —
+    // vecais ID, kas datubāzē piesaistīts jaunajam (account_aliases). Tad metadatus atjauno.
+    const ownerOk = async (acct: string, owner: string | null, expected: string) => {
+      if (owner === expected) return true;
+      if (!owner || !UUID.test(owner)) return false;
+      const ok = await db('rpc/account_alias_ok', { method: 'POST', body: JSON.stringify({ old_id: owner, new_id: expected }) }).catch(() => false);
+      if (ok === true) { await stripeV2(`core/accounts/${acct}`, { metadata: { cz_user: expected } }).catch(() => null); return true; }
+      return false;
+    };
+
     const body = await req.json().catch(() => ({}));
     const ret = String(body.return_url ?? '');
     const retOk = APP_URLS.some((a) => ret.startsWith(a));
@@ -130,7 +140,7 @@ Deno.serve(async (req) => {
         let [row] = await db(`driver_accounts?user_id=eq.${uid}&select=acct`);
         if (row) {
           const a = await driverAccount(row.acct);
-          if (!a || a.owner !== uid) {
+          if (!a || !(await ownerOk(row.acct, a.owner, uid))) {
             await db(`driver_accounts?user_id=eq.${uid}`, { method: 'DELETE' });
             row = null;
           }
@@ -157,6 +167,28 @@ Deno.serve(async (req) => {
           } },
         });
         return json({ url: link.url });
+      }
+
+      // Pēc kontu apvienošanas: Stripe kontā ieraksta jauno lietotāja ID
+      case 'adopt': {
+        const [row] = await db(`driver_accounts?user_id=eq.${uid}&select=acct`);
+        if (!row) return json({ ok: true, none: true });
+        const a = await driverAccount(row.acct);
+        return json({ ok: !!a && await ownerOk(row.acct, a.owner, uid) });
+      }
+
+      // Konta dzēšana: slēdz šofera Stripe kontu (dati datubāzē tiek dzēsti pēc tam — delete_my_account)
+      case 'close': {
+        const [row] = await db(`driver_accounts?user_id=eq.${uid}&select=acct`);
+        if (!row) return json({ closed: false, none: true });
+        const a = await driverAccount(row.acct);
+        if (a && !(await ownerOk(row.acct, a.owner, uid))) throw new Fail('Konts nepieder šim lietotājam', 403);
+        try {
+          await stripeV2(`core/accounts/${row.acct}/close`, {});
+          return json({ closed: true });
+        } catch {
+          return json({ closed: false });           // lietotne to pieraksta īpašniekam (account_closures)
+        }
       }
 
       case 'driver_status': {
@@ -186,7 +218,7 @@ Deno.serve(async (req) => {
         const acct = await db('rpc/ride_driver_acct', { method: 'POST', body: JSON.stringify({ oid }) });
         if (!acct) throw new Fail('Šoferis vēl nav pieslēdzis kartes maksājumus — vari samaksāt skaidrā naudā.', 409);
         const a = await driverAccount(acct);
-        if (!a || !a.ready || a.owner !== o.driver_id) {
+        if (!a || !a.ready || !(await ownerOk(acct, a.owner, o.driver_id))) {
           throw new Fail('Šoferis vēl nav pabeidzis kartes maksājumu pieslēgšanu — vari samaksāt skaidrā naudā.', 409);
         }
         const fee = Math.round(o.price_cents * FEE_PCT / 100);
