@@ -273,6 +273,17 @@ function barrierDetourPoints(route, bar) {
 // Barjera pie paša galamērķa (galamērķis slēgtā teritorijā) — pēdējie 400 m.
 const BARRIER_DEST_M = 400;
 function barrierAtDestination(route, bar) { return route.cum[route.cum.length - 1] - bar.along <= BARRIER_DEST_M; }
+// Maršruts līdz vietai `along` (m no sākuma): tas pats ceļš, nogriezts — saglabājas arī apbraukšana; jauns soļa „ieradies” beigās.
+function routeTruncate(route, along) {
+  const total = route.cum[route.cum.length - 1] || 1, a = Math.max(0, Math.min(total, along));
+  const p = routePointAt(route, a);
+  const coords = route.coords.slice(0, p.idx + 1).concat([[p.lng, p.lat]]);
+  const cum = route.cum.slice(0, p.idx + 1).concat([a]);
+  const last = coords.length - 1;
+  const steps = route.steps.filter(st => st._start < last && !(st.maneuver && st.maneuver.type === 'arrive'))
+    .concat([{ maneuver: { type: 'arrive', modifier: 'straight' }, name: '', _start: last, intersections: [] }]);
+  return { coords, cum, steps, distance: route.distance * a / total, duration: route.duration * a / total, lastIdx: 0 };
+}
 // Punkts maršrutā tieši pirms barjeras (ieeja) — tur beidzas „maršruts līdz ieejai”.
 function barrierEntryPoint(route, bar) { const p = routePointAt(route, Math.max(0, bar.along - 15)); return { lat: p.lat, lng: p.lng }; }
 
@@ -453,4 +464,4 @@ function smoothProgress(prev, next, maxBack = 30) {
 }
 
 if (typeof module !== 'undefined') module.exports = { routeBarriers, barrierNodeBlocks, barrierWayBlocks, barrierQuery, routeAroundLine, routeCheckParts,
-  barrierDetourPoints, barrierAtDestination, barrierEntryPoint, nearestOnRoute, routeEta, labelRoutes, routeLabelPoint, parseOsrmRoute, pickAlternatives, routeOverlap, detourPoints, routePointAt, routeRemaining, smoothProgress, locateOnRoute, routeProgress };
+  barrierDetourPoints, barrierAtDestination, barrierEntryPoint, routeTruncate, nearestOnRoute, routeEta, labelRoutes, routeLabelPoint, parseOsrmRoute, pickAlternatives, routeOverlap, detourPoints, routePointAt, routeRemaining, smoothProgress, locateOnRoute, routeProgress };

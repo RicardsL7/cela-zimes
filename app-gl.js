@@ -1399,17 +1399,18 @@ function showBarrierCard() {
   if (r.barrierNote) say('rb-note', r.barrierNote);
   if (r.barrierMsg) say('rb-note rb-fail', r.barrierMsg);
   const list = r.barriers;
-  box.classList.toggle('ok', !list.length);
-  if (!list.length) { box.hidden = !r.barrierNote && !r.barrierMsg; return; }
-  const first = list[0];
-  say('rb-txt', barrierText(first) + ` (pēc ${navDist(first.along)})`);
-  for (const b of list) {
+  // Marķieri: šī maršruta barjeras; „līdz ieejai” maršrutam — barjera, pie kuras tas beidzas
+  for (const b of list.length ? list : (r.barrierAt || [])) {
     const el = document.createElement('div');
     el.className = 'barrier-pin';
     el.title = b.kind === 'private' ? 'Privāts ceļš' : 'Barjera';
     el.innerHTML = BARRIER_PIN;
     barrierMarkers.push(new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([b.lng, b.lat]).addTo(map));
   }
+  box.classList.toggle('ok', !list.length);
+  if (!list.length) { box.hidden = !r.barrierNote && !r.barrierMsg; return; }
+  const first = list[0];
+  say('rb-txt', barrierText(first) + ` (pēc ${navDist(first.along)})`);
   if (!r.barrierTried) {
     const atDest = barrierAtDestination(r, first);
     const btn = document.createElement('button');
@@ -1431,52 +1432,52 @@ function barrierFailed(r, text) {
   r.barrierMsg = text;
   showBarrierCard();
 }
-// Apbraukšana: 2–4 starppunkti ~200–300 m sāniski no barjeras; pirmais maršruts, kas pēc pārbaudes ir tīrs
+// Apbraukšana: 2–4 starppunkti ~200–300 m sāniski no barjeras; ņem pirmo maršrutu, kas šo barjeru neiet cauri
+// un nepievieno jaunas (barjera pie paša galamērķa, kas bija arī sākotnējā maršrutā, var palikt).
 async function barrierDetour(btn) {
   const r = state.nav.route, dest = state.nav.dest, routes = state.nav.routes;
   if (!r || !r.barriers || !r.barriers.length) return;
   btn.disabled = true; btn.textContent = 'Meklē apbraucamo ceļu…';
   const from = { lat: r.coords[0][1], lng: r.coords[0][0] };
-  const vias = barrierDetourPoints(r, r.barriers[0]);
+  const target = r.barriers[0], vias = barrierDetourPoints(r, target);
   const known = state.nav.barrierEls || [];
+  const okWith = (c, els) => { const cb = routeBarriers(c, els); return !cb.some(x => x.id === target.id) && cb.every(x => r.barriers.some(o => o.id === x.id)) ? cb : null; };
   let found = null;
   for (let i = 0; i < vias.length && !found; i += 2) {
     const got = (await Promise.all(vias.slice(i, i + 2).map(v =>
       osrmFetch([from, v, dest], '&continue_straight=true').then(d => d.routes && d.routes[0] && parseOsrmRoute(d.routes[0])).catch(() => null))))
-      .filter(c => c && !routeBarriers(c, known).length)                // jau zināmo barjeru neapbrauc — neder
+      .filter(c => c && !routeBarriers(c, known).some(x => x.id === target.id))   // to pašu barjeru neapbrauc — neder
       .sort((a, b) => a.duration - b.duration);
     if (state.nav.routes !== routes || state.nav.dest !== dest || state.nav.active) return;
     if (!got.length) continue;
     let els = null;
     try { els = await barrierElements(got); } catch { /* Overpass neatbild — ņem to, kas apbrauc zināmo barjeru */ }
     if (state.nav.routes !== routes || state.nav.dest !== dest || state.nav.active) return;
-    found = els ? got.find(c => !routeBarriers(c, els).length) : got[0];
-    if (found) {
-      found.barriers = [];
-      if (!els) found.barrierNote = 'Apbrauc zināmo barjeru (pārējo ceļu pārbaudīt neizdevās).';
+    for (const c of got) {
+      const cb = els ? okWith(c, els) : routeBarriers(c, known);
+      if (!cb) continue;
+      found = c;
+      found.barriers = cb;
+      if (!els) found.barrierNote = 'Apbrauc šo barjeru (pārējo ceļu pārbaudīt neizdevās).';
+      break;
     }
   }
   if (!found) return barrierFailed(r, 'Maršrutu bez barjeras atrast neizdevās — pie barjeras, iespējams, būs jāapgriežas.');
   r.barrierTried = true;
-  found.barrierTried = true;
+  if (!found.barriers.length) found.barrierTried = true;     // atlikusī barjera pie galamērķa — vēl var „līdz ieejai”
   addBarrierRoute(found);
 }
-// Galamērķis aiz barjeras (slēgta teritorija): maršruts līdz pēdējam punktam pirms barjeras
-async function barrierToEntry(btn) {
-  const r = state.nav.route, dest = state.nav.dest, routes = state.nav.routes;
-  if (!r || !r.barriers || !r.barriers.length) return;
-  btn.disabled = true; btn.textContent = 'Meklē maršrutu līdz ieejai…';
-  const from = { lat: r.coords[0][1], lng: r.coords[0][0] };
-  const entry = barrierEntryPoint(r, r.barriers[0]);
-  let route = null;
-  try {
-    const d = await osrmFetch([from, entry]);
-    route = d.routes && d.routes[0] && parseOsrmRoute(d.routes[0]);
-  } catch { /* */ }
-  if (state.nav.routes !== routes || state.nav.dest !== dest || state.nav.active) return;
-  if (!route) return barrierFailed(r, 'Maršrutu līdz ieejai atrast neizdevās. Pamēģini vēlreiz.');
-  route.barriers = routeBarriers(route, state.nav.barrierEls || []);
+// Galamērķis aiz barjeras (slēgta teritorija): tas pats maršruts, nogriezts 15 m pirms barjeras (ja maršruts jau
+// apbrauc citu barjeru — apbraukšana saglabājas; OSRM vēlreiz nav jāprasa)
+function barrierToEntry() {
+  const r = state.nav.route;
+  if (!r || !r.barriers || !r.barriers.length || state.nav.active) return;
+  const bar = r.barriers.find(b => barrierAtDestination(r, b)) || r.barriers[0];
+  const route = routeTruncate(r, Math.max(0, bar.along - 15));
+  if (r.jamSec != null) route.jamSec = r.jamSec;
+  route.barriers = r.barriers.filter(b => b.along < bar.along - 15);
   route.barrierNote = 'Galamērķis aiz barjeras — maršruts līdz ieejai.';
+  route.barrierAt = [bar];
   route.barrierTried = true;
   r.barrierTried = true;
   addBarrierRoute(route);
