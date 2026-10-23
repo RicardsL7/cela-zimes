@@ -171,9 +171,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .limit-badge .limit-approx { display: none; }
 .limit-badge.approx { border-style: dashed; border-color: color-mix(in srgb, #d0202a 55%, #9aa0a6); color: #333;
   grid-template-rows: 1fr auto; align-content: center; gap: 0; }
-.limit-badge.approx #limitValue { font-size: 26px; line-height: 1; align-self: end; }
+.limit-badge.approx #limitValue { font-size: 24px; line-height: 1; align-self: end; margin-top: 4px; }
 .limit-badge.approx #limitValue::before { content: '~'; font-size: 18px; vertical-align: 4px; margin-right: 1px; }
-.limit-badge.approx .limit-approx { display: block; font: 600 9.5px/1 var(--font-body); color: #555; text-transform: lowercase; margin-top: 1px; align-self: start; }
+.limit-badge.approx .limit-approx { display: block; font: 600 9px/1 var(--font-body); color: #555; text-transform: lowercase; margin-top: 0; margin-bottom: 6px; align-self: start; }
 .test-speed { display: flex; align-items: center; gap: 8px; }
 .test-speed input { width: 140px; }
 .test-speed b { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -382,6 +382,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 html:not(.navigating):not(.previewing) .fab-stack,
 html:not(.navigating):not(.previewing) .limit-badge { top: calc(env(safe-area-inset-top, 0px) + 140px); }
 html:not(.navigating):not(.previewing) .next-sign { top: calc(env(safe-area-inset-top, 0px) + 140px); }
+html.has-limit:not(.navigating):not(.previewing) .next-sign { left: 96px; max-width: min(330px, calc(100vw - 176px)); }   /* F7 */
 html:not(.navigating):not(.previewing) .loader { top: calc(env(safe-area-inset-top, 0px) + 132px); }
 
 .places-sheet .sheet-head { gap: 6px; }

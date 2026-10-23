@@ -16,7 +16,8 @@ const SL_TOWN_CLASSES = new Set(['minor', 'service', 'tertiary']);
 function speedSignKind(s) {
   if (!s || s.wayStart) return null;
   const v = String(s.value || '').toLowerCase();
-  if (/end-of-(maximum-speed|speed-limit)/.test(v)) return { kind: 'end' };
+  if (/end-of-(maximum-speed|speed-limit)|end-of-living-street|end-of-residential-area/.test(v)) return { kind: 'end' };
+  if (/--(living-street|residential-area)--/.test(v)) return { kind: 'speed', limit: SL_DEFAULT.living };   // dzīvojamā zona — 20 km/h
   if (s.cat === 'speed') {
     const limit = s.limit || Number((v.match(/maximum-speed-limit-(\d{1,3})(?!\d)/) || [])[1]) || null;
     return limit ? { kind: 'speed', limit } : null;

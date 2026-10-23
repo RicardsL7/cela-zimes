@@ -557,7 +557,8 @@ function nearestLimit(lat, lng, heading = null, matched = null) {
 
 // F7: apdzīvota vieta pēc kartes (vektorkartes "place" punkti jau ielādētajās flīzēs — bez jauniem pieprasījumiem).
 // true — tuvumā pilsēta / ciems / pilsētas daļa; false — vietu dati ir, bet tuvumā nav; null — nav zināms.
-const PLACE_RADIUS_M = { city: 8000, town: 3000, village: 1200, suburb: 1500, quarter: 1000, neighbourhood: 800 };
+// Rādiusi pēc Latvijas apdzīvoto vietu lieluma (ciemi mazi — 1 km no centra parasti jau ir ārpus ciema)
+const PLACE_RADIUS_M = { city: 8000, town: 2000, village: 600, suburb: 1500, quarter: 1000, neighbourhood: 800 };
 let placeCache = null;
 function placeUrban(lat, lng) {
   const now = Date.now();
@@ -607,6 +608,7 @@ function updateLimit() {
   const res = speedHold.update(resolveSpeedLimit(), Date.now(), state.me.lat, state.me.lng);
   badge.hidden = !res;
   if (res) $('limitValue').textContent = res.limit;
+  document.documentElement.classList.toggle('has-limit', !!res);   // F7: „nākamā zīme” blakus plāksnītei, ne virsū
   badge.classList.toggle('approx', !!(res && res.approx));
   const label = !res ? '' : res.approx ? `Aptuvenais ierobežojums ${res.limit} km/h (zīme nav atrasta)` : `Ātruma ierobežojums ${res.limit} km/h`;
   badge.title = label;
