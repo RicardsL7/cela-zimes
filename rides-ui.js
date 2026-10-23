@@ -909,7 +909,7 @@ function ridesAccountView() {
   const googleBtn = other => rides.providers && rides.providers.google
     ? rEl('button', { class: 'btn ghost r-google', type: 'button', text: 'Turpināt ar Google', onclick: async () => {
         try { location.href = await a.oauthUrl('google', czReturnUrl(), { other }); } catch (e) { say(czAuthErrorText(e.code, e.status)); }
-      } }) : null;
+      } }) : '';
   const legal = rEl('p', { class: 'fine r-acc-legal' },
     rEl('a', { href: 'terms.html', target: '_blank', rel: 'noopener', text: 'Lietošanas noteikumi' }), ' · ',
     rEl('a', { href: 'privacy.html', target: '_blank', rel: 'noopener', text: 'Privātuma politika' }));
