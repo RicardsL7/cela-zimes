@@ -1236,6 +1236,19 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
     eq(v.length, 4);
     for (const p of v) { const d = nearestOnRoute(R, p.lat, p.lng).off; ok(d > 150 && d < 320, 'sānis ' + d); }
   });
+  test('F4: „līdz ieejai” — tas pats maršruts, nogriezts pirms barjeras (apbraukšana saglabājas)', () => {
+    const routeTruncate = G('routeTruncate');
+    const RR = Object.assign(makeRoute([[0, 0], [400, 0], [400, 300]]), { distance: 700, duration: 70,
+      steps: [{ maneuver: { type: 'depart' }, _start: 0 }, { maneuver: { type: 'turn', modifier: 'left' }, _start: 1 }, { maneuver: { type: 'arrive' }, _start: 2 }] });
+    const t = routeTruncate(RR, 585);
+    ok(Math.abs(t.cum[t.cum.length - 1] - 585) < 0.01 && Math.abs(t.distance - 585) < 0.01 && Math.abs(t.duration - 58.5) < 0.01);
+    const end = t.coords[t.coords.length - 1], q = P(400, 185);
+    ok(Math.abs(end[0] - q[0]) < 1e-7 && Math.abs(end[1] - q[1]) < 1e-7, 'beidzas 585 m');
+    eq(t.steps.length, 3); eq(t.steps[2].maneuver.type, 'arrive'); eq(t.steps[2]._start, t.coords.length - 1);
+    const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+    const i = app.indexOf('function barrierToEntry'), f = app.slice(i, app.indexOf('\n}\n', i));
+    ok(/routeTruncate\(r, Math\.max\(0, bar\.along - 15\)\)/.test(f) && !/osrmFetch/.test(f), 'nogriež pašreizējo maršrutu');
+  });
   test('F4: Overpass vaicājums — viens visiem maršrutiem, gar līniju', () => {
     const q = barrierQuery([R, makeRoute([[0, 0], [0, 500]])]);
     ok(/^\[out:json\]\[timeout:25\]/.test(q) && /out body geom;$/.test(q));
