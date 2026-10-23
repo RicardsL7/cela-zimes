@@ -451,7 +451,7 @@ test('T. Virzienus nosaka tikai vajadzīgajām zīmēm', () => {
   eq(f({ cat: 'regulatory', value: 'regulatory--no-parking--g1', timeRule: { cond: {} } }), true);
 });
 
-// Brīdinājumi (kā Waze)
+// Brīdinājumi
 test('L. Brīdinājumi: kartē tikai noteiktās kategorijas; laikapstākļi tikai no datiem; ziņojumi noveco', () => {
   const alertTypeForSign = G('alertTypeForSign'), alertTypeForOsm = G('alertTypeForOsm'), weatherAlerts = G('weatherAlerts');
   const AlertStore = G('AlertStore'), makeReport = G('makeReport'), ALERT_TYPES = G('ALERT_TYPES');
