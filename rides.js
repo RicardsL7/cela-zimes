@@ -281,10 +281,15 @@ class LocalRideStore {
 // Drošību nodrošina datubāzes RLS noteikumi (skat. supabase/rides.sql): katrs var mainīt tikai
 // savus ierakstus, un tālruni redz tikai tas, ar kuru brauciens ir saskaņots.
 class SupabaseRideStore {
-  constructor(cfg, storage = (typeof localStorage !== 'undefined' ? localStorage : null)) {
+  // auth — kopīgā CzAuth instance (auth.js). Testos / otram lietotājam var padot atsevišķu atmiņu.
+  constructor(cfg, storage = (typeof localStorage !== 'undefined' ? localStorage : null), auth = null) {
     this.url = cfg.url.replace(/\/$/, ''); this.key = cfg.anonKey; this.storage = storage;
-    this.demo = false; this.session = null; this.id = null;
+    this.auth = auth || (storage === (typeof localStorage !== 'undefined' ? localStorage : null) && typeof czAuthGet === 'function' ? czAuthGet() : new CzAuth(cfg, { storage }));
+    this.demo = false;
   }
+  get id() { return this.auth.userId; }
+  get session() { return this.auth.session; }
+  hasAccount() { return this.auth.hasSession(); }
   // Jaunās "publishable" atslēgas nav JWT — Authorization galveni sūta tikai ar lietotāja sesiju.
   _h(extra = {}) {
     const h = { apikey: this.key, 'content-type': 'application/json', ...extra };
@@ -292,26 +297,18 @@ class SupabaseRideStore {
     if (h.Authorization === undefined) delete h.Authorization;
     return h;
   }
-  _keep(s) {
-    this.session = { access_token: s.access_token, refresh_token: s.refresh_token, expires_at: Date.now() + (s.expires_in || 3600) * 1000, user_id: s.user.id };
-    this.id = s.user.id;
-    try { this.storage.setItem('cz.rides.session', JSON.stringify(this.session)); } catch { /* */ }
-  }
+  // Atverot lietotni: tikai atjauno esošu sesiju — jaunu kontu NEVEIDO.
   async init() {
-    try { const s = JSON.parse(this.storage.getItem('cz.rides.session') || 'null'); if (s && s.refresh_token) { this.session = s; this.id = s.user_id; } } catch { /* */ }
-    await this._ensure();
+    if (this.auth.hasSession()) { try { await this.auth.token(); } catch (e) { console.warn('Sesiju neizdevās atjaunot', e); } }
     return true;
   }
+  // Konts vajadzīgs (lietotājs atvēra „Kopā”) — izveido anonīmu, ja vēl nav (ar piekrišanu noteikumiem).
+  async ensureAccount() {
+    await this.auth.token({ create: true });
+    try { await this.auth.syncTermsConsent(); } catch { /* nākamreiz */ }
+  }
   async _ensure() {
-    if (this.session && this.session.expires_at - Date.now() > 60000) return;
-    if (this.session && this.session.refresh_token) {
-      const r = await fetch(this.url + '/auth/v1/token?grant_type=refresh_token', { method: 'POST', headers: this._h({ Authorization: undefined }), body: JSON.stringify({ refresh_token: this.session.refresh_token }) });
-      if (r.ok) return this._keep(await r.json());
-    }
-    // Anonīms konts (bez e-pasta/paroles) — Supabase iestatījumos jāieslēdz "Anonymous sign-ins".
-    const r = await fetch(this.url + '/auth/v1/signup', { method: 'POST', headers: this._h({ Authorization: undefined }), body: JSON.stringify({ data: {} }) });
-    if (!r.ok) throw new Error('Pieteikšanās neizdevās (' + r.status + ')');
-    this._keep(await r.json());
+    if (!(await this.auth.token())) throw Object.assign(new Error('Nav konta'), { code: 'no_account' });
   }
   async _rest(path, opts = {}) {
     await this._ensure();
@@ -395,6 +392,16 @@ SupabaseRideStore.prototype.expire = function () {
   return this._rest('rpc/ride_expire', { method: 'POST', body: '{}' });
 };
 LocalRideStore.prototype.expire = async function () { return 0; };
+LocalRideStore.prototype.hasAccount = function () { return true; };
+LocalRideStore.prototype.ensureAccount = async function () { };
+// Konta dzēšana (supabase/rides-7-account.sql → delete_my_account). unclosedAcct — Stripe konts, ko neizdevās slēgt.
+SupabaseRideStore.prototype.deleteAccount = function (unclosedAcct = null) {
+  return this._rest('rpc/delete_my_account', { method: 'POST', body: JSON.stringify({ p_unclosed_acct: unclosedAcct }) });
+};
+SupabaseRideStore.prototype.hasDriverAccount = async function () {
+  const rows = await this._rest(`driver_accounts?user_id=eq.${this.id}&select=acct`);
+  return rows && rows[0] ? rows[0].acct : null;
+};
 
 // Kartes maksājumi (servera funkcija supabase/functions/ride-pay). Demo režīmā to nav.
 SupabaseRideStore.prototype.pay = async function (action, body = {}) {

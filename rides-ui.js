@@ -30,18 +30,42 @@ function rIcon(svg) { const s = document.createElement('span'); s.className = 'r
 async function ridesInit() {
   if (rides.store) return;            // jau palaists
   rides.store = createRideStore(typeof RIDES_CONFIG !== 'undefined' ? RIDES_CONFIG : null);
-  try { await rides.store.init(); rides.ready = true; }
-  catch (err) { console.warn('Kopbraucieni nav pieejami', err); rides.ready = false; }
   $('ridesBtn').addEventListener('click', () => ridesOpen(true));
   $('closeRides').addEventListener('click', () => ridesOpen(false));
   $('tabNeed').addEventListener('click', () => ridesTab('need'));
   $('tabDrive').addEventListener('click', () => ridesTab('drive'));
   $('ridesDemoAdd').addEventListener('click', ridesAddDemo);
+  const accBtn = $('accountBtn');
+  if (accBtn) accBtn.addEventListener('click', () => { if (typeof toggleSettings === 'function') toggleSettings(false); ridesOpenAccount(); });
   for (const id of ['settingsBtn', 'reportBtn', 'placesBtn']) { const b = $(id); if (b) b.addEventListener('click', () => { if (rides.open) ridesOpen(false); }); }
   $('ridesDemo').hidden = !rides.store.demo;
   rides.tab = store.get('ridesTab', 'need');
-  if (rides.ready) { await ridesRefresh(true); ridesSchedule(); ridesPayReturn(); }
+  // Konts: atverot lietotni tikai atjauno esošu sesiju (jaunu NEVEIDO) — un tikai pēc piekrišanas noteikumiem.
+  czWhenConsent(async () => {
+    try { await rides.store.init(); rides.ready = true; }
+    catch (err) { console.warn('Kopbraucieni nav pieejami', err); rides.ready = false; }
+    const ret = await ridesAuthReturn();                    // atgriešanās no e-pasta saites / Google
+    if (rides.ready && rides.store.hasAccount()) {
+      try { const t = await rides.store.auth.claimPending(); if (t && t.ok && !t.same) ridesAccountNote(t); } catch { /* */ }
+      await ridesRefresh(true); ridesPayReturn();
+    }
+    ridesSchedule();
+    if (ret) ridesOpen(true);
+  });
 }
+// Pirmo reizi atverot „Kopā” — izveido (anonīmu) kontu; ja lietotājs bija izrakstījies — piedāvā pieslēgties.
+async function ridesEnsureAccount() {
+  if (!rides.ready || !rides.store || rides.store.hasAccount() || rides.accountBusy) return;
+  if (ridesSignedOut()) { rides.accountView = true; ridesRender(true); return; }
+  rides.accountBusy = true; ridesRender(true);
+  try { await rides.store.ensureAccount(); rides.accountErr = null; }
+  catch (e) { console.warn('Konts', e); rides.accountErr = e && e.code === 'consent' ? 'Vispirms jāpiekrīt lietošanas noteikumiem.' : 'Neizdevās savienoties ar serveri. Pārbaudi internetu un mēģini vēlreiz.'; }
+  rides.accountBusy = false;
+  await ridesRefresh(true);
+  ridesRender(true);
+}
+function ridesSignedOut() { try { return localStorage.getItem('cz.auth.signedOut') === '1'; } catch { return false; } }
+function ridesSetSignedOut(v) { try { if (v) localStorage.setItem('cz.auth.signedOut', '1'); else localStorage.removeItem('cz.auth.signedOut'); } catch { /* */ } }
 // Aktīvs brauciens (pieņemts piedāvājums) — tad dati atjaunojas biežāk un notiek atrašanās vietas apmaiņa.
 function ridesActiveTrip() {
   for (const r of rides.myReqs) { const o = (rides.offers[r.id] || []).find(x => x.status === 'accepted'); if (o) return { role: 'passenger', o, req: r }; }
@@ -84,7 +108,7 @@ function ridesOpen(open) {
     $('ridesBtn').classList.remove('has-news');
     for (const id of ['settings', 'reportSheet', 'placesSheet']) { const el = $(id); if (el) el.hidden = true; }
     ridesTab(rides.tab);
-    ridesRefresh(false);
+    if (rides.ready && rides.store.hasAccount && !rides.store.hasAccount() && !rides.accountView) ridesEnsureAccount(); else ridesRefresh(false);
   } else ridesMarkers([]);
 }
 function ridesTab(tab) {
@@ -97,6 +121,10 @@ function ridesTab(tab) {
 // Datu atjaunošana (arī fonā ik 15 s, ja ir aktīvi braucieni). first — bez paziņojumiem.
 async function ridesRefresh(first) {
   if (!rides.ready) return ridesRender();
+  if (!rides.store.hasAccount()) {
+    rides.profile = null; rides.myReqs = []; rides.offers = {}; rides.myOffers = []; rides.openList = []; rides.msgs = {};
+    return ridesRender();
+  }
   try {
     // Ik 5 min sakārto novecojušos braucienus (neapstiprināti, nesākti vai "aizmirsti" ceļā)
     if (rides.store.expire && Date.now() - (rides.expireAt || 0) > 5 * 60000) {
@@ -189,7 +217,9 @@ function ridesViewSig() {
     rides.myOffers.map(o => o.id + o.status + o.phone + o.trip + ridesUnread(o.id) + (o.request && o.request.status)),
     rides.chat ? rides.chat.offerId : null,
     rides.tab === 'drive' ? rides.openList.map(r => r.id + r.status) : null,
-    rides.pay, rides.payCfg, rides.payDrv]);
+    rides.pay, rides.payCfg, rides.payDrv,
+    rides.accountView, rides.accountMode, rides.accountBusy, rides.accountMsg, rides.providers,
+    rides.store && rides.store.auth ? [rides.store.auth.userId, rides.store.auth.isAnon, rides.store.auth.email] : null]);
 }
 function ridesRender(force = false) {
   if (!rides.open) return;
@@ -208,6 +238,14 @@ function ridesRender(force = false) {
     body.append(rEl('p', { class: 'fine', text: 'Kopbraucieni pašlaik nav pieejami (nav savienojuma ar serveri). Pamēģini vēlāk.' }));
     return;
   }
+  if (rides.accountView) return body.append(ridesAccountView());
+  if (!rides.store.hasAccount()) {
+    if (rides.accountBusy) return body.append(rEl('p', { class: 'fine', text: 'Sagatavo kontu…' }));
+    return body.append(rEl('div', { class: 'r-form' },
+      rEl('p', { class: 'r-err', text: rides.accountErr || 'Kopbraucieniem vajadzīgs konts.' }),
+      rEl('button', { class: 'btn primary', type: 'button', text: 'Mēģināt vēlreiz', onclick: () => { ridesSetSignedOut(false); ridesEnsureAccount(); } })));
+  }
+  if (!rides.chat) body.append(ridesAccountBar());
   if (!rides.profile) return body.append(ridesProfileForm());
   rides.renderedChat = rides.chat ? rides.chat.offerId : null;
   if (rides.chat) { body.append(ridesChatView()); return ridesChatUpdate(); }
@@ -778,6 +816,179 @@ async function ridesAddDemo() {
   }
   await rides.store.addDemoPassenger(near, to);
   ridesTab('drive'); ridesRefresh(false);
+}
+
+// ---------- Konts (F1): saglabāšana ar e-pastu / Google, pieslēgšanās, izrakstīšanās, dzēšana ----------
+function ridesAccountBar() {
+  const a = rides.store && rides.store.auth;
+  if (!a || !a.hasSession()) return document.createDocumentFragment();
+  const open = () => { rides.accountView = true; rides.accountMode = null; rides.accountMsg = null; ridesRender(true); };
+  if (a.isAnon) {
+    return rEl('div', { class: 'r-acc-bar warn' },
+      rEl('span', { text: '🔒 Konts saglabāts tikai šajā ierīcē' }),
+      rEl('button', { class: 'link-btn', type: 'button', text: 'Saglabāt kontu', onclick: open }));
+  }
+  return rEl('div', { class: 'r-acc-bar' },
+    rEl('span', { text: '✓ ' + (a.email || 'Pieslēdzies') }),
+    rEl('button', { class: 'link-btn', type: 'button', text: 'Konts', onclick: open }));
+}
+// Atver konta skatu (arī no iestatījumiem)
+function ridesOpenAccount() {
+  rides.accountView = true; rides.accountMode = null; rides.accountMsg = null;
+  ridesOpen(true);
+  ridesRender(true);
+}
+function ridesAccountNote(t) {
+  rides.accountView = true;
+  rides.accountMsg = { text: `✓ Iepriekšējā konta dati pārcelti (${t.requests || 0} pieprasījumi, ${t.offers || 0} piedāvājumi, ${t.messages || 0} ziņas).`, bad: false };
+}
+// Atgriešanās no e-pasta saites vai Google
+async function ridesAuthReturn() {
+  const a = rides.store && rides.store.auth;
+  if (!a || !a.handleReturn) return null;
+  const h = location.hash, q = location.search;
+  if (!/access_token=|error_code=|[#&?]error=|message=/.test(h + q)) return null;
+  let res;
+  try { res = await a.handleReturn(h, q); } catch (e) { console.warn(e); res = { ok: false, text: czAuthErrorText('network') }; }
+  const u = new URL(location.href);
+  for (const k of ['error', 'error_code', 'error_description']) u.searchParams.delete(k);
+  history.replaceState(null, '', u.pathname + u.search);           // atslēgas no adreses joslas prom
+  if (!res) return null;
+  rides.accountView = true; rides.accountMode = null;
+  if (!res.ok) { rides.accountMsg = { text: res.text, bad: true }; return res; }
+  ridesSetSignedOut(false);
+  if (res.message) { rides.accountMsg = { text: 'Apstiprinājums saņemts. Ja e-pastā ir vēl viena saite — atver arī to.', bad: false }; return res; }
+  let t = res.type === 'email_change'
+    ? `✓ Konts saglabāts. Tagad vari pieslēgties ar ${a.email} jebkurā ierīcē.`
+    : `✓ Pieslēdzies kā ${a.email || 'Google konts'}.`;
+  const tr = res.transfer;
+  if (tr && tr.ok && !tr.same) {
+    t += ` Šīs ierīces dati pārcelti (${tr.requests || 0} pieprasījumi, ${tr.offers || 0} piedāvājumi).`;
+    if (tr.stripe === 'moved') { try { await rides.store.pay('adopt'); } catch { /* nākamreiz */ } }
+    if (tr.stripe === 'duplicate') t += ' Abos kontos bija kartes maksājumu konts — saglabāts šī konta.';
+  } else if (tr && !tr.ok) {
+    t += ' Iepriekšējā konta datus pārcelt neizdevās — tie nav dzēsti. Vari atgriezties pie tā zemāk.';
+  }
+  rides.accountMsg = { text: t, bad: false };
+  try { await a.syncTermsConsent(); } catch { /* */ }
+  return res;
+}
+function ridesAccountView() {
+  const a = rides.store.auth;
+  const wrap = rEl('div', { class: 'r-account' });
+  const msg = rEl('p', { class: 'r-msg' + (rides.accountMsg && rides.accountMsg.bad ? ' bad' : ''), hidden: !rides.accountMsg });
+  if (rides.accountMsg) msg.textContent = rides.accountMsg.text;
+  const say = (text, bad = true) => { rides.accountMsg = { text, bad }; msg.textContent = text; msg.className = 'r-msg' + (bad ? ' bad' : ''); msg.hidden = false; };
+  const back = () => { rides.accountView = false; rides.accountMode = null; rides.accountMsg = null; ridesRefresh(false); ridesRender(true); };
+  if (rides.providers == null) { rides.providers = {}; a.providers().then(p => { rides.providers = p || {}; ridesRender(true); }); }
+  wrap.append(rEl('div', { class: 'r-acc-head' },
+    rEl('button', { class: 'link-btn', type: 'button', text: '← Atpakaļ', onclick: back }),
+    rEl('b', { text: 'Konts' })));
+
+  // E-pasta lauks + poga (mode: 'link' — saglabāt šo kontu; 'other' — pieslēgties citam kontam; 'signin' — pieslēgties)
+  const emailForm = (mode, label) => {
+    const inp = rEl('input', { class: 'r-input', type: 'email', inputmode: 'email', autocomplete: 'email', maxlength: 254, placeholder: 'tavs@epasts.lv', id: 'raEmail' });
+    inp.value = rides.accountEmail || '';
+    inp.addEventListener('input', () => { rides.accountEmail = inp.value; });
+    const btn = rEl('button', { class: 'btn primary', type: 'button', text: label, onclick: async () => {
+      const email = inp.value.trim();
+      if (!czEmailOk(email)) { say('Ieraksti derīgu e-pasta adresi, piem. vards@epasts.lv'); inp.focus(); return; }
+      btn.disabled = true; say('Sūta…', false);
+      try {
+        if (mode === 'other') await a.signInOther(email, czReturnUrl());
+        else await a.sendLink(email, czReturnUrl());
+        say(`✓ Saite nosūtīta uz ${email}. Atver e-pastu šajā ierīcē un nospied saiti (der 1 stundu). Nav? Pārbaudi mēstuļu mapi.`, false);
+      } catch (e) {
+        console.warn('Konts', e);
+        if (mode === 'link' && /email_exists|already/.test(e.code || '')) { rides.accountMode = 'conflict'; ridesRender(true); return; }
+        say(czAuthErrorText(e.code, e.status));
+      } finally { btn.disabled = false; }
+    } });
+    return rEl('div', { class: 'r-acc-form' }, inp, btn);
+  };
+  const googleBtn = other => rides.providers && rides.providers.google
+    ? rEl('button', { class: 'btn ghost r-google', type: 'button', text: 'Turpināt ar Google', onclick: async () => {
+        try { location.href = await a.oauthUrl('google', czReturnUrl(), { other }); } catch (e) { say(czAuthErrorText(e.code, e.status)); }
+      } }) : null;
+  const legal = rEl('p', { class: 'fine r-acc-legal' },
+    rEl('a', { href: 'terms.html', target: '_blank', rel: 'noopener', text: 'Lietošanas noteikumi' }), ' · ',
+    rEl('a', { href: 'privacy.html', target: '_blank', rel: 'noopener', text: 'Privātuma politika' }));
+
+  if (rides.accountMode === 'delete') {
+    const yes = rEl('button', { class: 'btn danger', type: 'button', text: 'Jā, dzēst neatgriezeniski', onclick: async () => {
+      yes.disabled = true; say('Dzēš…', false);
+      await ridesDeleteAccount(say);
+      yes.disabled = false;
+    } });
+    wrap.append(rEl('div', { class: 'r-acc-danger' },
+      rEl('b', { text: 'Dzēst kontu?' }),
+      rEl('p', { text: 'Tiks dzēsts: tavs vārds, tālrunis, auto apraksts, braucienu pieprasījumi un piedāvājumi, čata ziņas, piekrišanu ieraksti un e-pasta / Google piesaiste. Ja esi šoferis — kartes maksājumu (Stripe) konts tiks slēgts.' }),
+      rEl('p', { text: 'Paliek: ar karti veikto maksājumu ieraksti Stripe sistēmā (tos prasa grāmatvedības likumi) un anonīmie sastrēgumu mērījumi (tajos nav tava vārda vai konta). Šo darbību nevar atsaukt.' }),
+      rEl('div', { class: 'r-actions' }, rEl('button', { class: 'btn ghost', type: 'button', text: 'Atcelt', onclick: () => { rides.accountMode = null; rides.accountMsg = null; ridesRender(true); } }), yes)), msg);
+    return wrap;
+  }
+  if (!a.hasSession()) {
+    wrap.append(rEl('p', { class: 'r-lead', text: 'Pieslēdzies ar e-pastu — tev atsūtīs saiti, nekāda parole nav vajadzīga.' }),
+      emailForm('signin', 'Sūtīt pieslēgšanās saiti'), googleBtn(false), msg,
+      rEl('button', { class: 'link-btn', type: 'button', text: 'Turpināt bez konta saglabāšanas', onclick: () => { ridesSetSignedOut(false); rides.accountView = false; rides.accountMsg = null; ridesEnsureAccount(); } }));
+    if (a.hasPrevious && a.hasPrevious()) wrap.append(rEl('button', { class: 'link-btn', type: 'button', text: 'Atgriezties pie iepriekšējā (šīs ierīces) konta', onclick: () => { a.restorePrevious(); ridesRefresh(true); ridesRender(true); } }));
+    wrap.append(legal);
+    return wrap;
+  }
+  if (a.isAnon) {
+    if (rides.accountMode === 'conflict') {
+      wrap.append(rEl('div', { class: 'r-acc-danger soft' },
+        rEl('b', { text: 'Šis e-pasts jau pieder citam kontam' }),
+        rEl('p', { text: 'Vari pieslēgties tam kontam. Šīs ierīces profils, braucieni un čata ziņas tiks pārcelti uz to (ja tam kontam jau ir profils — paliks tā vārds un tālrunis).' }),
+        rEl('div', { class: 'r-actions' },
+          rEl('button', { class: 'btn ghost', type: 'button', text: 'Atpakaļ', onclick: () => { rides.accountMode = null; ridesRender(true); } }),
+          rEl('button', { class: 'btn primary', type: 'button', text: 'Pieslēgties un pārcelt', onclick: async () => {
+            try { await a.signInOther(rides.accountEmail || '', czReturnUrl()); rides.accountMode = null; say(`✓ Saite nosūtīta uz ${rides.accountEmail}. Atver to šajā ierīcē.`, false); ridesRender(true); }
+            catch (e) { say(czAuthErrorText(e.code, e.status)); }
+          } }))), msg);
+      return wrap;
+    }
+    if (rides.accountMode === 'other') {
+      wrap.append(rEl('p', { class: 'r-lead', text: 'Pieslēdzies savam esošajam kontam. Šajā ierīcē ievadītie dati tiks pārcelti uz to.' }),
+        emailForm('other', 'Sūtīt pieslēgšanās saiti'), googleBtn(true), msg,
+        rEl('button', { class: 'link-btn', type: 'button', text: '← Saglabāt šo kontu ar e-pastu', onclick: () => { rides.accountMode = null; rides.accountMsg = null; ridesRender(true); } }));
+    } else {
+      wrap.append(rEl('p', { class: 'r-lead', text: 'Tavs konts pagaidām ir saglabāts tikai šajā ierīcē. Pievieno e-pastu — tad, nomainot telefonu vai iztīrot pārlūku, varēsi pieslēgties un nekas nepazudīs. Parole nav vajadzīga.' }),
+        emailForm('link', 'Saglabāt ar e-pastu'), googleBtn(false), msg,
+        rEl('button', { class: 'link-btn', type: 'button', text: 'Man jau ir konts — pieslēgties', onclick: () => { rides.accountMode = 'other'; rides.accountMsg = null; ridesRender(true); } }));
+    }
+  } else {
+    wrap.append(rEl('p', { class: 'r-lead', text: `Pieslēdzies kā ${a.email || 'Google konts'}. Ar šo e-pastu vari pieslēgties jebkurā ierīcē.` }), msg,
+      rEl('button', { class: 'btn ghost', type: 'button', text: 'Izrakstīties', onclick: async () => {
+        await a.signOut(); ridesSetSignedOut(true);
+        rides.profile = null; rides.myReqs = []; rides.offers = {}; rides.myOffers = []; rides.msgs = {};
+        rides.accountMsg = { text: 'Tu esi izrakstījies. Lai turpinātu, pieslēdzies vēlreiz.', bad: false };
+        ridesRender(true);
+      } }));
+  }
+  if (a.hasPrevious && a.hasPrevious()) wrap.append(rEl('button', { class: 'link-btn', type: 'button', text: 'Atgriezties pie iepriekšējā (šīs ierīces) konta', onclick: () => { a.restorePrevious(); ridesRefresh(true); ridesRender(true); } }));
+  wrap.append(rEl('button', { class: 'link-btn danger', type: 'button', text: 'Dzēst kontu', onclick: () => { rides.accountMode = 'delete'; rides.accountMsg = null; ridesRender(true); } }), legal);
+  return wrap;
+}
+async function ridesDeleteAccount(say) {
+  const a = rides.store.auth;
+  try {
+    let unclosed = null;
+    const acct = await rides.store.hasDriverAccount().catch(() => null);
+    if (acct) {
+      try { const r = await rides.store.pay('close'); if (!r || !(r.closed || r.none)) unclosed = acct; }
+      catch { unclosed = acct; }
+    }
+    await rides.store.deleteAccount(unclosed);
+    a.forgetLocal(); ridesSetSignedOut(true);
+    rides.profile = null; rides.myReqs = []; rides.offers = {}; rides.myOffers = []; rides.msgs = {}; rides.pay = {}; rides.payDrv = null;
+    rides.accountMode = null;
+    rides.accountMsg = { text: '✓ Konts un tā dati ir dzēsti.' + (unclosed ? ' Kartes maksājumu (Stripe) kontu lietotnes īpašnieks slēgs manuāli.' : ''), bad: false };
+    ridesRender(true);
+  } catch (e) {
+    console.warn('Konta dzēšana', e);
+    say('Kontu neizdevās dzēst. Pārbaudi internetu un mēģini vēlreiz.');
+  }
 }
 
 // Drošībai: ja app-gl.js to vēl nav izsaucis (ielādes secība), palaiž, kad lapa ielādēta.

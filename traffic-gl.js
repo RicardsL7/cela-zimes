@@ -13,22 +13,22 @@ function trSetPref(k, v) { try { localStorage.setItem(k, v); } catch {} }
 const trShare = () => trPref('cz.traffic.share', '') === 'yes';
 const trShow = () => trPref('cz.traffic.show', 'yes') === 'yes';
 
-// ---------- Anonīma sesija (atsevišķa no kopbraucienu profila) ----------
-let trSession = null;
+// ---------- Pieteikšanās: kopīgā (auth.js) — tikai tad, kad lietotājs pats ieslēdz dalīšanos ----------
+const TR_SHARE_VERSION = '2026-10-23';
 async function trAuth() {
-  if (trSession && trSession.exp - Date.now() > 60000) return trSession.token;
-  try { trSession = JSON.parse(localStorage.getItem('cz.traffic.session') || 'null'); } catch { trSession = null; }
-  const url = trafficCfg.url.replace(/\/$/, ''), h = { apikey: trafficCfg.anonKey, 'content-type': 'application/json' };
-  let r;
-  if (trSession && trSession.refresh) {
-    r = await fetch(url + '/auth/v1/token?grant_type=refresh_token', { method: 'POST', headers: h, body: JSON.stringify({ refresh_token: trSession.refresh }) });
-  }
-  if (!r || !r.ok) r = await fetch(url + '/auth/v1/signup', { method: 'POST', headers: h, body: JSON.stringify({ data: {} }) });
-  if (!r.ok) throw new Error('auth ' + r.status);
-  const s = await r.json();
-  trSession = { token: s.access_token, refresh: s.refresh_token, exp: Date.now() + (s.expires_in || 3600) * 1000 };
-  try { localStorage.setItem('cz.traffic.session', JSON.stringify(trSession)); } catch {}
-  return trSession.token;
+  const a = czAuthGet();
+  if (!a) throw new Error('auth');
+  return a.token({ create: true });          // ja konta vēl nav — izveido (tikai ar piekrišanu noteikumiem)
+}
+// Atsevišķa, brīvprātīga piekrišana ātruma dalīšanai (glabājas lokāli; ar kontu — arī serverī)
+function trShareChoice(yes) {
+  trSetPref('cz.traffic.share', yes ? 'yes' : 'no');
+  const a = czAuthGet();
+  if (!a) return;
+  (async () => {
+    try { if (yes) await a.token({ create: true }); await a.syncTermsConsent(); await a.syncConsent('speed_share', TR_SHARE_VERSION, !!yes); }
+    catch (e) { console.warn('Piekrišanu neizdevās saglabāt serverī', e); }
+  })();
 }
 async function trRpc(name, body, auth) {
   const url = trafficCfg.url.replace(/\/$/, '') + '/rest/v1/rpc/' + name;
@@ -43,6 +43,7 @@ async function trRpc(name, body, auth) {
 // Izsauc app-gl.js onFix() pēc katra GPS mērījuma.
 function trafficOnFix(lat, lng, kmh, heading, acc) {
   if (!trafficCfg || state.testMode) return;
+  if (!czConsentOk()) return;                 // bez piekrišanas noteikumiem neko nesūta un nejautā
   if (!trShare()) { if (!trAsked && kmh > 15 && trPref('cz.traffic.share', '') === '') trAskConsent(); return; }
   if (!roadIndex.ready || !roadIndex.covers(lat, lng)) return;
   const now = Date.now(), L = trCollector.last;
@@ -77,7 +78,7 @@ function trAskConsent() {
   el.addEventListener('click', ev => {
     const a = ev.target.closest('button') && ev.target.closest('button').dataset.a;
     if (!a) return;
-    trSetPref('cz.traffic.share', a);
+    trShareChoice(a === 'yes');
     const sw = $('trafficShare'); if (sw) sw.checked = a === 'yes';
     el.remove();
   });
@@ -194,7 +195,7 @@ function wireTraffic() {
   const share = $('trafficShare'), show = $('trafficShow');
   if (share) {
     share.checked = trShare();
-    share.addEventListener('change', () => trSetPref('cz.traffic.share', share.checked ? 'yes' : 'no'));
+    share.addEventListener('change', () => trShareChoice(share.checked));
   }
   if (show) {
     show.checked = trShow();

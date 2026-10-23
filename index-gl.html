@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=92">
+  <link rel="stylesheet" href="style-gl.css?v=93">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -241,6 +241,11 @@
       <span>Kartes stils</span>
       <select id="basemapSelect" class="select"></select>
     </label>
+    <div class="row acc-row">
+      <span>Konts un dati<br><small class="fine">Saglabāt kontu ar e-pastu, izrakstīties, dzēst kontu</small></span>
+      <button id="accountBtn" type="button" class="link-btn">Atvērt</button>
+    </div>
+    <p class="fine set-legal"><a href="terms.html" target="_blank" rel="noopener">Lietošanas noteikumi</a> · <a href="privacy.html" target="_blank" rel="noopener">Privātuma politika</a></p>
     <div class="token-box">
       <label for="mlyToken">Mapillary atslēga (Client Token)</label>
       <div class="token-row">
@@ -252,27 +257,52 @@
     <p class="fine">Dati: © OpenStreetMap līdzautori, © Mapillary, © OpenFreeMap. Maršruti: OSRM. Meklēšana: Photon, Nominatim. Laikapstākļi: Open-Meteo. Vietas: OpenStreetMap (Overpass).</p>
   </section>
 
+  <!-- Piekrišana noteikumiem (pirmajā atvēršanā) -->
+  <div id="consentGate" class="consent-gate" hidden role="dialog" aria-modal="true" aria-labelledby="consentTitle">
+    <div class="consent-card" data-step="ask">
+      <h2 id="consentTitle">Laipni lūdzam Ceļa Zīmēs</h2>
+      <p id="consentUpdated" class="consent-upd" hidden>Lietošanas noteikumi vai privātuma politika ir mainīti — lūdzu, iepazīsties ar jauno versiju.</p>
+      <p>Ceļa Zīmes rāda ceļa zīmes, ātruma ierobežojumus un radarus, ved pa maršrutu un palīdz braukt kopā. Lai lietotu lietotni, jāpiekrīt lietošanas noteikumiem un privātuma politikai.</p>
+      <ul class="consent-list">
+        <li>Atrašanās vietu lietotne izmanto kartei, navigācijai un brīdinājumiem; maršruta aprēķinam un meklēšanai vieta tiek nosūtīta karšu pakalpojumiem.</li>
+        <li>Konts tiek izveidots tikai tad, ja izmanto „Kopā” (kopbraucienus) vai pats ieslēdz ātruma dalīšanu.</li>
+        <li>Ātruma dalīšana sastrēgumu kartei ir atsevišķa, brīvprātīga izvēle — to vari ieslēgt vai izslēgt jebkurā brīdī.</li>
+      </ul>
+      <p class="consent-links"><a href="terms.html" target="_blank" rel="noopener">Lietošanas noteikumi</a> · <a href="privacy.html" target="_blank" rel="noopener">Privātuma politika</a></p>
+      <div class="consent-btns">
+        <button type="button" class="btn ghost" data-act="decline">Nepiekrītu</button>
+        <button type="button" class="btn primary" data-act="accept">Piekrītu un turpināt</button>
+      </div>
+    </div>
+    <div class="consent-card" data-step="declined" hidden>
+      <h2>Bez piekrišanas lietotni izmantot nevar</h2>
+      <p>Ceļa Zīmes nevar darboties, ja nepiekrīti lietošanas noteikumiem un privātuma politikai. Konts netika izveidots, un tava atrašanās vieta netika izmantota.</p>
+      <div class="consent-btns"><button type="button" class="btn primary" data-act="back">Pārskatīt vēlreiz</button></div>
+    </div>
+  </div>
+
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script src="cache.js?v=92"></script>
-  <script src="signs.js?v=92"></script>
-  <script src="mapillary.js?v=92"></script>
-  <script src="roads-gl.js?v=92"></script>
-  <script src="basemap-gl.js?v=92"></script>
-  <script src="signs-gl.js?v=92"></script>
-  <script src="nav.js?v=92"></script>
-  <script src="times.js?v=92"></script>
-  <script src="parking.js?v=92"></script>
-  <script src="alerts.js?v=92"></script>
-  <script src="places.js?v=92"></script>
-  <script src="model.js?v=92"></script>
-  <script src="rides-config.js?v=92"></script>
-  <script src="mly-config.js?v=92"></script>
-  <script src="traffic.js?v=92"></script>
-  <script src="rides.js?v=92"></script>
-  <script src="rides-ui.js?v=92"></script>
-  <script src="app-gl.js?v=92"></script>
-  <script src="park-gl.js?v=92"></script>
-  <script src="park-dest-gl.js?v=92"></script>
-  <script src="traffic-gl.js?v=92"></script>
+  <script src="cache.js?v=93"></script>
+  <script src="signs.js?v=93"></script>
+  <script src="mapillary.js?v=93"></script>
+  <script src="roads-gl.js?v=93"></script>
+  <script src="basemap-gl.js?v=93"></script>
+  <script src="signs-gl.js?v=93"></script>
+  <script src="nav.js?v=93"></script>
+  <script src="times.js?v=93"></script>
+  <script src="parking.js?v=93"></script>
+  <script src="alerts.js?v=93"></script>
+  <script src="places.js?v=93"></script>
+  <script src="model.js?v=93"></script>
+  <script src="rides-config.js?v=93"></script>
+  <script src="auth.js?v=93"></script>
+  <script src="mly-config.js?v=93"></script>
+  <script src="traffic.js?v=93"></script>
+  <script src="rides.js?v=93"></script>
+  <script src="rides-ui.js?v=93"></script>
+  <script src="app-gl.js?v=93"></script>
+  <script src="park-gl.js?v=93"></script>
+  <script src="park-dest-gl.js?v=93"></script>
+  <script src="traffic-gl.js?v=93"></script>
 </body>
 </html>

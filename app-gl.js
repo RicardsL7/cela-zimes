@@ -252,10 +252,11 @@ async function loadSharedRadars() {
     }
     if (added) { signs.refresh(); added = 0; }
   }
-  if (bad.length) radarRpc('radar_bad', { ids: bad.slice(0, 50) }).catch(() => {});
+  if (bad.length && czConsentOk()) radarRpc('radar_bad', { ids: bad.slice(0, 50) }).catch(() => {});
 }
 // Paziņo citiem: jauns radars (vai ilgi nav apstiprināts — reizi nedēļā)
 function radarShare(id, lat, lng, value, reportedAt) {
+  if (typeof czConsentOk === 'function' && !czConsentOk()) return;      // bez piekrišanas neko nesūta
   if (!radarShared.loaded) { setTimeout(() => radarShare(id, lat, lng, value, reportedAt), 5000); return; }
   if (radarShared.ids.has(id) && Date.now() - (reportedAt || 0) < 7 * 86400000) return;
   if (radarShared.queue.has(id)) return;
@@ -2659,7 +2660,7 @@ async function init() {
   loadPlateTimes();
   wireAlerts();
   wirePlaces();
-  startGps();
+  czWhenConsent(startGps);          // atrašanās vietas atļauju prasa tikai pēc piekrišanas noteikumiem
   map.once('load', loadAllForView);
 }
 
