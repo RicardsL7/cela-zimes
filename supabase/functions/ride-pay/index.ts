@@ -8,6 +8,10 @@
 //   PAY_LIVE=yes       — tikai tad, kad apzināti ieslēdz īstus maksājumus (ar sk_live_…).
 //   PAY_FEE_PERCENT    — komisija procentos (neobligāti, noklusēti 10).
 //
+// Atmaksa (F14, darbības "refund" un "refund_sync"; datubāze — supabase/rides-8-refund.sql): Stripe Refund ar
+// reverse_transfer (nauda atgūta no šofera konta) un refund_application_fee (atgriež arī komisiju), Idempotency-Key
+// "refund-<brauciena ID>" — divreiz neatmaksā. Vai samaksāts / atmaksāts — vienmēr jautā Stripe.
+//
 // Datubāzei funkcija piekļūst AR LIETOTĀJA PAŠA pieteikšanos (RLS noteikumi supabase/rides-3-pay.sql),
 // nevis ar servisa atslēgu. Vai brauciens samaksāts, funkcija vienmēr jautā Stripe.
 
@@ -39,11 +43,13 @@ function form(obj: Record<string, unknown>, prefix = '', out = new URLSearchPara
   }
   return out;
 }
+// idem — Stripe Idempotency-Key (atkārtots pieprasījums ar to pašu atslēgu neko neizdara otrreiz)
 // deno-lint-ignore no-explicit-any
-async function stripe(path: string, body?: Record<string, unknown>): Promise<any> {
+async function stripe(path: string, body?: Record<string, unknown>, idem?: string): Promise<any> {
   const r = await fetch('https://api.stripe.com/v1/' + path, {
     method: body ? 'POST' : 'GET',
-    headers: { Authorization: 'Bearer ' + SK, ...(body ? { 'content-type': 'application/x-www-form-urlencoded' } : {}) },
+    headers: { Authorization: 'Bearer ' + SK, ...(body ? { 'content-type': 'application/x-www-form-urlencoded' } : {}),
+      ...(idem ? { 'Idempotency-Key': idem } : {}) },
     body: body ? form(body) : undefined,
   });
   const j = await r.json().catch(() => ({}));
@@ -86,6 +92,28 @@ async function driverAccount(acct: string): Promise<{ owner: string | null; read
 }
 const short = (s: string) => (s || '').split(',')[0].slice(0, 40) || '—';
 
+// Maksājuma stāvoklis no Stripe: Checkout sesija → PaymentIntent → maksājums (charge) → atmaksas
+type PayInfo = { ok: boolean; paid: boolean; amount: number | null; pi: string | null;
+  refundedCents: number; refundId: string | null; refundReason: string | null };
+async function payInfo(sessionId: string, oid: string): Promise<PayInfo | null> {
+  const s = await stripe('checkout/sessions/' + sessionId + '?expand[]=payment_intent.latest_charge.refunds').catch(() => null);
+  if (!s) return null;
+  const ok = s.metadata?.offer_id === oid;
+  const pi = s.payment_intent && typeof s.payment_intent === 'object' ? s.payment_intent : null;
+  const ch = pi && pi.latest_charge && typeof pi.latest_charge === 'object' ? pi.latest_charge : null;
+  // deno-lint-ignore no-explicit-any
+  const refunds: any[] = ch?.refunds?.data ?? [];
+  const okRefunds = refunds.filter((r) => r.status === 'succeeded' || r.status === 'pending');
+  return {
+    ok, paid: ok && s.payment_status === 'paid', amount: ok ? s.amount_total : null,
+    pi: pi ? pi.id : (typeof s.payment_intent === 'string' ? s.payment_intent : null),
+    refundedCents: ok ? Number(ch?.amount_refunded ?? 0) || okRefunds.reduce((a, r) => a + (r.amount || 0), 0) : 0,
+    refundId: okRefunds[0]?.id ?? null,
+    refundReason: okRefunds[0]?.metadata?.cz_reason ?? null,
+  };
+}
+const REASONS = ['cancelled_before_pickup', 'driver_refund', 'stripe_dashboard'];
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   try {
@@ -124,6 +152,57 @@ Deno.serve(async (req) => {
       const ok = await db('rpc/account_alias_ok', { method: 'POST', body: JSON.stringify({ old_id: owner, new_id: expected }) }).catch(() => false);
       if (ok === true) { await stripeV2(`core/accounts/${acct}`, { metadata: { cz_user: expected } }).catch(() => null); return true; }
       return false;
+    };
+
+    // Maksājuma statusa pieraksts datubāzē (tikai uz priekšu; kļūda nav kritiska — patiesība ir Stripe)
+    const mark = (oid: string, status: 'paid' | 'refunded', refundId: string | null = null, reason: string | null = null, cents: number | null = null) =>
+      db('rpc/ride_payment_mark', { method: 'POST', body: JSON.stringify({ oid, p_status: status, p_refund_id: refundId,
+        p_reason: reason && REASONS.includes(reason) ? reason : (status === 'refunded' ? 'stripe_dashboard' : null), p_cents: cents }) })
+        .catch((e: unknown) => console.error('mark', oid, e));
+
+    // ---------- Atmaksa (F14) ----------
+    // mode 'driver' — šoferis nospieda „Atmaksāt” (tikai šī brauciena šoferis);
+    // mode 'auto'   — brauciens atcelts PIRMS iekāpšanas: atmaksu izraisa atcelšana (jebkurš brauciena dalībnieks),
+    //                 bet serveris pats pārbauda, ka brauciens tiešām atcelts un pasažieris nebija iekāpis.
+    const refund = async (oid: string, mode: 'driver' | 'auto') => {
+      const [o] = await db(`ride_offers?id=eq.${oid}&select=id,status,trip,price_cents,driver_id,request:ride_requests(user_id,status)`);
+      if (!o || !o.request) throw new Fail('Brauciens nav atrasts', 404);
+      const isDriver = o.driver_id === uid, isPassenger = o.request.user_id === uid;
+      const cancelledBefore = (o.status === 'cancelled' || o.request.status === 'cancelled') && ['', 'coming', 'arrived'].includes(o.trip);
+      let reason: string;
+      if (mode === 'driver') {
+        if (!isDriver) throw new Fail('Atmaksāt var tikai šī brauciena šoferis.', 403);
+        reason = cancelledBefore ? 'cancelled_before_pickup' : 'driver_refund';
+      } else {
+        if (!isDriver && !isPassenger) throw new Fail('Brauciens nav atrasts', 404);
+        if (!cancelledBefore) throw new Fail('Automātiski atmaksā tikai braucienu, kas atcelts pirms iekāpšanas.', 403);
+        reason = 'cancelled_before_pickup';
+      }
+      const [p] = await db(`ride_payments?offer_id=eq.${oid}&select=session_id,status`);
+      if (!p) throw new Fail('Šis brauciens nav samaksāts ar karti.', 409);
+      const info = await payInfo(p.session_id, oid);
+      if (!info) throw new Fail('Neizdevās sazināties ar Stripe — mēģini vēlreiz.', 502);
+      if (!info.ok || !info.paid || !info.pi) throw new Fail('Šis brauciens nav samaksāts ar karti.', 409);
+      if (info.refundedCents > 0) {                          // jau atmaksāts (arī, ja to izdarīja Stripe panelī)
+        if (p.status !== 'refunded' && info.refundId) await mark(oid, 'refunded', info.refundId, info.refundReason, info.refundedCents);
+        if (mode === 'driver') throw new Fail('Šis brauciens jau ir atmaksāts.', 409);
+        return { refunded: true, already: true, amount: info.refundedCents, reason: info.refundReason || reason };
+      }
+      let r;
+      try {
+        r = await stripe('refunds', {
+          payment_intent: info.pi, reverse_transfer: 'true', refund_application_fee: 'true', reason: 'requested_by_customer',
+          metadata: { offer_id: oid, cz_reason: reason, cz_by: uid },
+        }, 'refund-' + oid);
+      } catch (e) {
+        console.error('refund', oid, e);
+        throw new Fail('Atmaksa neizdevās — Stripe to noraidīja. Mēģini vēlāk vai sazinies ar lietotnes īpašnieku.', 502);
+      }
+      if (r.status === 'failed' || r.status === 'canceled') {
+        throw new Fail('Atmaksa neizdevās — Stripe to noraidīja. Mēģini vēlāk vai sazinies ar lietotnes īpašnieku.', 502);
+      }
+      await mark(oid, 'refunded', r.id, reason, r.amount);
+      return { refunded: true, already: false, amount: r.amount, reason, status: r.status };
     };
 
     const body = await req.json().catch(() => ({}));
@@ -237,16 +316,39 @@ Deno.serve(async (req) => {
       // Abiem: vai braucieni samaksāti (patiesība — no Stripe)
       case 'status': {
         const ids = (Array.isArray(body.offer_ids) ? body.offer_ids : []).map(String).filter((x: string) => UUID.test(x)).slice(0, 20);
-        const out: Record<string, { paid: boolean; amount: number | null }> = {};
+        const out: Record<string, { paid: boolean; amount: number | null; refunded: boolean; refund_cents: number }> = {};
         if (ids.length) {
-          const rows = await db(`ride_payments?offer_id=in.(${ids.join(',')})&select=offer_id,session_id`);
+          const rows = await db(`ride_payments?offer_id=in.(${ids.join(',')})&select=offer_id,session_id,status`);
           for (const r of rows ?? []) {
-            const s = await stripe('checkout/sessions/' + r.session_id).catch(() => null);
-            const ok = !!s && s.metadata?.offer_id === r.offer_id;
-            out[r.offer_id] = { paid: ok && s.payment_status === 'paid', amount: ok ? s.amount_total : null };
+            const i = await payInfo(r.session_id, r.offer_id);
+            if (!i) continue;
+            out[r.offer_id] = { paid: i.paid, amount: i.amount, refunded: i.refundedCents > 0, refund_cents: i.refundedCents };
+            // Pieraksts datubāzē — arī, ja atmaksāts manuāli Stripe panelī
+            if (i.paid && r.status === 'created') await mark(r.offer_id, 'paid');
+            if (i.refundedCents > 0 && r.status !== 'refunded' && i.refundId) await mark(r.offer_id, 'refunded', i.refundId, i.refundReason, i.refundedCents);
           }
         }
         return json({ pay: out, test, fee_pct: FEE_PCT });
+      }
+
+      // Šoferis: „Atmaksāt” (body.auto = true — atcelšana pirms iekāpšanas, to var izraisīt arī pasažieris)
+      case 'refund': {
+        const oid = String(body.offer_id ?? '');
+        if (!UUID.test(oid)) throw new Fail('Nederīgs brauciens');
+        return json(await refund(oid, body.auto === true ? 'auto' : 'driver'));
+      }
+
+      // Atverot „Kopā”: automātiski atmaksā visus maniem braucieniem, kas atcelti pirms iekāpšanas, bet vēl nav atmaksāti
+      // (piem. ja atcelšanas brīdī nebija interneta vai brauciens atcelts automātiski), un atgriež nesenās atmaksas.
+      case 'refund_sync': {
+        const cand: string[] = ((await db('rpc/ride_refund_candidates', { method: 'POST', body: '{}' })) ?? []).map(String).filter((x: string) => UUID.test(x));
+        const done: unknown[] = [];
+        for (const oid of cand) {
+          try { const r = await refund(oid, 'auto'); if (r && !r.already) done.push({ offer_id: oid, ...r }); }
+          catch (e) { if (!(e instanceof Fail) || e.status >= 500) console.error('refund_sync', oid, e); }   // nav samaksāts u.tml. — izlaiž
+        }
+        const recent = (await db('rpc/ride_refunds_recent', { method: 'POST', body: '{}' })) ?? [];
+        return json({ done, recent });
       }
     }
     throw new Fail('Nezināma darbība');
