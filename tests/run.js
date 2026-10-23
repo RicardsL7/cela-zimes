@@ -1110,6 +1110,39 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
   });
 }
 
+// ---------- F14: maksājumu atmaksa ----------
+{
+  const fn = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'ride-pay', 'index.ts'), 'utf8');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'rides-8-refund.sql'), 'utf8');
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'rides-ui.js'), 'utf8');
+  test('F14: atmaksa — Stripe Refund ar reverse_transfer, refund_application_fee un idempotences atslēgu', () => {
+    ok(/stripe\('refunds', \{[\s\S]*?reverse_transfer: 'true', refund_application_fee: 'true'/.test(fn), 'refund parametri');
+    ok(/'refund-' \+ oid/.test(fn) && /'Idempotency-Key': idem/.test(fn), 'Idempotency-Key refund-<id>');
+    ok(/if \(info\.refundedCents > 0\)/.test(fn) && /Šis brauciens jau ir atmaksāts/.test(fn), 'dubulta atmaksa atteikta');
+  });
+  test('F14: tiesības — šoferis pēc pieslēgtā lietotāja; automātiski tikai atceltam pirms iekāpšanas', () => {
+    ok(/const isDriver = o\.driver_id === uid/.test(fn) && /Atmaksāt var tikai šī brauciena šoferis/.test(fn), 'šoferis pēc uid');
+    ok(/\['', 'coming', 'arrived'\]\.includes\(o\.trip\)/.test(fn) && /o\.status === 'cancelled' \|\| o\.request\.status === 'cancelled'/.test(fn), 'atcelts pirms iekāpšanas');
+    ok(!/body\.(driver_id|user_id|uid)/.test(fn), 'lietotāja ID neņem no klienta datiem');
+    ok(/o\.trip in \('', 'coming', 'arrived'\)/.test(sql), 'kandidāti — pirms iekāpšanas');
+  });
+  test('F14: datubāze — statuss refunded, ID, laiks, iemesls; tieši mainīt nevar', () => {
+    for (const c of ['status text', 'refund_id text', 'refunded_at timestamptz', 'refund_reason text', 'refund_cents int']) ok(sql.includes(c), c);
+    ok(/'cancelled_before_pickup', 'driver_refund', 'stripe_dashboard'/.test(sql), 'iemesli');
+    ok(/Maksājuma statusu mainīt nevar/.test(sql) && /create trigger ride_payment_guard before update/.test(sql), 'aizsardzība');
+    ok(/revoke all on function public\.ride_payment_mark\([^)]*\) from public, anon/.test(sql), 'anon nevar');
+  });
+  test('F14: saskarne — „Atmaksāt” tikai samaksātam un neatmaksātam, ar apstiprinājumu; ziņas kartītē / uznirstošas', () => {
+    ok(/if \(!\(ok && p && p\.paid && !p\.refunded\)\) return line;/.test(ui), 'poga tikai samaksātam');
+    ok(/Atmaksāt pasažierim \$\{rideMoney\(amount\)\}\? Šo nevar atsaukt\./.test(ui), 'apstiprinājums');
+    ok(/Nauda \$\{sum\} atmaksāta uz tavu karti\. Bankā tā parādīsies 5–10 darba dienu laikā\./.test(ui), 'pasažiera ziņa');
+    const i = ui.indexOf('function ridesRefundBtn'), j = ui.indexOf('function ridesRefundSeenList');
+    ok(i > 0 && !/setStatus/.test(ui.slice(i, j)), 'atmaksas kodā nav setStatus');
+    ok(/ridesRefundAfterCancel\(acc\)/.test(ui) && /ridesRefundAfterCancel\(o\)/.test(ui), 'atcelšana izsauc atmaksu');
+    ok(/pay\('refund', \{ offer_id: o\.id, auto: true \}\)/.test(ui), 'tā pati servera darbība');
+  });
+}
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
