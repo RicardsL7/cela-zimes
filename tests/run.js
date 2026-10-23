@@ -1329,6 +1329,11 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
     eq(st.speedMemory(), null); ok(st.settlement && st.settlement.urban === false, 'ārpus apdzīvotas vietas');
     eq(speedSignKind({ value: 'information--built-up-area--g1', cat: 'other' }).kind, 'urban');
     eq(speedSignKind({ cat: 'other', kind: 'city', title: 'Apdzīvotas vietas sākums' }).kind, 'urban');
+    eq(speedSignKind({ value: 'information--built-up-area--g2', cat: 'other' }).kind, 'urban', 'Mapillary g2');
+    eq(speedSignKind({ value: 'regulatory--end-of-speed-limit-zone--g1', cat: 'other' }).kind, 'end');
+    eq(speedSignKind({ value: 'information--living-street--g1', cat: 'other' }).limit, 20, 'dzīvojamā zona');
+    eq(speedSignKind({ value: 'information--end-of-living-street--g1', cat: 'other' }).kind, 'end');
+    eq(speedSignKind({ value: 'regulatory--no-entry--g1', cat: 'other' }), null);
   });
   test('F7: nav zīmes un OSM maxspeed → 50 ~ (pilsēta) / 90 ~ (ārpus)', () => {
     const u = decideSpeedLimit({ urban: true, cls: 'primary' }); eq(u.limit, 50); eq(u.approx, true); eq(u.source, 'default');
@@ -1362,6 +1367,7 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
     ok(/signs\.speedMemory/.test(rs) && /lastRouteSignBefore/.test(rs) && /decideSpeedLimit/.test(rs));
     ok(/onFix\(la, lo, state\.testSpeed, hd, 300\)/.test(app), 'klikšķis — testa ātrums un kurss');
     ok(/LIMIT_MATCH_M = 20/.test(app) && /\["maxspeed:type"\]/.test(app) && /"living_street"/.test(app));
+    ok(/classList\.toggle\('has-limit'/.test(ul), 'nākamās zīmes kartīte neaizsedz plāksnīti');
     const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
     ok(/id="testSpeed"/.test(html) && /class="limit-approx"/.test(html) && /speedlimit\.js\?v=\d+/.test(html));
   });
