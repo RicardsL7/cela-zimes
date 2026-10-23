@@ -41,6 +41,7 @@ const state = {
   basemap: store.get('basemap', 'auto'),
   mlyToken: store.get('mlyToken', '') || mlyPublicToken(),
   testMode: false,
+  testSpeed: 55,          // F7: testa režīmā simulētais ātrums (klikšķis uz kartes bez maršruta)
   follow: true,
   me: null,            // { lat, lng, speedKmh }
   heading: null,
@@ -344,6 +345,9 @@ function buildQuery(s, w, n, e) {
   way["hazard"]["highway"](${bb});
   way["highway"="construction"](${bb});
   way["highway"]["maxspeed"](${bb});
+  way["highway"]["maxspeed:type"](${bb});
+  way["highway"]["source:maxspeed"](${bb});
+  way["highway"="living_street"](${bb});
   way["highway"]["maxspeed:conditional"](${bb});
   way["highway"]["access:conditional"](${bb});
   way["highway"]["motor_vehicle:conditional"](${bb});
@@ -410,12 +414,17 @@ function processOsmElements(elements) {
       const sign = classifyNode(el.tags);
       if (sign && addSign(el.lat, el.lon, sign)) added++;
     } else if (el.type === 'way' && el.geometry && !state.ways.has(el.id)) {
-      const limit = parseMaxspeed(el.tags.maxspeed);
+      // F7: arī ceļi bez maxspeed, bet ar Latvijas noklusējumu (maxspeed:type / source:maxspeed = LV:urban/rural)
+      // vai dzīvojamā zona — tiem ātrums ir aptuvens (implicit), un zīmi kartē neliek.
+      const explicit = parseMaxspeed(el.tags.maxspeed);
+      const typ = String(el.tags['maxspeed:type'] || el.tags['source:maxspeed'] || '').toLowerCase();
+      const zone = /urban/.test(typ) ? 'urban' : /rural/.test(typ) ? 'rural' : null;
+      const limit = explicit || (el.tags.highway === 'living_street' ? 20 : parseMaxspeed(typ));
       if (!limit) continue;
       const pts = el.geometry.map(p => [p.lat, p.lon]);
       state.ways.set(el.id, { limit, pts });
-      indexWay(limit, pts, speedCondition(el.tags));
-      added += addWaySpeedSign(pts, limit);
+      indexWay(limit, pts, speedCondition(el.tags), { implicit: !explicit, zone });
+      if (explicit) added += addWaySpeedSign(pts, limit);
     }
   }
   return added;
@@ -475,7 +484,9 @@ function addWaySpeedSign(pts, limit) {
   const at = pointAlong(pts, 25);
   if (placedSpeed.some(p => p.limit === limit && distM(p.lat, p.lng, at[0], at[1]) < 250)) return 0;
   placedSpeed.push({ lat: at[0], lng: at[1], limit });
-  return addSign(at[0], at[1], { cat: 'speed', kind: 'speed', value: limit, title: `Ātruma ierobežojums ${limit} km/h` }) ? 1 : 0;
+  const s = addSign(at[0], at[1], { cat: 'speed', kind: 'speed', value: limit, title: `Ātruma ierobežojums ${limit} km/h` });
+  if (s) s.wayStart = true;           // F7: OSM maxspeed attēlojums, nevis fiziska zīme — zīmju atmiņā neņem
+  return s ? 1 : 0;
 }
 function pathLength(pts) {
   let d = 0;
@@ -498,7 +509,7 @@ function pointAlong(pts, meters) {
 // Ātruma ierobežojums zem manis: ceļu posmi nelielās šūnās.
 const WAY_CELL = 0.002;
 const wayGrid = new Map();
-function indexWay(limit, pts, cond) {
+function indexWay(limit, pts, cond, meta = {}) {
   for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1], b = pts[i];
     const la0 = Math.floor(Math.min(a[0], b[0]) / WAY_CELL), la1 = Math.floor(Math.max(a[0], b[0]) / WAY_CELL);
@@ -506,7 +517,7 @@ function indexWay(limit, pts, cond) {
     for (let la = la0; la <= la1; la++) for (let lo = lo0; lo <= lo1; lo++) {
       const k = la + ':' + lo;
       if (!wayGrid.has(k)) wayGrid.set(k, []);
-      wayGrid.get(k).push([a, b, limit, cond]);
+      wayGrid.get(k).push([a, b, limit, cond, meta]);
     }
   }
 }
@@ -520,38 +531,99 @@ function distToSegment(p, a, b) {
 }
 // Ātrums no OSM ceļa. Ņem ceļu, uz kura ESMU (kartes piesaistes punkts, ceļa virziens sakrīt
 // ar kursu), nevis vienkārši tuvāko — citādi pie paralēlas ielas rādītu tās ātrumu.
+// F7: piesaistes punkts (vektorkartes ceļš) un Overpass ģeometrija bieži atšķiras par > 8 m, tāpēc pielaide 20 m;
+// virzienu ņem no kartes ceļa (līkumos GPS kurss atpaliek), pielaide 45°.
+// Atgriež { limit, implicit, zone } vai null; zoneNear — tuvākā (≤ 150 m) ceļa LV:urban / LV:rural atzīme.
+const LIMIT_MATCH_M = 20, LIMIT_FREE_M = 30, LIMIT_AXIS_DEG = 45, ZONE_NEAR_M = 150;
 function nearestLimit(lat, lng, heading = null, matched = null) {
-  if (matched) { lat = matched.P[1]; lng = matched.P[0]; }
-  let best = null, bestD = matched ? 8 : 30;
+  if (matched) { lat = matched.P[1]; lng = matched.P[0]; if (matched.dir != null) heading = matched.dir; }
+  let best = null, bestD = matched ? LIMIT_MATCH_M : LIMIT_FREE_M, zone = null, zoneD = ZONE_NEAR_M;
   const la = Math.floor(lat / WAY_CELL), lo = Math.floor(lng / WAY_CELL);
   for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
-    for (const [a, b, limit, cond] of wayGrid.get((la + i) + ':' + (lo + j)) || []) {
+    for (const [a, b, limit, cond, meta = {}] of wayGrid.get((la + i) + ':' + (lo + j)) || []) {
+      const d = distToSegment([lat, lng], a, b);
+      if (meta.zone && d < zoneD) { zoneD = d; zone = meta.zone; }
       if (heading != null) {
         const ax = angleDiff(bearingDeg(a[0], a[1], b[0], b[1]), heading);
-        if (Math.min(ax, 180 - ax) > 35) continue;                 // šķērsiela
+        if (Math.min(ax, 180 - ax) > LIMIT_AXIS_DEG) continue;     // šķērsiela
       }
-      const d = distToSegment([lat, lng], a, b);
       // Mainīgs ātrums (piem. 30 darbdienās 7–22): tagad spēkā esošais.
-      if (d < bestD) { bestD = d; best = cond && cond.test(new Date()) ? cond.limit : limit; }
+      if (d < bestD) { bestD = d; best = { limit: cond && cond.test(new Date()) ? cond.limit : limit, implicit: !!meta.implicit, zone: meta.zone || null }; }
     }
   }
+  if (best) best.zoneNear = zone; else if (zone) return { limit: null, zoneNear: zone };
   return best;
 }
+
+// F7: apdzīvota vieta pēc kartes (vektorkartes "place" punkti jau ielādētajās flīzēs — bez jauniem pieprasījumiem).
+// true — tuvumā pilsēta / ciems / pilsētas daļa; false — vietu dati ir, bet tuvumā nav; null — nav zināms.
+const PLACE_RADIUS_M = { city: 8000, town: 3000, village: 1200, suburb: 1500, quarter: 1000, neighbourhood: 800 };
+let placeCache = null;
+function placeUrban(lat, lng) {
+  const now = Date.now();
+  if (!placeCache || now - placeCache.at > 30000 || distM(placeCache.lat, placeCache.lng, lat, lng) > 500) {
+    let feats = [];
+    try { if (map.getSource('openmaptiles')) feats = map.querySourceFeatures('openmaptiles', { sourceLayer: 'place' }); } catch { feats = []; }
+    placeCache = { at: now, lat, lng, pts: feats.filter(f => PLACE_RADIUS_M[f.properties.class] && f.geometry && f.geometry.type === 'Point')
+      .map(f => ({ cls: f.properties.class, lng: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] })) };
+  }
+  if (!placeCache.pts.length) return null;
+  return placeCache.pts.some(p => distM(p.lat, p.lng, lat, lng) <= PLACE_RADIUS_M[p.cls]);
+}
+
+// F7: spēkā esošais ierobežojums ar navigāciju vai bez tās → { limit, source: 'sign'|'osm'|'default', approx } vai null.
+//   a) garām pabraukta ātruma zīme uz mana ceļa manā virzienā (bez maršruta — SignStore atmiņa);
+//   b) OSM maxspeed ceļam, uz kura esmu;
+//   c) Latvijas noklusējums (aptuveni): apdzīvotā vietā 50, ārpus 90, dzīvojamā zonā 20.
+// Navigācijā kā līdz šim: vispirms OSM, tad pēdējā maršruta zīme (lastRouteSignBefore), tad noklusējums.
+function resolveSpeedLimit() {
+  if (!state.me) return null;
+  const pos = signs.pos && !signs.pos.uncertain ? signs.pos : null;
+  const osm = nearestLimit(state.me.lat, state.me.lng, state.heading, pos);
+  const explicitOsm = osm && osm.limit && !osm.implicit ? osm : null;
+  let sign = null;
+  if (state.nav.active) {
+    if (!explicitOsm && state.nav.along != null) {
+      const last = signs.lastRouteSignBefore(state.nav.along + 10, 2000, x => x.cat === 'speed' && x.limit);
+      if (last) sign = last.s.limit;
+    }
+  } else {
+    const mem = signs.speedMemory && signs.speedMemory();
+    if (mem) sign = mem.limit;
+  }
+  if (state.nav.active && explicitOsm) return { limit: explicitOsm.limit, source: 'osm', approx: false };
+  let urban = null;
+  const set = signs.settlement;
+  if (set && set.s && distM(set.s.lat, set.s.lng, state.me.lat, state.me.lng) < 20000) urban = set.urban;
+  else if (osm && (osm.zone || osm.zoneNear)) urban = (osm.zone || osm.zoneNear) === 'urban';
+  else urban = placeUrban(state.me.lat, state.me.lng);
+  return decideSpeedLimit({ sign, osm: osm && osm.limit ? osm : null, urban, cls: pos ? pos.cls : null });
+}
+const speedHold = new SpeedLimitHold();
+let limitKey = '', overNow = false;
 function updateLimit() {
   const badge = $('limitBadge');
   if (!state.me) { badge.hidden = true; return; }
-  const pos = signs.pos && !signs.pos.uncertain ? signs.pos : null;
-  let limit = nearestLimit(state.me.lat, state.me.lng, state.heading, pos);
-  // Ja OSM ceļam ātrums nav norādīts: pēdējā garām pabrauktā ātruma zīme maršrutā.
-  if (limit == null && state.nav.active && state.nav.along != null) {
-    const last = signs.lastRouteSignBefore(state.nav.along + 10, 2000, x => x.cat === 'speed' && x.limit);
-    if (last) limit = last.s.limit;
-  }
-  badge.hidden = limit == null;
-  if (limit != null) $('limitValue').textContent = limit;
-  const over = state.warn && limit != null && state.me.speedKmh != null && state.me.speedKmh > limit + 3;
+  const res = speedHold.update(resolveSpeedLimit(), Date.now(), state.me.lat, state.me.lng);
+  badge.hidden = !res;
+  if (res) $('limitValue').textContent = res.limit;
+  badge.classList.toggle('approx', !!(res && res.approx));
+  const label = !res ? '' : res.approx ? `Aptuvenais ierobežojums ${res.limit} km/h (zīme nav atrasta)` : `Ātruma ierobežojums ${res.limit} km/h`;
+  badge.title = label;
+  badge.setAttribute('aria-label', label);
+  const over = isOverspeed(state.me.speedKmh, res, state.warn);
   $('speedBox').classList.toggle('over', over);
   badge.classList.toggle('pulse', over);
+  // F8 sagatavošanai: notikumi tikai pie maiņas (balss vēl nav)
+  const key = speedLimitKey(res);
+  if (key !== limitKey) {
+    limitKey = key;
+    document.dispatchEvent(new CustomEvent('speedlimitchange', { detail: res ? { limit: res.limit, source: res.source, approx: res.approx } : null }));
+  }
+  if (over !== overNow) {
+    overNow = over;
+    document.dispatchEvent(new CustomEvent('overspeed', { detail: { active: over, speed: state.me.speedKmh, limit: res ? res.limit : null } }));
+  }
 }
 
 // ---------- Laika ierobežojumi ----------
@@ -2537,6 +2609,13 @@ function wireUi() {
   $('markerAnimTest').addEventListener('click', previewMarkerMorph);
   $('warnSwitch').checked = state.warn;
   $('warnSwitch').addEventListener('change', e => { state.warn = e.target.checked; store.set('warn', state.warn); updateLimit(); });
+  if ($('testSpeed')) {
+    const showTs = () => { $('testSpeedVal').textContent = state.testSpeed + ' km/h'; $('testSpeedRow').hidden = !$('testSwitch').checked; };
+    $('testSpeed').value = state.testSpeed;
+    $('testSpeed').addEventListener('input', e => { state.testSpeed = Number(e.target.value) || 55; showTs(); });
+    $('testSwitch').addEventListener('change', showTs);
+    showTs();
+  }
   $('testSwitch').addEventListener('change', e => {
     state.testMode = e.target.checked;
     if (!state.testMode) stopSimulation();
@@ -2977,7 +3056,15 @@ async function init() {
       const f = map.queryRenderedFeatures(e.point, { layers: ['route-alt-hit'] })[0];
       if (f) { chooseRoute(f.properties.i, true); return; }
     }
-    if (state.testMode && !state.nav.active) { state.follow = false; onFix(e.lngLat.lat, e.lngLat.lng, 55, null, 300); }
+    if (state.testMode && !state.nav.active) {
+      // F7: testa ātrums no iestatījumiem; secīgi klikšķi pa ielu dod braukšanas virzienu
+      const prev = state.testClick, la = e.lngLat.lat, lo = e.lngLat.lng;
+      const d = prev ? distM(prev[0], prev[1], la, lo) : 0;
+      const hd = prev && d >= 5 && d <= 500 ? bearingDeg(prev[0], prev[1], la, lo) : null;
+      state.testClick = [la, lo];
+      state.follow = false;
+      onFix(la, lo, state.testSpeed, hd, 300);
+    }
   });
 
   wireUi();

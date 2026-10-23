@@ -59,6 +59,9 @@ function maneuverDir(modifier) {
   if (/right/.test(m)) return 'right';
   return 'straight';
 }
+const SPEED_PASS_M = 60;         // F7: zīme tik tuvu priekšā — gaida, kad to pabrauks garām
+const SPEED_PASSED_MAX_M = 80;   // ... un pēc tam tā vairs nav priekšā, bet ir ne tālāk par šo (citādi nogriezos pirms tās)
+const SPEED_TURN_DEG = 40;       // cits ceļš un virziens mainījies vismaz par šo — nogriezies
 const REL_BY_STATUS = { confirmed: 'mine', probable: 'unknown', unconfirmed: 'other', 'lane-unknown': 'other', 'contradicts-route': 'other' };
 
 function angleDiff(a, b) {
@@ -97,6 +100,11 @@ class SignStore {
     this.pos = null;
     this._free = null;       // { list, status: Map s → it, opposite: Set }
     this._freeDirty = true;
+    // F7: brīvajā braukšanā garām pabrauktā ātruma zīme (uz mana ceļa, manā virzienā) un apdzīvotas vietas zīme
+    this.speedMem = null;    // { limit, roadId, dir, s }
+    this.settlement = null;  // { urban: true|false, s } — pēdējā garām pabrauktā apdzīvotas vietas sākuma / beigu zīme
+    this._speedAhead = [];
+    this._turnN = 0;
   }
 
   // ---------- Dati ----------
@@ -136,9 +144,48 @@ class SignStore {
     if (!this.tracker && this.roads && typeof RoadTracker !== 'undefined') this.tracker = new RoadTracker(this.roads);
     this.pos = this.tracker ? this.tracker.update(lat, lng, heading, accuracy) : null;
     this._freeDirty = true;
+    this._updateSpeedMemory();
     this.refresh();
     return this.pos;
   }
+
+  // ---------- F7: ātruma zīmju atmiņa brīvajā braukšanā ----------
+  // Zīme, kas bija uz mana ceļa priekšā (≤ SPEED_PASS_M) un tagad vairs nav priekšā (tātad garām pabraukta),
+  // kļūst par spēkā esošo ierobežojumu līdz: citai ātruma zīmei, ierobežojuma beigām, apdzīvotas vietas
+  // sākumam / beigām vai nogriešanās (cits ceļš un virziens mainījies ≥ 40°, divos mērījumos pēc kārtas).
+  _updateSpeedMemory() {
+    const pos = this.pos;
+    if (this.route || !pos) return;                       // navigācijā — lastRouteSignBefore()
+    const mem = this.speedMem;
+    if (mem && pos.dir != null) {
+      if (pos.roadId === mem.roadId) { mem.dir = pos.dir; this._turnN = 0; }
+      else if (angleDiff(pos.dir, mem.dir) >= SPEED_TURN_DEG) {
+        if (++this._turnN >= 2) { this.speedMem = null; this._turnN = 0; }   // nogriezies (ne GPS lēciens)
+      } else { mem.roadId = pos.roadId; mem.dir = pos.dir; this._turnN = 0; }  // tas pats ceļš (cits kartes fragments)
+    }
+    const f = this.heading != null ? this._freeApplicable() : null;
+    const near = [];
+    if (f) for (const it of f.list) {
+      if (it.status !== 'confirmed' && it.status !== 'probable') continue;
+      const k = typeof speedSignKind === 'function' ? speedSignKind(it.s) : null;
+      if (k && it.along - f.path.from <= SPEED_PASS_M) near.push(Object.assign({ s: it.s, along: it.along - f.path.from }, k));
+    }
+    const k = 111320, cos = Math.cos(pos.P[1] * Math.PI / 180);
+    const passed = (this._speedAhead || []).filter(p => {
+      if (near.some(n => n.s === p.s) || (f && f.opposite.has(p.s))) return false;
+      const m = p.s._m, q = m && m.roadPoint ? m.roadPoint : [p.s.lng, p.s.lat];
+      return Math.hypot((q[0] - pos.P[0]) * k * cos, (q[1] - pos.P[1]) * k) <= SPEED_PASSED_MAX_M;   // ne nogriezies pirms tās
+    }).sort((a, b) => a.along - b.along);
+    for (const p of passed) {
+      if (p.kind === 'speed') this.speedMem = { limit: p.limit, roadId: pos.roadId, dir: pos.dir, s: p.s };
+      else this.speedMem = null;                          // beigas / apdzīvotas vietas zīme — iepriekšējais nav spēkā
+      if (p.kind === 'urban' || p.kind === 'rural') this.settlement = { urban: p.kind === 'urban', s: p.s };
+      this._turnN = 0;
+    }
+    this._speedAhead = near;
+  }
+  // Garām pabrauktās zīmes ierobežojums (tikai brīvajā braukšanā) vai null.
+  speedMemory() { return !this.route && this.speedMem ? this.speedMem : null; }
   setEnabled(v) { this.enabled = v; this.refresh(); }
   // Zīmes virziens mainījies (ielādēts no Mapillary) — piesaisti jārēķina no jauna.
   faceChanged(s) { s._m = undefined; }
@@ -189,6 +236,7 @@ class SignStore {
   // ---------- Maršruts ----------
   setRoute(route) {
     this.route = route;
+    this.speedMem = null; this._speedAhead = []; this._turnN = 0;
     this.routeAlong = null;
     this.routeGrid = null;
     this.routeList = [];

@@ -167,6 +167,16 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .navigating .limit-badge { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 120px); }
 .limit-badge.pulse { animation: pulse 1s ease-in-out infinite; }
 @keyframes pulse { 50% { transform: scale(1.08); } }
+/* F7: aptuvens ierobežojums (Latvijas noklusējums, zīme nav atrasta) — pārtraukta, pelēcīgāka apmale, "~" un "aptuveni" */
+.limit-badge .limit-approx { display: none; }
+.limit-badge.approx { border-style: dashed; border-color: color-mix(in srgb, #d0202a 55%, #9aa0a6); color: #333;
+  grid-template-rows: 1fr auto; align-content: center; gap: 0; }
+.limit-badge.approx #limitValue { font-size: 26px; line-height: 1; align-self: end; }
+.limit-badge.approx #limitValue::before { content: '~'; font-size: 18px; vertical-align: 4px; margin-right: 1px; }
+.limit-badge.approx .limit-approx { display: block; font: 600 9.5px/1 var(--font-body); color: #555; text-transform: lowercase; margin-top: 1px; align-self: start; }
+.test-speed { display: flex; align-items: center; gap: 8px; }
+.test-speed input { width: 140px; }
+.test-speed b { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ---- Pogas ---- */
 .fab-stack {

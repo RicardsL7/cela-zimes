@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=99">
+  <link rel="stylesheet" href="style-gl.css?v=100">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -63,6 +63,7 @@
   <!-- Pašreizējais ātruma ierobežojums -->
   <div id="limitBadge" class="limit-badge" hidden aria-live="polite">
     <span id="limitValue">50</span>
+    <small class="limit-approx" aria-hidden="true">aptuveni</small>
   </div>
 
   <!-- Pogas labajā pusē -->
@@ -231,6 +232,10 @@
       <span>Testa režīms (klikšķis uz kartes = mana vieta; ar maršrutu — simulēts brauciens)</span>
       <input type="checkbox" id="testSwitch" class="switch">
     </label>
+    <label class="row test-speed-row" id="testSpeedRow" hidden>
+      <span>Testa ātrums (klikšķis uz kartes bez maršruta)</span>
+      <span class="test-speed"><input type="range" id="testSpeed" min="5" max="150" step="5" value="55"> <b id="testSpeedVal">55 km/h</b></span>
+    </label>
     <div class="row arrow-row">
       <span>Bultas krāsa</span>
       <div id="arrowColors" class="arrow-colors" role="group" aria-label="Bultas krāsa"></div>
@@ -293,7 +298,8 @@
   <script src="mapillary.js?v=93"></script>
   <script src="roads-gl.js?v=93"></script>
   <script src="basemap-gl.js?v=93"></script>
-  <script src="signs-gl.js?v=93"></script>
+  <script src="speedlimit.js?v=100"></script>
+  <script src="signs-gl.js?v=100"></script>
   <script src="nav.js?v=99b"></script>
   <script src="times.js?v=93"></script>
   <script src="parking.js?v=93"></script>
@@ -307,7 +313,7 @@
   <script src="traffic.js?v=93"></script>
   <script src="rides.js?v=93"></script>
   <script src="rides-ui.js?v=97"></script>
-  <script src="app-gl.js?v=99b"></script>
+  <script src="app-gl.js?v=100"></script>
   <script src="park-gl.js?v=93"></script>
   <script src="park-dest-gl.js?v=93"></script>
   <script src="traffic-gl.js?v=98"></script>
