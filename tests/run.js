@@ -1184,6 +1184,88 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
   });
 }
 
+// ---------- F4: barjeras un privāti ceļi maršrutā ----------
+{
+  const routeBarriers = G('routeBarriers'), barrierQuery = G('barrierQuery'), barrierAtDestination = G('barrierAtDestination');
+  const barrierDetourPoints = G('barrierDetourPoints'), barrierEntryPoint = G('barrierEntryPoint'), nearestOnRoute = G('nearestOnRoute');
+  const R = makeRoute([[0, 0], [400, 0], [400, 300]]);           // 700 m: 400 m uz austrumiem, tad 300 m uz ziemeļiem
+  const node = (x, y, tags, id = 1) => { const q = LL(x, y); return { type: 'node', id, lat: q.lat, lon: q.lng, tags }; };
+  const way = (pts, tags, id = 9) => ({ type: 'way', id, tags, geometry: pts.map(([x, y]) => { const q = LL(x, y); return { lat: q.lat, lon: q.lng }; }) });
+  test('F4: barjera uz maršruta līnijas tiek atrasta, 30 m sānis — netiek', () => {
+    const b = routeBarriers(R, [node(200, 0, { barrier: 'lift_gate' })]);
+    eq(b.length, 1); eq(b[0].kind, 'barrier'); eq(b[0].type, 'lift_gate'); ok(Math.abs(b[0].along - 200) < 1, 'along ' + b[0].along);
+    eq(routeBarriers(R, [node(200, 30, { barrier: 'lift_gate' })]).length, 0, '30 m sānis');
+    eq(routeBarriers(R, [node(200, 6, { barrier: 'bollard' })]).length, 0, 'stabiņš gar ietvi 6 m sānis');
+    eq(routeBarriers(R, [node(200, 0, { barrier: 'kerb' }), node(250, 0, { barrier: 'cycle_barrier' }, 2)]).length, 0, 'apmale u.c. — nav barjera automašīnai');
+    for (const t of ['gate', 'swing_gate', 'sliding_gate', 'bollard']) eq(routeBarriers(R, [node(100, 0, { barrier: t })]).length, 1, t);
+  });
+  test('F4: lift_gate ar access=yes/permissive/destination — netiek', () => {
+    for (const v of ['yes', 'permissive', 'destination']) {
+      eq(routeBarriers(R, [node(200, 0, { barrier: 'lift_gate', access: v })]).length, 0, 'access=' + v);
+      eq(routeBarriers(R, [node(200, 0, { barrier: 'lift_gate', motor_vehicle: v })]).length, 0, 'motor_vehicle=' + v);
+      eq(routeBarriers(R, [node(200, 0, { barrier: 'lift_gate', motorcar: v })]).length, 0, 'motorcar=' + v);
+    }
+    eq(routeBarriers(R, [node(200, 0, { barrier: 'gate', access: 'private' })]).length, 1, 'access=private — barjera');
+    eq(routeBarriers(R, [node(200, 0, { barrier: 'gate', access: 'no', motorcar: 'yes' })]).length, 0, 'konkrētākā atzīme svarīgāka');
+    eq(routeBarriers(R, [node(200, 0, { barrier: 'entrance' })]).length, 0, 'entrance bez vārtu atzīmes');
+    eq(routeBarriers(R, [node(200, 0, { barrier: 'entrance', access: 'private' })]).length, 1, 'entrance ar access=private');
+  });
+  test('F4: way ar access=private, pa kuru maršruts iet — tiek; šķērsots vai gājēju celiņš — netiek', () => {
+    const b = routeBarriers(R, [way([[100, 0], [400, 0]], { highway: 'service', access: 'private' })]);
+    eq(b.length, 1); eq(b[0].kind, 'private'); ok(Math.abs(b[0].along - 100) < 6, 'along ' + b[0].along);
+    eq(routeBarriers(R, [way([[200, -50], [200, 50]], { highway: 'service', access: 'private' })]).length, 0, 'tikai šķērso');
+    eq(routeBarriers(R, [way([[100, 0], [400, 0]], { highway: 'footway', access: 'private' })]).length, 0, 'gājēju celiņš');
+    eq(routeBarriers(R, [way([[100, 0], [400, 0]], { highway: 'residential', motor_vehicle: 'no' })]).length, 1, 'motor_vehicle=no');
+    eq(routeBarriers(R, [way([[100, 0], [400, 0]], { highway: 'service', access: 'private', motor_vehicle: 'destination' })]).length, 0, 'destination');
+    eq(routeBarriers(R, [way([[400, 250], [400, 300], [420, 320]], { highway: 'service', service: 'driveway', access: 'private' })]).length, 0, 'piebrauktuve galamērķī');
+  });
+  test('F4: barjera pēdējos 30 m pirms galamērķa — netiek', () => {
+    eq(routeBarriers(R, [node(400, 280, { barrier: 'lift_gate' })]).length, 0, '20 m līdz galam');
+    eq(routeBarriers(R, [node(400, 250, { barrier: 'lift_gate' })]).length, 1, '50 m līdz galam — tiek');
+  });
+  test('F4: vairāki stabiņi vienā vietā — viens brīdinājums; secība pēc attāluma', () => {
+    const b = routeBarriers(R, [node(300, 0, { barrier: 'bollard' }, 3), node(302, 0, { barrier: 'bollard' }, 4), node(100, 0, { barrier: 'gate' }, 5)]);
+    eq(b.length, 2); eq(b[0].id, 5); eq(b[1].type, 'bollard');
+  });
+  test('F4: galamērķis aiz barjeras, ieeja un apbraukšanas punkti', () => {
+    const near = routeBarriers(R, [node(400, 200, { barrier: 'lift_gate' })])[0], far = routeBarriers(R, [node(100, 0, { barrier: 'lift_gate' })])[0];
+    ok(barrierAtDestination(R, near) && !barrierAtDestination(R, far), 'pie galamērķa ≤ 400 m');
+    const e = barrierEntryPoint(R, near), on = nearestOnRoute(R, e.lat, e.lng);
+    ok(on.off < 1 && Math.abs(on.along - (near.along - 15)) < 1, 'ieeja 15 m pirms barjeras uz maršruta');
+    const v = barrierDetourPoints(R, far);
+    eq(v.length, 4);
+    for (const p of v) { const d = nearestOnRoute(R, p.lat, p.lng).off; ok(d > 150 && d < 320, 'sānis ' + d); }
+  });
+  test('F4: Overpass vaicājums — viens visiem maršrutiem, gar līniju', () => {
+    const q = barrierQuery([R, makeRoute([[0, 0], [0, 500]])]);
+    ok(/^\[out:json\]\[timeout:25\]/.test(q) && /out body geom;$/.test(q));
+    eq((q.match(/node\(around:/g) || []).length, 2, 'abi maršruti');
+    ok(/way\.w\["access"~"\^\(private\|no\)\$"\]/.test(q) && /lift_gate/.test(q));
+    // Taisns 2 km posms ar punktu ik 10 m → vaicājumā tikai gala punkti; līkums saglabājas
+    const pts = []; for (let x = 0; x <= 2000; x += 10) pts.push([x, 0]); pts.push([2000, 300]);
+    eq(G('routeAroundLine')(makeRoute(pts)).split(',').length, 6, 'vienkāršota līnija: 3 punkti');
+    const long = makeRoute([[0, 0], [20000, 0]]), parts = G('routeCheckParts')(long);
+    eq(parts.length, 2, 'garš maršruts — sākums un gals');
+    ok(Math.abs(parts[0].coords[1][0] - P(3000, 0)[0]) < 1e-6 && Math.abs(parts[1].coords[0][0] - P(17000, 0)[0]) < 1e-6, 'pa 3 km');
+    eq(G('routeCheckParts')(R).length, 1, 'īss — viss');
+  });
+  test('F4: brīdinājums kartītē, nevis setStatus; rezultāts pārbaudīts pret aktuālo maršrutu', () => {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+    const i = app.indexOf('// ---------- F4:'), j = app.indexOf('async function selectDestination');
+    ok(i > 0 && j > i, 'F4 kods atrasts');
+    const f4 = app.slice(i, j);
+    ok(!/setStatus/.test(f4), 'F4 kodā nav setStatus');
+    ok(/state\.nav\.routes !== routes \|\| state\.nav\.dest !== dest/.test(f4), 'vecs rezultāts nepārraksta jaunu');
+    ok(/fetchOverpass\(q, BARRIER_WAIT_MS\)/.test(f4) && /BARRIER_WAIT_MS = 45000/.test(f4) && /timed out/.test(f4), 'Overpass caur fetchOverpass ar taimautu');
+    ok(/catch \{ return; \}/.test(f4), 'Overpass neatbild — klusi');
+    ok(/barriersForPreview\(routes, dest\)/.test(app) && !/barriersForPreview/.test(app.slice(app.indexOf('async function reroute'), app.indexOf('// Testa režīmā'))), 'tikai priekšskatījumā, ne reroute');
+    for (const fn of ['function cancelPreview', 'function endNav']) { const k = app.indexOf(fn); ok(/clearBarriers\(\)/.test(app.slice(k, app.indexOf('\n}\n', k))), fn + ' aizvāc marķierus'); }
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    ok(/id="routeTraffic"[^\n]*\n\s*<div class="route-barrier" id="routeBarrier" hidden><\/div>/.test(html), '#routeBarrier pie #routeTraffic');
+    eq(html, fs.readFileSync(path.join(__dirname, '..', 'index-gl.html'), 'utf8'), 'index.html = index-gl.html');
+  });
+}
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
