@@ -1087,6 +1087,7 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
     const all = G('reportBBox')({ s: 50, w: 10, n: 65, e: 40 });
     eq(all.min_lat, 55.6); eq(all.max_lat, 58.1); eq(all.min_lng, 20.9); eq(all.max_lng, 28.3);
     eq(G('reportBBox')({ s: 59, w: 24, n: 60, e: 25 }), null, 'ārpus Latvijas — neko neprasa');
+    const d = G('reportDur'); eq(d(30), '30 min'); eq(d(60), '1 h'); eq(d(90), '1,5 h'); eq(d(1440), '24 h'); eq(d(43200), '30 dienas');
   });
   test('F10: vecie ierīces ziņojumi — augšupielādē tikai aktīvos (≥ 5 min), līdz 10, ar atlikušo laiku', () => {
     const now = Date.parse('2026-10-23T12:00:00Z');
