@@ -49,7 +49,7 @@ function reportAgo(ms) {
 }
 function reportDur(min) {
   if (min >= 2880) return Math.round(min / 1440) + ' dienas';
-  if (min >= 120) return Math.round(min / 60) + ' h';
+  if (min >= 60) return String(Math.round(min / 6) / 10).replace('.', ',') + ' h';   // 60 → 1 h, 90 → 1,5 h
   return min + ' min';
 }
 // Popup teksts
