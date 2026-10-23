@@ -147,6 +147,7 @@ async function ridesRefresh(first) {
     }
     rides.msgs = msgs;
     await ridesPayRefresh(first);
+    await ridesRefundSync();
   } catch (err) { console.warn('Kopbraucieni: neizdevās atjaunot', err); }
   ridesNotify(first);
   ridesRender();
@@ -427,7 +428,13 @@ function ridesConfirmCancel(r) {
   const box = rEl('div', { class: 'r-confirm' },
     rEl('span', { text: 'Tiešām atcelt?' }),
     rEl('button', { class: 'link-btn', type: 'button', text: 'Nē', onclick: () => box.remove() }),
-    rEl('button', { class: 'btn danger small', type: 'button', text: 'Jā, atcelt', onclick: async () => { await rides.store.setRequestStatus(r.id, 'cancelled'); ridesRefresh(true); } }));
+    rEl('button', { class: 'btn danger small', type: 'button', text: 'Jā, atcelt', onclick: async e => {
+      e.currentTarget.disabled = true;
+      const acc = (rides.offers[r.id] || []).find(o => o.status === 'accepted');
+      await rides.store.setRequestStatus(r.id, 'cancelled');
+      if (acc) await ridesRefundAfterCancel(acc);          // samaksāts ar karti → automātiska atmaksa
+      ridesRefresh(true);
+    } }));
   (card || $('ridesBody')).append(box);
 }
 
@@ -513,7 +520,12 @@ function ridesMyOfferCard(o) {
   if (ok) card.append(rEl('p', { class: 'r-trip', id: 'trip-' + o.id, text: rideDriverStatus(o, state.me) }));
   if (o.price_cents) card.append(ridesDriverPayLine(o, ok));
   const acts = rEl('div', { class: 'r-actions' });
-  if (st !== 'onboard') acts.append(rEl('button', { class: 'btn ghost', type: 'button', text: 'Atcelt', onclick: async () => { await rides.store.cancelOffer(o.id); ridesRefresh(true); } }));
+  if (st !== 'onboard') acts.append(rEl('button', { class: 'btn ghost', type: 'button', text: 'Atcelt', onclick: async e => {
+    e.currentTarget.disabled = true;
+    await rides.store.cancelOffer(o.id);
+    if (ok) await ridesRefundAfterCancel(o);              // samaksāts ar karti → automātiska atmaksa
+    ridesRefresh(true);
+  } }));
   acts.append(ridesChatBtn(o.id, (o.passenger && o.passenger.name) || 'Pasažieris'));
   const step = (text, fn) => acts.append(rEl('button', { class: 'btn primary', type: 'button', text, onclick: async e => {
     e.target.disabled = true;
@@ -613,15 +625,95 @@ function ridesDriverPayLine(o, ok) {
   const { driver } = rideSplit(o.price_cents, ridesFeePct());
   const p = rides.pay[o.id];
   const text = `Cena ${rideMoney(o.price_cents)}` + (ridesPayOn() ? ` · ar karti tu saņem ${rideMoney(driver)}` : '');
-  return rEl('div', { class: 'r-pay-line' + (p && p.paid ? ' r-paid' : '') },
+  const line = rEl('div', { class: 'r-pay-line' + (p && p.paid && !p.refunded ? ' r-paid' : '') },
     rEl('span', { text }),
-    ok && p && p.paid ? rEl('b', { text: '✓ Samaksāts ar karti' }) : ok ? rEl('small', { text: 'Vēl nav samaksāts (var arī skaidrā)' }) : null);
+    ok && p && p.refunded ? rEl('b', { class: 'r-refunded', text: '↩ Atmaksāts ' + rideMoney(p.refund_cents || p.amount || o.price_cents) })
+      : ok && p && p.paid ? rEl('b', { text: '✓ Samaksāts ar karti' })
+      : ok ? rEl('small', { text: 'Vēl nav samaksāts (var arī skaidrā)' }) : null);
+  if (!(ok && p && p.paid && !p.refunded)) return line;
+  return rEl('div', { class: 'r-pay-wrap' }, line, ridesRefundBtn(o, p));
 }
+// ---------- Atmaksa (F14): šofera poga „Atmaksāt” ----------
+function ridesRefundBtn(o, p) {
+  const amount = p.amount || o.price_cents;
+  const msg = rEl('p', { class: 'r-msg', hidden: '' });             // ziņa tieši kartītē (statusa josla ir aiz loga)
+  const say = (t, bad = true) => { msg.textContent = t; msg.className = 'r-msg' + (bad ? ' bad' : ''); msg.hidden = !t; };
+  const wrap = rEl('div', { class: 'r-refund' });
+  const btn = rEl('button', { class: 'btn ghost small r-refund-btn', type: 'button', text: 'Atmaksāt', onclick: () => {
+    btn.hidden = true;
+    const box = rEl('div', { class: 'r-confirm' },
+      rEl('span', { text: `Atmaksāt pasažierim ${rideMoney(amount)}? Šo nevar atsaukt.` }),
+      rEl('button', { class: 'link-btn', type: 'button', text: 'Nē', onclick: () => { box.remove(); btn.hidden = false; } }),
+      rEl('button', { class: 'btn danger small', type: 'button', text: 'Jā, atmaksāt', onclick: async e => {
+        e.currentTarget.disabled = true; say('Atmaksā…', false);
+        try {
+          const r = await rides.store.pay('refund', { offer_id: o.id });
+          ridesRefundSeen(o.id);
+          rides.pay[o.id] = { ...p, refunded: true, refund_cents: r.amount || amount };
+          box.remove();
+          say(`✓ Atmaksāts pasažierim ${rideMoney(r.amount || amount)}. Nauda un lietotnes komisija atgriezta no tava Stripe konta.`, false);
+          const line = wrap.parentElement && wrap.parentElement.querySelector('.r-pay-line b');
+          if (line) { line.textContent = '↩ Atmaksāts ' + rideMoney(r.amount || amount); line.className = 'r-refunded'; }
+        } catch (err) {
+          say(err.message || 'Atmaksa neizdevās — mēģini vēlreiz.');
+          box.remove(); btn.hidden = false;
+        }
+      } }));
+    wrap.insertBefore(box, msg);
+  } });
+  wrap.append(btn, msg);
+  return wrap;
+}
+// Atcelts brauciens, kas, iespējams, samaksāts ar karti → tā pati servera darbība „refund” (auto: serveris pats pārbauda,
+// ka brauciens atcelts pirms iekāpšanas un tiešām samaksāts). Paziņojums — uznirstošs, jo kartīte pēc atcelšanas pazūd.
+async function ridesRefundAfterCancel(o) {
+  if (!o || !o.price_cents || !ridesPayOn()) return;
+  try {
+    const r = await rides.store.pay('refund', { offer_id: o.id, auto: true });
+    if (r && r.refunded && !r.already) {
+      ridesRefundSeen(o.id);
+      const sum = rideMoney(r.amount || o.price_cents);
+      ridesToast(o.driver_id === rides.store.id
+        ? `Brauciens atcelts. Pasažierim automātiski atmaksāti ${sum}.`
+        : `Nauda ${sum} atmaksāta uz tavu karti. Bankā tā parādīsies 5–10 darba dienu laikā.`);
+    }
+  } catch (e) {
+    if (e.status === 409) return;                        // nebija samaksāts ar karti — nav ko atmaksāt
+    ridesToast('Atmaksa vēl nav izdevusies — lietotne mēģinās vēlreiz automātiski.', true);   // refund_sync to pabeigs
+  }
+}
+// Atverot „Kopā” (ne biežāk kā ik 10 min; atceļot — uzreiz): pabeidz neizdevušās automātiskās atmaksas un paziņo par jaunām atmaksām
+async function ridesRefundSync() {
+  if (!ridesPayOn() || Date.now() - (rides.refundAt || 0) < 600000) return;
+  rides.refundAt = Date.now();
+  let j;
+  try { j = await rides.store.pay('refund_sync'); } catch (e) { if (e.status === 503) rides.payCfg = { off: true }; return; }
+  const seen = ridesRefundSeenList();
+  for (const x of (j && j.recent) || []) {
+    if (seen.includes(x.offer_id)) continue;
+    ridesRefundSeen(x.offer_id);
+    const sum = rideMoney(x.refund_cents || 0);
+    ridesToast(x.role === 'passenger'
+      ? `Nauda ${sum} atmaksāta uz tavu karti. Bankā tā parādīsies 5–10 darba dienu laikā.`
+      : `Pasažierim atmaksāti ${sum}` + (x.refund_reason === 'cancelled_before_pickup' ? ' (brauciens atcelts pirms iekāpšanas).' : '.'));
+  }
+}
+function ridesRefundSeenList() { try { return JSON.parse(localStorage.getItem('cz.rides.refundSeen') || '[]'); } catch { return []; } }
+function ridesRefundSeen(id) {
+  const l = ridesRefundSeenList(); if (l.includes(id)) return;
+  l.push(id); try { localStorage.setItem('cz.rides.refundSeen', JSON.stringify(l.slice(-50))); } catch { /* */ }
+}
+function ridesToast(text, loud) { if (typeof czToast === 'function') czToast(text, loud); else if (typeof parkToast === 'function') parkToast(text, loud); }
 // Pasažierim: maksāt ar karti
 function ridesPassengerPay(o) {
   if (!o.price_cents) return null;
   const p = rides.pay[o.id];
-  const box = rEl('div', { class: 'r-pay-line' + (p && p.paid ? ' r-paid' : '') }, rEl('span', { text: 'Cena ' + rideMoney(o.price_cents) }));
+  const box = rEl('div', { class: 'r-pay-line' + (p && p.paid && !p.refunded ? ' r-paid' : '') }, rEl('span', { text: 'Cena ' + rideMoney(o.price_cents) }));
+  if (p && p.refunded) {
+    const sum = rideMoney(p.refund_cents || p.amount || o.price_cents);
+    box.append(rEl('b', { class: 'r-refunded', text: '↩ Atmaksāts ' + sum }));
+    return rEl('div', { class: 'r-pay-wrap' }, box, rEl('p', { class: 'fine', text: `Nauda ${sum} atmaksāta uz tavu karti. Bankā tā parādīsies 5–10 darba dienu laikā.` }));
+  }
   if (p && p.paid) { box.append(rEl('b', { text: '✓ Samaksāts ar karti' })); return box; }
   if (!ridesPayOn()) { box.append(rEl('small', { text: 'Samaksā šoferim, kā vienojāties.' })); return box; }
   const btn = rEl('button', { class: 'btn primary r-pay-btn', type: 'button', text: 'Maksāt ar karti', onclick: async e => {

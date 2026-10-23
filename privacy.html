@@ -40,7 +40,7 @@
   <p>Nolūks: kopbraucienu pakalpojuma sniegšana (līguma izpilde). Pamatojums piekrišanu reģistram — juridisks pienākums pierādīt piekrišanu.</p>
 
   <h2>4. Kartes maksājumi</h2>
-  <p>Maksājumus apstrādā <b>Stripe</b> (Stripe Payments Europe, Ltd.) kā neatkarīgs pārzinis. Kartes datus redz tikai Stripe. Šofera identitātes un bankas konta datus pieslēgšanās laikā ievāc Stripe. Lietotne glabā tikai Stripe konta numuru (acct_…) un maksājuma sesijas numuru. Lietotne pašlaik darbojas testa režīmā — īsta nauda netiek iekasēta.</p>
+  <p>Maksājumus apstrādā <b>Stripe</b> (Stripe Payments Europe, Ltd.) kā neatkarīgs pārzinis. Kartes datus redz tikai Stripe. Šofera identitātes un bankas konta datus pieslēgšanās laikā ievāc Stripe. Lietotne glabā tikai Stripe konta numuru (acct_…), maksājuma sesijas numuru un — ja nauda atmaksāta — atmaksas numuru, summu, laiku un iemeslu. Lietotne pašlaik darbojas testa režīmā — īsta nauda netiek iekasēta.</p>
 
   <h2>5. Ziņojumi par notikumiem uz ceļa</h2>
   <p>Kad ziņo par notikumu (policija, negadījums, bedre u.c.), serverī tiek saglabāts notikuma veids, vieta uz ceļa, braukšanas virziens, laiks un tava konta ID. Citi lietotāji redz notikumu kartē, bet <b>neredz, kas ziņoja</b>. Ja atzīmē „vēl ir” / „vairs nav”, tiek saglabāta atzīme ar tava konta ID (lai katrs varētu atzīmēt tikai vienreiz). Konta ID vajadzīgs, lai ierobežotu viltotus ziņojumus (līdz 10 stundā) un lai tu varētu izdzēst savu ziņojumu. Nolūks: brīdināt citus vadītājus (leģitīmās intereses — ceļu satiksmes drošība).</p>

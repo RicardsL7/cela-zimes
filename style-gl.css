@@ -757,3 +757,9 @@ html.navigating .alt-bubble { display: none; }
 .rep-ask span { min-width: 0; }
 .rep-ask .btn.small { padding: 8px 11px; font-size: 14px; white-space: nowrap; }
 .rep-ask-x { border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; padding: 4px 6px; cursor: pointer; }
+
+/* ---- Atmaksa (F14) ---- */
+.r-refunded { color: var(--accent); }
+.r-refund { margin-top: 6px; }
+.r-refund-btn { padding: 8px 12px; font-size: 14px; }
+.r-refund .r-confirm { margin-top: 6px; flex-wrap: wrap; justify-content: flex-start; }
