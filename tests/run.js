@@ -1143,6 +1143,47 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
   });
 }
 
+// ---------- F15: dalīšanās ar ātrumu ----------
+{
+  const tg = fs.readFileSync(path.join(__dirname, '..', 'traffic-gl.js'), 'utf8');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'traffic-2-helpers.sql'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  test('F15: jautājums pirmajā navigācijā — vienreiz, „Nē” respektē, abas pogas vienādas', () => {
+    const sn = app.slice(app.indexOf('function startNav('), app.indexOf('\n}\n', app.indexOf('function startNav(')));
+    ok(/trafficOffer\(\)/.test(sn), 'startNav jautā');
+    const off = tg.slice(tg.indexOf('async function trafficOffer'), tg.indexOf('function trAskConsent'));
+    ok(/trPref\('cz\.traffic\.share', ''\) !== ''\) return/.test(off), 'atbildēts (arī „Nē”) — vairs nejautā');
+    ok(/czConsentOk\(\)\) return/.test(off) && /trServerChoice\(\)/.test(off), 'pēc noteikumiem; atceras arī no konta');
+    ok(/Palīdzi citiem — anonīmi dalies ar braukšanas ātrumu sastrēgumu kartei\?/.test(tg), 'virsraksts');
+    ok(/data-a="no">Nē<\/button><button type="button" class="btn tr-c-btn" data-a="yes">Jā</.test(tg) && /class="btn tr-c-btn" data-a="no"/.test(tg), 'pogas vienādas');
+    ok(/28 dienas/.test(tg) && /izslēgt iestatījumos/.test(tg), 'privātuma skaidrojums');
+    ok(!/setStatus/.test(tg), 'ziņas nav statusa joslā');
+    ok(/if \(yes\) await a\.token\(\{ create: true \}\)/.test(tg), '„Jā” → anonīmā sesija (F1)');
+  });
+  test('F15: iestatījumu slēdzis iestatījumu augšā, ar paskaidrojumu un skaitītāju', () => {
+    const i = html.indexOf('id="settings"'), j = html.indexOf('id="trafficRows"'), k = html.indexOf('id="masterSwitch"');
+    ok(i > 0 && j > i && j < k, 'sastrēgumu karte iestatījumu augšā');
+    ok(/id="trafficShare"/.test(html) && /id="trHelpersSet"/.test(html) && /id="routeHelpers"/.test(html));
+  });
+  test('F15: „Šobrīd palīdz” — RPC atdod tikai skaitli, lasīt var bez konta', () => {
+    ok(/returns int/.test(sql) && /select count\(\*\)::int from public\.traffic_quota where last_at > now\(\) - interval '15 minutes'/.test(sql));
+    ok(/grant execute on function public\.traffic_helpers\(\) to anon, authenticated/.test(sql));
+    ok(/last_at = now\(\)/.test(sql), 'traffic_report pieraksta laiku');
+    const f = new Function(tg.slice(tg.indexOf('function trHelpersText'), tg.indexOf('async function trHelpersLoad')) + '; return trHelpersText;')();
+    eq(f(0), 'Šobrīd neviens nepalīdz — esi pirmais, kas palīdz!'); eq(f(1), 'Šobrīd palīdz: 1 braucējs');
+    eq(f(12), 'Šobrīd palīdz: 12 braucēji'); eq(f(11), 'Šobrīd palīdz: 11 braucēji'); eq(f(21), 'Šobrīd palīdz: 21 braucējs');
+  });
+  test('F15: stāvot uz vietas mērījumi netiek veidoti', () => {
+    const T = require('../traffic.js'); const C = new T.TrafficCollector();
+    const lat0 = 56.95, lng0 = 24.10, cos = Math.cos(lat0 * Math.PI / 180); let t = 0;
+    for (let i = 0; i <= 120; i++) C.add({ lat: lat0, lng: lng0 + i * 10 / (111320 * cos), t: t += 1000, kmh: 36, bearing: 90, acc: 5, cls: 3 });
+    const before = C.queue.length;
+    for (let i = 0; i < 300; i++) C.add({ lat: lat0, lng: lng0 + 1200 / (111320 * cos), t: t += 1000, kmh: 0, bearing: 90, acc: 5, cls: 3 });
+    ok(C.queue.length <= before + 1, 'stāvot nav jaunu mērījumu: ' + before + ' → ' + C.queue.length);
+  });
+}
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
