@@ -6,8 +6,8 @@ const path = require('path');
 const vm = require('vm');
 
 const ctx = vm.createContext({ console, Intl, Date, Math, Map, Set, JSON, Number, String, Array, Object, isNaN, setTimeout, clearTimeout,
-  signSvg: () => '<svg/>', encodeURIComponent });
-for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'nav.js', 'alerts.js', 'places.js', 'cache.js', 'rides.js']) {
+  signSvg: () => '<svg/>', encodeURIComponent, decodeURIComponent, escape, URLSearchParams, Buffer, Error, Promise });
+for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'nav.js', 'alerts.js', 'places.js', 'cache.js', 'auth.js', 'rides.js']) {
   // Klases un const deklarācijas padara pieejamas testam.
   const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/if \(typeof module[\s\S]*?\n}\n?$/m, '');
   vm.runInContext(src + '\n;globalThis.__exp = (globalThis.__exp || {});', ctx, { filename: f });
@@ -901,6 +901,108 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
   test('apkārtceļu starppunkti abās pusēs', () => {
     const v = detourPoints(LL(0, 0), LL(5000, 0));
     eq(v.length, 4); ok(v[0].lat > LAT0 && v[1].lat < LAT0, 'viens ziemeļos, otrs dienvidos');
+  });
+}
+
+// ---------- F1: konts un piekrišana ----------
+{
+  const CzAuth = G('CzAuth'), parse = G('czParseAuthReturn'), errText = G('czAuthErrorText');
+  const mem = (init = {}) => { const m = { ...init }; return { m, getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; } }; };
+  const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+  const jwt = claims => 'h.' + b64(claims) + '.s';
+  const consent = JSON.stringify({ terms: G('CZ_TERMS_VERSION'), privacy: G('CZ_PRIVACY_VERSION'), at: 'x' });
+  const fakeFetch = (handler) => { const calls = []; const f = async (url, opts = {}) => { calls.push({ url, method: opts.method || 'GET', body: opts.body }); const [st, body] = handler(url, opts) || [200, {}]; return { ok: st < 400, status: st, text: async () => JSON.stringify(body), json: async () => body }; }; f.calls = calls; return f; };
+  const cfg = { url: 'https://x.supabase.co', anonKey: 'sb_publishable_test' };
+  const anonTok = jwt({ sub: 'anon-1', is_anonymous: true, exp: 9e9 });
+
+  test('F1: atverot bez sesijas konts netiek veidots (nav neviena pieprasījuma)', async () => {
+    const f = fakeFetch(() => [500, {}]); const st = mem({ 'cz.consent': consent });
+    const a = new CzAuth(cfg, { storage: st, fetch: f });
+    eq(await a.token(), null); eq(a.hasSession(), false); eq(f.calls.length, 0);
+    const S = G('SupabaseRideStore'); const store = new S(cfg, st, a); await store.init();
+    eq(f.calls.length, 0, 'store.init neko nesūta'); eq(store.hasAccount(), false);
+  });
+  test('F1: bez piekrišanas noteikumiem anonīmu kontu neveido', async () => {
+    const f = fakeFetch(() => [200, {}]); const a = new CzAuth(cfg, { storage: mem(), fetch: f });
+    let code = null; try { await a.token({ create: true }); } catch (e) { code = e.code; }
+    eq(code, 'consent'); eq(f.calls.length, 0);
+  });
+  test('F1: ar piekrišanu, atverot „Kopā”, izveido vienu anonīmu kontu', async () => {
+    const f = fakeFetch(u => /signup/.test(u) ? [200, { access_token: anonTok, refresh_token: 'r1', expires_in: 3600, user: { id: 'anon-1' } }] : [201, {}]);
+    const st = mem({ 'cz.consent': consent }); const a = new CzAuth(cfg, { storage: st, fetch: f });
+    const S = G('SupabaseRideStore'); const store = new S(cfg, st, a);
+    await store.ensureAccount();
+    eq(f.calls.filter(c => /signup/.test(c.url)).length, 1); eq(store.id, 'anon-1'); eq(a.isAnon, true);
+    ok(JSON.parse(st.m['cz.auth.session']).refresh_token === 'r1', 'sesija saglabāta');
+    ok(f.calls.some(c => /user_consents/.test(c.url) && /"kind":"terms"/.test(c.body)), 'piekrišana nosūtīta serverim');
+    await a.token({ create: true });
+    eq(f.calls.filter(c => /signup/.test(c.url)).length, 1, 'otru kontu neveido');
+  });
+  test('F1: vecās sesijas (kopbraucienu un sastrēgumu) tiek pārņemtas, nevis izmestas', () => {
+    const st = mem({ 'cz.rides.session': JSON.stringify({ access_token: anonTok, refresh_token: 'old-r', expires_at: 1, user_id: 'anon-1' }), 'cz.traffic.session': JSON.stringify({ token: jwt({ sub: 'tr-9' }), refresh: 'tr-r', exp: 1 }) });
+    const a = new CzAuth(cfg, { storage: st, fetch: fakeFetch(() => [500, {}]) });
+    eq(a.userId, 'anon-1', 'kopbraucienu identitāte saglabāta'); ok(st.m['cz.rides.session'], 'vecā atslēga neaiztikta');
+    const st2 = mem({ 'cz.traffic.session': JSON.stringify({ token: jwt({ sub: 'tr-9' }), refresh: 'tr-r', exp: 1 }) });
+    eq(new CzAuth(cfg, { storage: st2, fetch: fakeFetch(() => [500, {}]) }).userId, 'tr-9', 'ja ir tikai sastrēgumu sesija — pārņem to');
+  });
+  test('F1: Magic Link — anonīmam kontam piesaista e-pastu (ID nemainās), citādi pieslēgšanās saite', async () => {
+    const f = fakeFetch(() => [200, {}]);
+    const st = mem({ 'cz.auth.session': JSON.stringify({ access_token: anonTok, refresh_token: 'r', expires_at: Date.now() + 3600e3, user_id: 'anon-1' }) });
+    const a = new CzAuth(cfg, { storage: st, fetch: f });
+    eq((await a.sendLink('Ilze@Piemers.lv', 'https://app/')).mode, 'link');
+    const c = f.calls[0]; ok(/\/auth\/v1\/user\?redirect_to=https%3A%2F%2Fapp%2F/.test(c.url) && c.method === 'PUT' && /ilze@piemers\.lv/.test(c.body), 'PUT /user ar e-pastu');
+    const f2 = fakeFetch(() => [200, {}]); const a2 = new CzAuth(cfg, { storage: mem(), fetch: f2 });
+    eq((await a2.sendLink('a@b.lv', 'https://app/')).mode, 'signin'); ok(/\/otp\?redirect_to=/.test(f2.calls[0].url), 'POST /otp');
+    let code = null; try { await a2.sendLink('nav-epasts', 'x'); } catch (e) { code = e.code; } eq(code, 'invalid_email');
+  });
+  test('F1: e-pasts jau pieder citam kontam — kļūda tiek atpazīta', async () => {
+    const f = fakeFetch(() => [422, { code: 422, error_code: 'email_exists', msg: 'A user with this email address has already been registered' }]);
+    const a = new CzAuth(cfg, { storage: mem({ 'cz.auth.session': JSON.stringify({ access_token: anonTok, refresh_token: 'r', expires_at: Date.now() + 3600e3 }) }), fetch: f });
+    let e1 = null; try { await a.sendLink('x@y.lv', 'u'); } catch (e) { e1 = e; }
+    eq(e1.code, 'email_exists'); eq(errText(e1.code), 'Šis e-pasts jau pieder citam kontam.');
+  });
+  test('F1: atgriešanās no saites — sesija, kļūdas un nederīga saite', async () => {
+    const ok1 = parse('#access_token=' + jwt({ sub: 'u-2', email: 'a@b.lv', is_anonymous: false }) + '&refresh_token=rr&expires_in=3600&type=magiclink');
+    eq(ok1.type, 'magiclink'); eq(ok1.session.refresh_token, 'rr');
+    const bad = parse('#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired');
+    eq(bad.error, 'otp_expired'); ok(/vairs nav derīga/.test(errText(bad.error)), 'saprotams teksts latviski');
+    eq(parse('#foo=1'), null);
+  });
+  test('F1: pieslēdzoties esošam kontam, anonīmā konta dati tiek pārcelti ar kodu', async () => {
+    const f = fakeFetch(u => /account_transfer_start/.test(u) ? [200, 'kods123'] : /account_transfer_claim/.test(u) ? [200, { ok: true, requests: 2, offers: 1, messages: 3 }] : [200, {}]);
+    const st = mem({ 'cz.consent': consent, 'cz.auth.session': JSON.stringify({ access_token: anonTok, refresh_token: 'r', expires_at: Date.now() + 3600e3, user_id: 'anon-1' }) });
+    const a = new CzAuth(cfg, { storage: st, fetch: f });
+    await a.signInOther('ilze@piemers.lv', 'https://app/');
+    ok(JSON.parse(st.m['cz.auth.transfer']).code === 'kods123' && st.m['cz.auth.prev'], 'kods un iepriekšējā sesija saglabāti');
+    const res = await a.handleReturn('#access_token=' + jwt({ sub: 'perm-7', email: 'ilze@piemers.lv', is_anonymous: false }) + '&refresh_token=pr&expires_in=3600&type=magiclink', '');
+    eq(a.userId, 'perm-7'); eq(a.isAnon, false); eq(res.switched, true); eq(res.transfer.requests, 2);
+    ok(f.calls.some(c => /account_transfer_claim/.test(c.url) && /kods123/.test(c.body)), 'kods nosūtīts');
+    ok(!st.m['cz.auth.transfer'] && !st.m['cz.auth.prev'], 'pēc veiksmīgas pārcelšanas notīrīts');
+  });
+  test('F1: ja pārcelšana neizdodas — iepriekšējo kontu var atjaunot', async () => {
+    const f = fakeFetch(u => /account_transfer_start/.test(u) ? [200, 'k'] : /account_transfer_claim/.test(u) ? [200, { ok: false, reason: 'expired' }] : [200, {}]);
+    const st = mem({ 'cz.auth.session': JSON.stringify({ access_token: anonTok, refresh_token: 'r', expires_at: Date.now() + 3600e3, user_id: 'anon-1' }) });
+    const a = new CzAuth(cfg, { storage: st, fetch: f });
+    await a.signInOther('x@y.lv', 'u');
+    await a.handleReturn('#access_token=' + jwt({ sub: 'perm-7', email: 'x@y.lv', is_anonymous: false }) + '&refresh_token=pr&expires_in=3600', '');
+    eq(a.hasPrevious(), true); eq(a.restorePrevious(), true); eq(a.userId, 'anon-1');
+  });
+  test('F1: izrakstīšanās un konta dzēšana notīra lokālo sesiju', async () => {
+    const f = fakeFetch(() => [204, {}]);
+    const st = mem({ 'cz.auth.session': JSON.stringify({ access_token: jwt({ sub: 'p', email: 'a@b.lv', is_anonymous: false }), refresh_token: 'r', expires_at: Date.now() + 3600e3 }), 'cz.rides.session': '{}', 'cz.traffic.session': '{}' });
+    const a = new CzAuth(cfg, { storage: st, fetch: f });
+    await a.signOut();
+    ok(!st.m['cz.auth.session'] && !st.m['cz.rides.session'] && !st.m['cz.traffic.session'], 'visas sesijas dzēstas'); eq(a.hasSession(), false);
+  });
+  test('F1: servera slepenā atslēga nav nevienā pārlūka failā', () => {
+    for (const f of fs.readdirSync(path.join(__dirname, '..')).filter(n => /\.(js|html)$/.test(n))) {
+      const t = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+      ok(!/sb_secret_[A-Za-z0-9]|SUPABASE_SERVICE_ROLE_KEY|sk_(test|live)_[A-Za-z0-9]{8}/.test(t), 'slepena atslēga failā ' + f);
+      for (const tok of t.match(/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+/g) || []) {
+        const role = (JSON.parse(Buffer.from(tok.split('.')[1], 'base64').toString()) || {}).role;
+        ok(role !== 'service_role', 'service_role JWT failā ' + f);
+      }
+    }
   });
 }
 
