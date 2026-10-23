@@ -1,4 +1,4 @@
-// ---------- Vietas tuvumā (kā Waze "Categories") ----------
+// ---------- Vietas tuvumā ----------
 // Secība — pēc tā, cik bieži autovadītāji tās izmanto: vispirms ceļam vajadzīgais (degviela,
 // stāvvieta, uzlāde), tad ēdiens un veikali, tad veselība un drošība (redzama bez ritināšanas),
 // beigās retāk vajadzīgais.

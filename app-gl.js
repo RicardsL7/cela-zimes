@@ -37,7 +37,7 @@ const state = {
   ),
   warn: store.get('warn', true),
   profile: 'car',   // vienmēr vieglais automobilis (izvēle no iestatījumiem noņemta)
-  mapMode: 'alerts', // kartē vienmēr tikai brīdinājumi (kā Waze); visu zīmju režīms vairs netiek piedāvāts
+  mapMode: 'alerts', // kartē vienmēr tikai brīdinājumi; visu zīmju režīms vairs netiek piedāvāts
   basemap: store.get('basemap', 'auto'),
   mlyToken: store.get('mlyToken', '') || mlyPublicToken(),
   testMode: false,
@@ -980,7 +980,7 @@ let meMarker = null, meTween = null;
 function createMeMarker(lng, lat) {
   const el = document.createElement('div');
   el.className = 'me-icon';
-  // 3D bulta kā Waze: maigi zaļa virsma (#74C476) ar šķautni, bieza balta mala, tumši zaļš "sāns" (biezums)
+  // 3D bulta: maigi zaļa virsma (#74C476) ar šķautni, bieza balta mala, tumši zaļš "sāns" (biezums)
   // un ēna; ap to gaiši pelēks aplis, kas viegli pulsē. Kamēr virziens nav zināms — spīdīga lodīte.
   el.innerHTML = `<div class="me-halo"></div>
     <svg class="me-arrow" viewBox="0 0 64 64" aria-hidden="true">
@@ -1042,7 +1042,7 @@ function updateHeading(lat, lng, gpsHeading, speedKmh) {
 }
 
 // Kamera seko braucējam: braucot karte griežas braukšanas virzienā un sasveras,
-// bulta ir ekrāna lejasdaļā, lai priekšā redzams ceļš (kā Waze).
+// bulta ir ekrāna lejasdaļā, lai priekšā redzams ceļš.
 function followCamera(dur = 900) {
   if (!state.follow || !state.me) return;
   const driving = state.nav.active || (state.heading != null && (state.me.speedKmh ?? 0) > 5);
@@ -1263,7 +1263,7 @@ async function cachedRoutes(from, to) {
   return routes;
 }
 
-// ---------- Alternatīvie maršruti (kā Waze) ----------
+// ---------- Alternatīvie maršruti ----------
 // Izvēlētais — pilnā zilā; pārējie — gaiši zili zem tā ar laika uzrakstu. Uzspiežot — izvēlas.
 let altMarkers = [];
 function clearAltRoutes() {
@@ -1614,7 +1614,7 @@ function startSimulation() {
 }
 function stopSimulation() { clearInterval(simTimer); simTimer = null; }
 
-// ---------- Brīdinājumi (kā Waze) ----------
+// ---------- Brīdinājumi ----------
 // Notikumi, kas nav ceļa zīmes: lietotāja ziņojumi, OSM būvdarbi / bīstamas vietas.
 // Laikapstākļi — josla zem meklēšanas (tie attiecas uz apkārtni, ne vienu punktu).
 let alerts = null;

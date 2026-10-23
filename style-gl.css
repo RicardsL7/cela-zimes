@@ -91,7 +91,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .results span.r-sub { color: var(--muted); font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .results .empty { color: var(--muted); font-size: 14px; padding: 10px 12px; }
 
-/* ---- Pagrieziena josla (Waze stilā) ---- */
+/* ---- Pagrieziena josla ---- */
 .nav-banner {
   position: fixed; z-index: 11;
   top: calc(env(safe-area-inset-top, 0px) + 10px);
@@ -328,7 +328,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   * { animation: none !important; transition: none !important; }
 }
 
-/* ---- Brīdinājumi (kā Waze) ---- */
+/* ---- Brīdinājumi ---- */
 .report-fab { color: #e8590c; }
 .wx-bar {
   position: fixed; z-index: 10; left: 50%; transform: translateX(-50%);
@@ -353,7 +353,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .report-btn:active { transform: scale(.96); }
 .popup-btn { margin-top: 8px; width: 100%; }
 
-/* ---- Liela poga "Atrast tuvumā" (kā Waze kategorijas) ---- */
+/* ---- Liela poga "Atrast tuvumā" ---- */
 .places-btn {
   width: 100%; margin-top: 8px; display: flex; align-items: center; gap: 12px;
   padding: 9px 12px 9px 10px; border: 0; border-radius: 16px;

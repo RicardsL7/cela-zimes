@@ -1,4 +1,4 @@
-// Brīdinājumi kartē (kā Waze): tikai navigācijai un satiksmei būtiski notikumi un objekti,
+// Brīdinājumi kartē: tikai navigācijai un satiksmei būtiski notikumi un objekti,
 // nevis visas ceļa zīmes. Katram veidam — viena vienota ikona (krāsains aplis ar gradientu,
 // detalizētu simbolu un baltu malu: labi redzama gan gaišā, gan tumšā kartē).
 //

@@ -1,6 +1,6 @@
 # Ceļa Zīmes
 
-Karte kā Waze, kas rāda ceļa zīmes uz ceļa. Zīmes var izslēgt ar vienu pogu
+Navigācijas karte Latvijai, kas rāda ceļa zīmes uz ceļa. Zīmes var izslēgt ar vienu pogu
 vai pa kategorijām (ātrums, STOP, luksofori, pārejas, kameras u.c.).
 
 ## Kā palaist datorā
