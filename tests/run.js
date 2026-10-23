@@ -7,7 +7,7 @@ const vm = require('vm');
 
 const ctx = vm.createContext({ console, Intl, Date, Math, Map, Set, JSON, Number, String, Array, Object, isNaN, setTimeout, clearTimeout,
   signSvg: () => '<svg/>', encodeURIComponent, decodeURIComponent, escape, URLSearchParams, Buffer, Error, Promise });
-for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'nav.js', 'alerts.js', 'places.js', 'cache.js', 'auth.js', 'rides.js']) {
+for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'nav.js', 'alerts.js', 'places.js', 'cache.js', 'auth.js', 'rides.js', 'reports.js']) {
   // Klases un const deklarācijas padara pieejamas testam.
   const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/if \(typeof module[\s\S]*?\n}\n?$/m, '');
   vm.runInContext(src + '\n;globalThis.__exp = (globalThis.__exp || {});', ctx, { filename: f });
@@ -1003,6 +1003,109 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
         ok(role !== 'service_role', 'service_role JWT failā ' + f);
       }
     }
+  });
+}
+
+// ---------- F10: kopīgi ziņojumi uz ceļa ----------
+{
+  const CzAuth = G('CzAuth'), ReportsApi = G('ReportsApi');
+  const mem = (init = {}) => { const m = { ...init }; return { m, getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; } }; };
+  const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+  const tok = 'h.' + b64({ sub: 'anon-7', is_anonymous: true, exp: 9e9 }) + '.s';
+  const consent = JSON.stringify({ terms: G('CZ_TERMS_VERSION'), privacy: G('CZ_PRIVACY_VERSION'), at: 'x' });
+  const cfg = { url: 'https://x.supabase.co', anonKey: 'sb_publishable_test' };
+  const ff = handler => { const calls = []; const f = async (url, opts = {}) => {
+    calls.push({ url, headers: opts.headers || {}, body: opts.body });
+    const res = handler(url, opts); if (res === 'net') throw new TypeError('Failed to fetch');
+    const [st, body] = res || [200, {}];
+    return { ok: st < 400, status: st, text: async () => JSON.stringify(body), json: async () => body }; }; f.calls = calls; return f; };
+  const signup = u => /signup/.test(u) ? [200, { access_token: tok, refresh_token: 'r', expires_in: 3600, user: { id: 'anon-7' } }] : null;
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'reports.sql'), 'utf8');
+
+  test('F10: servera derīgums (report_ttl) sakrīt ar ziņošanas pogām; katrai pogai ir derīgums', () => {
+    const T = G('ALERT_TYPES');
+    const srv = Object.fromEntries([...sql.matchAll(/when '([a-z-]+)'\s+then (\d+)/g)].map(m => [m[1], +m[2]]));
+    const rep = Object.keys(T).filter(k => T[k].report);
+    eq(rep.length, 20, 'ziņošanas pogu skaits');
+    for (const k of rep) eq(srv[k], T[k].ttl, 'derīgums ' + k);
+    eq(Object.keys(srv).length, rep.length, 'serverī nav lieku veidu');
+    eq(T.police.ttl, 60); eq(T['camera-mobile'].ttl, 120); eq(T.accident.ttl, 120); eq(T.roadworks.ttl, 1440);
+  });
+  test('F10: SQL — RLS, tieši rakstīt nevar, sarakstu var lasīt bez konta, ziņot — tikai ar kontu', () => {
+    ok(/alter table public\.reports enable row level security/.test(sql) && /alter table public\.report_votes enable row level security/.test(sql), 'RLS');
+    ok(!/create policy/i.test(sql), 'nav politiku — tikai funkcijas');
+    ok(/grant execute on function public\.report_list\([^)]*\) to anon, authenticated/.test(sql), 'saraksts arī anon');
+    for (const fn of ['report_create', 'report_vote', 'report_delete']) {
+      ok(new RegExp(`revoke all on function public\\.${fn}\\([^)]*\\) from public, anon`).test(sql), fn + ' nav anon');
+      ok(new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\) to authenticated;`).test(sql), fn + ' authenticated');
+    }
+    ok(/revoke all on function public\.report_vote_apply\([^)]*\) from public, anon, authenticated/.test(sql), 'iekšējā funkcija nav pieejama');
+    const list = sql.slice(sql.indexOf('function public.report_list'), sql.indexOf('$$;', sql.indexOf('function public.report_list')));
+    ok(!/returns table \([^)]*user_id/.test(list) && !/select r\.user_id/.test(list), 'report_list neatdod user_id');
+    ok(/n >= 10 then raise exception 'rate_limit'/.test(sql), 'limits 10 stundā');
+    ok(/g >= 2/.test(sql) && /primary key \(report_id, user_id\)/.test(sql), '2 dažādi „vairs nav”');
+    ok(/owner = me then raise exception 'own_report'/.test(sql), 'par savu nebalso');
+    ok(/2 \* ttl/.test(sql), 'pagarina ne vairāk kā 2×');
+    ok(/<= 150/.test(sql), 'dublikāti 150 m');
+  });
+  test('F10: ziņojot bez konta — izveido anonīmu kontu un sūta ar sesiju; kļūdas — saprotamā valodā', async () => {
+    const f = ff(u => signup(u) || (/report_create/.test(u) ? [200, { id: 'r1', merged: false }] : [201, {}]));
+    const a = new CzAuth(cfg, { storage: mem({ 'cz.consent': consent }), fetch: f });
+    const api = new ReportsApi(a);
+    const res = await api.create('police', 56.95, 24.1, 91.6);
+    eq(res.id, 'r1');
+    const c = f.calls.find(x => /report_create/.test(x.url));
+    ok(c && c.headers.Authorization === 'Bearer ' + tok, 'ar sesiju');
+    const b = JSON.parse(c.body); eq(b.p_type, 'police'); eq(b.p_heading, 92); eq(b.p_minutes, null);
+    const f2 = ff(u => signup(u) || (/report_create/.test(u) ? [400, { code: 'P0001', message: 'rate_limit' }] : [201, {}]));
+    const api2 = new ReportsApi(new CzAuth(cfg, { storage: mem({ 'cz.consent': consent }), fetch: f2 }));
+    let code = null; try { await api2.create('police', 56.95, 24.1, null); } catch (e) { code = e.code; }
+    eq(code, 'rate_limit'); ok(/Pārāk daudz ziņojumu/.test(G('reportErrorText')(code)));
+    const f3 = ff(u => signup(u) || (/rpc/.test(u) ? 'net' : [201, {}]));
+    const api3 = new ReportsApi(new CzAuth(cfg, { storage: mem({ 'cz.consent': consent }), fetch: f3 }));
+    code = null; try { await api3.create('police', 56.95, 24.1, null); } catch (e) { code = e.code; }
+    eq(code, 'network'); ok(/Nav savienojuma/.test(G('reportErrorText')(code)));
+    const api4 = new ReportsApi(new CzAuth(cfg, { storage: mem(), fetch: ff(() => [200, {}]) }));
+    code = null; try { await api4.create('police', 56.95, 24.1, null); } catch (e) { code = e.code; }
+    eq(code, 'consent', 'bez piekrišanas neko nesūta');
+    for (const k of ['own_report', 'outside_latvia', 'not_found', 'no_location', 'vote_limit']) ok(/[ā-ž]/i.test(G('reportErrorText')(k)), k);
+  });
+  test('F10: saraksts — bez konta konts netiek veidots, ziņotāja ID neatdod', async () => {
+    const rows = [{ id: 'u1', type: 'police', lat: 56.95, lng: 24.1, heading: 90, created_at: '2026-10-23T10:00:00Z', expires_at: '2026-10-23T11:00:00Z', still_count: 2, mine: false, my_vote: null }];
+    const f = ff(u => /report_list/.test(u) ? [200, rows] : [500, {}]);
+    const a = new CzAuth(cfg, { storage: mem({ 'cz.consent': consent }), fetch: f });
+    const list = await new ReportsApi(a).list({ min_lat: 56.9, min_lng: 24, max_lat: 57, max_lng: 24.2 });
+    eq(f.calls.length, 1, 'tikai saraksta pieprasījums'); ok(!f.calls[0].headers.Authorization, 'bez sesijas — bez Authorization');
+    eq(a.hasSession(), false, 'konts netika izveidots');
+    eq(list[0].id, 'rep:u1'); eq(list[0].source, 'shared'); eq(list[0].still, 2); eq(list[0].mine, false); eq(list[0].title, 'Policija');
+    ok(!('user_id' in list[0]), 'nav user_id');
+    ok(/apstiprināja 2/.test(G('reportInfo')(list[0], Date.parse('2026-10-23T10:12:00Z'))) && /pirms 12 min/.test(G('reportInfo')(list[0], Date.parse('2026-10-23T10:12:00Z'))));
+  });
+  test('F10: apgabals — nedaudz plašāks par ekrānu, Latvijas robežās', () => {
+    const bb = G('reportBBox')({ s: 56.9, w: 24.0, n: 57.0, e: 24.2 });
+    ok(bb.min_lat < 56.9 && bb.max_lat > 57 && bb.min_lng < 24 && bb.max_lng > 24.2);
+    const all = G('reportBBox')({ s: 50, w: 10, n: 65, e: 40 });
+    eq(all.min_lat, 55.6); eq(all.max_lat, 58.1); eq(all.min_lng, 20.9); eq(all.max_lng, 28.3);
+    eq(G('reportBBox')({ s: 59, w: 24, n: 60, e: 25 }), null, 'ārpus Latvijas — neko neprasa');
+  });
+  test('F10: vecie ierīces ziņojumi — augšupielādē tikai aktīvos (≥ 5 min), līdz 10, ar atlikušo laiku', () => {
+    const now = Date.parse('2026-10-23T12:00:00Z');
+    const mk = (i, left) => ({ id: 'user:' + i, source: 'user', type: 'police', lat: 56.9, lng: 24.1, heading: 10.4, createdAt: now - i * 1000, expiresAt: now + left * 60000 });
+    const list = [mk(1, 30), mk(2, 2), mk(3, -5), ...Array.from({ length: 12 }, (_, i) => mk(10 + i, 40)), { source: 'osm', type: 'roadworks' }];
+    const t = G('reportsToMigrate')(list, now);
+    eq(t.length, 10); eq(t[0].minutes, 30); eq(t[0].heading, 10);
+    ok(t.every(x => x.minutes >= 5), 'tikai aktīvie');
+    eq(G('reportsToMigrate')(null, now).length, 0);
+  });
+  test('F10: lietotnē ziņojumi vairs netiek glabāti ierīcē un kļūdas nerāda statusa joslā aiz loga', () => {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+    const fnSrc = name => { const i = app.indexOf('function ' + name + '('); return app.slice(i, app.indexOf('\n}\n', i)); };
+    ok(/alerts = new AlertStore\(null\)/.test(app), 'AlertStore bez lokālās krātuves');
+    ok(!/setStatus/.test(fnSrc('reportAlert')), 'reportAlert neizmanto setStatus');
+    ok(/reportSheetMsg\(reportErrorText/.test(fnSrc('reportAlert')), 'kļūda logā');
+    ok(/reportsApi\.create/.test(fnSrc('reportAlert')) && !/alerts\.add\(makeReport/.test(app), 'sūta uz serveri, nesaglabā lokāli');
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    ok(/id="reportMsg"/.test(html) && /reports\.js\?v=/.test(html) && !/ziņojumi redzami tikai šajā ierīcē/.test(html));
   });
 }
 
