@@ -20,15 +20,38 @@ async function trAuth() {
   if (!a) throw new Error('auth');
   return a.token({ create: true });          // ja konta vēl nav — izveido (tikai ar piekrišanu noteikumiem)
 }
-// Atsevišķa, brīvprātīga piekrišana ātruma dalīšanai (glabājas lokāli; ar kontu — arī serverī)
-function trShareChoice(yes) {
+// Atsevišķa, brīvprātīga piekrišana ātruma dalīšanai (glabājas lokāli; ar kontu — arī serverī, user_consents).
+// „Jā” — ja konta vēl nav, izveido anonīmo (F1), pirms tiek sūtīts pirmais mērījums. Ziņas — uznirstošas (F9).
+function trShareChoice(yes, say = true) {
   trSetPref('cz.traffic.share', yes ? 'yes' : 'no');
+  trSyncSwitch();
+  if (say) trToast(yes ? 'Paldies! Braucot tavs ātrums anonīmi palīdzēs sastrēgumu kartei. Izslēgt vari iestatījumos.'
+    : 'Labi — ātrums netiek sūtīts. Ieslēgt vari jebkurā brīdī iestatījumos.');
   const a = czAuthGet();
-  if (!a) return;
-  (async () => {
+  if (!a) return Promise.resolve();
+  return (async () => {
     try { if (yes) await a.token({ create: true }); await a.syncTermsConsent(); await a.syncConsent('speed_share', TR_SHARE_VERSION, !!yes); }
-    catch (e) { console.warn('Piekrišanu neizdevās saglabāt serverī', e); }
+    catch (e) {
+      console.warn('Piekrišanu neizdevās saglabāt serverī', e);
+      if (yes && !a.hasSession()) trToast('Pašlaik neizdevās pieslēgties serverim — mēģināšu vēlreiz, kad brauksi.', true);
+    }
+    trHelpersLoad(true);
   })();
+}
+function trToast(text, loud) { if (typeof czToast === 'function') czToast(text, loud); else if (typeof parkToast === 'function') parkToast(text, loud); }
+function trSyncSwitch() { const sw = $('trafficShare'); if (sw) sw.checked = trShare(); }
+// Vai šis lietotājs jau atbildēja citā ierīcē (konta piekrišanās serverī)? Tad nejautā vēlreiz.
+async function trServerChoice() {
+  const a = czAuthGet();
+  if (!a || !a.hasSession()) return null;
+  try {
+    const t = await a.token();
+    if (!t) return null;
+    const r = await fetch(trafficCfg.url.replace(/\/$/, '') + '/rest/v1/user_consents?kind=eq.speed_share&select=accepted&order=created_at.desc&limit=1',
+      { headers: { apikey: trafficCfg.anonKey, Authorization: 'Bearer ' + t } });
+    const rows = r.ok ? await r.json() : [];
+    return rows && rows[0] ? !!rows[0].accepted : null;
+  } catch { return null; }
 }
 async function trRpc(name, body, auth) {
   const url = trafficCfg.url.replace(/\/$/, '') + '/rest/v1/rpc/' + name;
@@ -44,7 +67,7 @@ async function trRpc(name, body, auth) {
 function trafficOnFix(lat, lng, kmh, heading, acc) {
   if (!trafficCfg || state.testMode) return;
   if (!czConsentOk()) return;                 // bez piekrišanas noteikumiem neko nesūta un nejautā
-  if (!trShare()) { if (!trAsked && kmh > 15 && trPref('cz.traffic.share', '') === '') trAskConsent(); return; }
+  if (!trShare()) { if (!trAsked && kmh > 15 && trPref('cz.traffic.share', '') === '') trafficOffer(); return; }
   if (!roadIndex.ready || !roadIndex.covers(lat, lng)) return;
   const now = Date.now(), L = trCollector.last;
   if (kmh == null && L && now - L.t < 15000) kmh = Math.hypot((lat - L.rawLat) * 111320, (lng - L.rawLng) * 111320 * Math.cos(lat * Math.PI / 180)) / ((now - L.t) / 1000) * 3.6;
@@ -66,23 +89,63 @@ async function trFlush(force) {
   finally { trSending = false; }
 }
 
-// ---------- Piekrišana ----------
+// ---------- Piekrišana (F15) ----------
+// Jautā vienu reizi: pirmajā navigācijas sākšanā (app-gl.js startNav) vai — ja lietotājs nenavigē — pirmajā braucienā.
+const TR_ASK_TEXT = 'Braucot tiek sūtīts tikai ātrums, aptuvenā vieta uz ceļa (~50 m) un braukšanas virziens — bez tava vārda, e-pasta vai maršruta, un nekad ne brauciena pirmie un pēdējie 400 m. Dati glabājas 28 dienas. Dalīšanos vari jebkurā brīdī izslēgt iestatījumos.';
+async function trafficOffer() {
+  if (!trafficCfg || trAsked || trPref('cz.traffic.share', '') !== '') return;
+  if (typeof czConsentOk === 'function' && !czConsentOk()) return;     // vispirms noteikumi
+  trAsked = true;
+  const prev = await trServerChoice();                                // atbildēja citā ierīcē — tikai atceras
+  if (prev != null) { trSetPref('cz.traffic.share', prev ? 'yes' : 'no'); trSyncSwitch(); return; }
+  trAskConsent();
+}
 function trAskConsent() {
   trAsked = true;
   if (document.getElementById('trConsent')) return;
   const el = document.createElement('div');
   el.id = 'trConsent'; el.className = 'tr-consent';
-  el.innerHTML = `<div class="tr-c-t">Palīdzi veidot sastrēgumu karti?</div>
-    <div class="tr-c-s">Lietotne anonīmi sūtīs tikai braukšanas ātrumu pa ielu posmiem — bez tava vārda, bez brauciena maršruta, un nekad ne pirmos un pēdējos 400 m (mājas, darbs). Jo vairāk braucēju, jo precīzāki sastrēgumi visiem.</div>
-    <div class="tr-c-b"><button type="button" class="btn ghost" data-a="no">Nē</button><button type="button" class="btn primary" data-a="yes">Jā, anonīmi</button></div>`;
+  el.setAttribute('role', 'dialog'); el.setAttribute('aria-labelledby', 'trConsentT');
+  el.innerHTML = `<div class="tr-c-t" id="trConsentT">Palīdzi citiem — anonīmi dalies ar braukšanas ātrumu sastrēgumu kartei?</div>
+    <div class="tr-c-s"></div>
+    <div class="tr-c-h" hidden></div>
+    <div class="tr-c-b"><button type="button" class="btn tr-c-btn" data-a="no">Nē</button><button type="button" class="btn tr-c-btn" data-a="yes">Jā</button></div>`;
+  el.querySelector('.tr-c-s').textContent = TR_ASK_TEXT;
+  if (trHelpers.n != null) { const h = el.querySelector('.tr-c-h'); h.textContent = trHelpersText(trHelpers.n); h.hidden = false; }
   el.addEventListener('click', ev => {
     const a = ev.target.closest('button') && ev.target.closest('button').dataset.a;
     if (!a) return;
     trShareChoice(a === 'yes');
-    const sw = $('trafficShare'); if (sw) sw.checked = a === 'yes';
     el.remove();
   });
   document.body.appendChild(el);
+}
+
+// ---------- „Šobrīd palīdz: N braucēji” ----------
+const trHelpers = { n: null, at: 0, busy: false };
+function trHelpersText(n) {
+  if (!n) return 'Šobrīd neviens nepalīdz — esi pirmais, kas palīdz!';
+  return `Šobrīd palīdz: ${n} ${n % 10 === 1 && n % 100 !== 11 ? 'braucējs' : 'braucēji'}`;
+}
+async function trHelpersLoad(force) {
+  if (!trafficCfg || trHelpers.busy || (!force && Date.now() - trHelpers.at < 60000)) return trHelpersShow();
+  trHelpers.busy = true;
+  try { const n = await trRpc('traffic_helpers', {}, false); trHelpers.n = Math.max(0, Number(n) || 0); trHelpers.at = Date.now(); }
+  catch (e) { console.warn('Palīdzētāju skaits nav ielādēts', e); }
+  trHelpers.busy = false;
+  trHelpersShow();
+}
+// Rāda iestatījumos un maršruta kartītē (tikai, ja sastrēgumi kartē ieslēgti)
+function trHelpersShow() {
+  const t = trHelpers.n == null ? '' : '🚗 ' + trHelpersText(trHelpers.n);
+  for (const id of ['trHelpersSet', 'routeHelpers']) {
+    const el = $(id); if (!el) continue;
+    el.textContent = t; el.hidden = !t || (id === 'routeHelpers' && !trShow());
+  }
+}
+function trHelpersNeeded() {
+  const s = $('settings'), rc = $('routeCard');
+  return (s && !s.hidden) || (rc && !rc.hidden);
 }
 
 // ---------- Kartes slānis ----------
@@ -176,6 +239,7 @@ async function trafficForRoutes(routes) {
 }
 // Rinda maršruta kartītē par izvēlētā maršruta sastrēgumiem.
 function trafficLine(route) {
+  trHelpersLoad(false);                                   // „Šobrīd palīdz: N” maršruta kartītē
   const el = $('routeTraffic');
   if (!el) return;
   if (!route || route.jamSec == null) { el.hidden = true; return; }
@@ -187,6 +251,7 @@ function trafficLine(route) {
 async function trafficOnRoute(route) {
   const el = $('routeTraffic');
   if (el) el.hidden = true;
+  trHelpersLoad(false);
   if (await trafficForRoutes([route]) && state.nav.route === route) trafficLine(route);
 }
 
@@ -199,13 +264,16 @@ function wireTraffic() {
   }
   if (show) {
     show.checked = trShow();
-    show.addEventListener('change', () => { trSetPref('cz.traffic.show', show.checked ? 'yes' : 'no'); trRefresh(true); });
+    show.addEventListener('change', () => { trSetPref('cz.traffic.show', show.checked ? 'yes' : 'no'); trRefresh(true); trHelpersShow(); });
   }
   if (!trafficCfg) { const r = $('trafficRows'); if (r) r.hidden = true; return; }
   map.on('moveend', () => { clearTimeout(wireTraffic._t); wireTraffic._t = setTimeout(() => trRefresh(false), 400); });
   map.on('style.load', () => trDraw());
   setInterval(() => { if (!document.hidden) trRefresh(true); }, 90000);
   setInterval(() => trFlush(false), 30000);
+  setInterval(() => { if (!document.hidden && trHelpersNeeded()) trHelpersLoad(false); }, 60000);   // reizi minūtē
+  const sb = $('settingsBtn'); if (sb) sb.addEventListener('click', () => trHelpersLoad(false));
+  trHelpersLoad(true);
   document.addEventListener('visibilitychange', () => { if (document.hidden) trFlush(true); });
   trRefresh(true);
 }

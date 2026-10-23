@@ -763,3 +763,12 @@ html.navigating .alt-bubble { display: none; }
 .r-refund { margin-top: 6px; }
 .r-refund-btn { padding: 8px 12px; font-size: 14px; }
 .r-refund .r-confirm { margin-top: 6px; flex-wrap: wrap; justify-content: flex-start; }
+
+/* ---- Sastrēgumu karte: dalīšanās (F15) ---- */
+.tr-card { margin: 4px 0 12px; padding: 10px 12px 6px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); }
+.tr-card-t { font: 700 16px var(--font-sign); margin-bottom: 2px; }
+.tr-card .row { padding-left: 0; padding-right: 0; }
+.tr-helpers, .route-helpers { margin: 4px 0 4px; font-weight: 600; font-size: 13.5px; color: var(--muted); }
+.tr-c-h { margin-top: 8px; font-weight: 600; font-size: 13.5px; color: var(--fg); }
+.tr-c-b .tr-c-btn { flex: 1; background: var(--bg); color: var(--fg); border: 1px solid var(--line); font-weight: 700; }
+.tr-c-b { justify-content: stretch; }

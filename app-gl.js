@@ -1448,6 +1448,7 @@ function startNav() {
   setBusy('prep', null);
   resetNavProgress();
   drawRoute(state.nav.route);
+  if (typeof trafficOffer === 'function') trafficOffer();   // F15: pirmajā navigācijā — vai dalīties ar ātrumu (vienreiz)
   if (state.testMode) startSimulation();
   else if (state.me) onFix(state.me.lat, state.me.lng, state.me.speedKmh, null, 1200, state.me.accuracy);
 }

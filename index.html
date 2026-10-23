@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=97">
+  <link rel="stylesheet" href="style-gl.css?v=98">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -116,6 +116,7 @@
       <span class="route-meta" id="routeMeta">5,3 km · ieradīsies 17:42</span>
     </div>
     <div class="route-traffic" id="routeTraffic" hidden></div>
+    <div class="route-helpers" id="routeHelpers" hidden></div>
     <div class="route-alts" id="routeAlts" hidden></div>
     <div class="route-signs" id="routeSigns"></div>
     <div class="route-actions">
@@ -203,6 +204,19 @@
       <h2 id="settingsTitle">Ko rādīt uz kartes</h2>
       <button id="closeSettings" class="link-btn">Gatavs</button>
     </div>
+    <!-- Sastrēgumu karte (F15): labi redzama, iestatījumu augšā -->
+    <div id="trafficRows" class="tr-card">
+      <div class="tr-card-t">🚦 Sastrēgumu karte</div>
+      <label class="row">
+        <span><b>Palīdzēt citiem — anonīmi dalīties ar braukšanas ātrumu</b><br><small class="fine">Braucot tiek sūtīts tikai ātrums, aptuvenā vieta uz ceļa (~50 m) un virziens — bez vārda, e-pasta un maršruta, ne brauciena pirmie un pēdējie 400 m. Glabājas 28 dienas.</small></span>
+        <input type="checkbox" id="trafficShare" class="switch">
+      </label>
+      <label class="row">
+        <span>Rādīt sastrēgumus kartē</span>
+        <input type="checkbox" id="trafficShow" class="switch" checked>
+      </label>
+      <p id="trHelpersSet" class="tr-helpers" hidden></p>
+    </div>
     <label class="row master">
       <span>Rādīt brīdinājumus / zīmes</span>
       <input type="checkbox" id="masterSwitch" class="switch" checked>
@@ -212,16 +226,6 @@
       <span>Brīdināt, ja pārsniedz ātrumu</span>
       <input type="checkbox" id="warnSwitch" class="switch" checked>
     </label>
-    <div id="trafficRows">
-      <label class="row">
-        <span>Rādīt sastrēgumus kartē</span>
-        <input type="checkbox" id="trafficShow" class="switch" checked>
-      </label>
-      <label class="row">
-        <span>Anonīmi dalīties ar braukšanas ātrumu sastrēgumu kartei<br><small class="fine">Tikai ātrums pa ielu posmiem, bez vārda un maršruta; ne pirmos un pēdējos 400 m.</small></span>
-        <input type="checkbox" id="trafficShare" class="switch">
-      </label>
-    </div>
     <label class="row">
       <span>Testa režīms (klikšķis uz kartes = mana vieta; ar maršrutu — simulēts brauciens)</span>
       <input type="checkbox" id="testSwitch" class="switch">
@@ -302,9 +306,9 @@
   <script src="traffic.js?v=93"></script>
   <script src="rides.js?v=93"></script>
   <script src="rides-ui.js?v=97"></script>
-  <script src="app-gl.js?v=95"></script>
+  <script src="app-gl.js?v=98"></script>
   <script src="park-gl.js?v=93"></script>
   <script src="park-dest-gl.js?v=93"></script>
-  <script src="traffic-gl.js?v=93"></script>
+  <script src="traffic-gl.js?v=98"></script>
 </body>
 </html>
