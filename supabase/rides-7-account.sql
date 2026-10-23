@@ -108,6 +108,15 @@ begin
     end if;
   end if;
 
+  -- Ziņojumi uz ceļa (reports.sql): pārceļ ziņojumus; balsojumus — ja tie nedublējas un nav par paša ziņojumu
+  if to_regclass('public.reports') is not null then
+    update reports set user_id = me where user_id = src;
+    delete from report_votes v where v.user_id = src
+      and (exists (select 1 from report_votes x where x.report_id = v.report_id and x.user_id = me)
+           or exists (select 1 from reports r where r.id = v.report_id and r.user_id = me));
+    update report_votes set user_id = me where user_id = src;
+  end if;
+
   update user_consents set user_id = me where user_id = src;
   insert into account_aliases (old_user, new_user) values (src, me)
     on conflict (old_user) do update set new_user = excluded.new_user;
