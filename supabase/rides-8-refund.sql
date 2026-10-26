@@ -41,6 +41,20 @@ drop trigger if exists ride_payment_guard on public.ride_payments;
 create trigger ride_payment_guard before update on public.ride_payments
   for each row execute function public.ride_payment_guard();
 
+-- Jauna maksājuma rinda vienmēr sākas kā „created” bez atmaksas datiem (klients nevar ievietot viltotu „refunded”)
+create or replace function public.ride_payment_guard_ins() returns trigger
+  language plpgsql set search_path = public as
+$$
+begin
+  new.status := 'created'; new.refund_id := null; new.refunded_at := null;
+  new.refund_reason := null; new.refund_cents := null;
+  return new;
+end
+$$;
+drop trigger if exists ride_payment_guard_ins on public.ride_payments;
+create trigger ride_payment_guard_ins before insert on public.ride_payments
+  for each row execute function public.ride_payment_guard_ins();
+
 -- Statusa pieraksts (izsauc servera funkcija ride-pay brauciena dalībnieka vārdā, pēc tam kad Stripe to apstiprinājis)
 create or replace function public.ride_payment_mark(oid uuid, p_status text, p_refund_id text default null,
                                                     p_reason text default null, p_cents int default null) returns boolean
