@@ -1437,6 +1437,101 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
   });
 }
 
+// ---------- F13: brauciena kopsavilkums, vērtējumi, ziņošana, vēsture ----------
+test('F13: pēc „pabeigts” abi redz kopsavilkumu; otrreiz vērtēt nevar; vidējais; vēsture abām lomām', async () => {
+  const S = G('LocalRideStore'), pending = G('rideSummaryPending'), rt = G('rideRatingText'), pt = G('ridePayText');
+  const mem = { d: {}, getItem(k) { return this.d[k] ?? null; }, setItem(k, v) { this.d[k] = v; } };
+  const pas = new S(mem, 'k'); await pas.saveProfile({ name: 'Anna' });
+  const drv = new S(mem, 'k'); drv.id = 'drv'; await drv.saveProfile({ name: 'Jānis', car: 'Zils VW' });
+  const req = { from_lat: 56.95, from_lng: 24.10, to_lat: 56.96, to_lng: 24.20, from_name: 'Centrs', to_name: 'Āgenskalns', seats: 1, note: '' };
+  const r = await pas.createRequest({ ...req, depart_at: new Date().toISOString() });
+  await drv.offer(r.id, { eta_min: 3, price_cents: 450 });
+  const o = (await pas.offersFor(r.id))[0];
+  await pas.respond(o.id, 'accepted');
+  let err = null; try { await pas.rate(o.id, 5); } catch (e) { err = e; }
+  ok(err && /pabeigtu/.test(err.message), 'pirms pabeigšanas vērtēt nevar');
+  await drv.driverUpdate(o.id, { trip: 'onboard' }); await drv.driverUpdate(o.id, { trip: 'done' });
+  eq((await pas.myRequests()).length, 0); eq((await drv.myOffers()).length, 0, 'aktīvajos vairs nav');
+  // kopsavilkums abiem
+  const hp = await pas.myHistory(), hd = await drv.myHistory();
+  eq(hp.length, 1); eq(hp[0].role, 'passenger'); eq(hp[0].status, 'done'); eq(hp[0].other_name, 'Jānis'); eq(hp[0].other_car, 'Zils VW'); eq(hp[0].price_cents, 450);
+  eq(hd.length, 1); eq(hd[0].role, 'driver'); eq(hd[0].other_name, 'Anna'); eq(hd[0].other_id, pas.id);
+  eq(pending(hp, []).length, 1, 'pasažierim kopsavilkums'); eq(pending(hd, [], 'driver').length, 1, 'šoferim kopsavilkums');
+  eq(pending(hp, [o.id]).length, 0, 'aizvērts — vairs nerāda'); eq(pending(hd, [], 'passenger').length, 0, 'lomas filtrs');
+  eq(pending(hp, [], null, Date.now() + 4 * 86400000).length, 0, 'pēc 3 dienām pats vairs nerāda');
+  eq(pt(hp[0]), 'Skaidrā naudā vai nav samaksāts'); eq(pt(hp[0], { paid: true }), 'Samaksāts ar karti');
+  ok(/^↩ Atmaksāts 4,50/.test(pt({ ...hp[0], pay_status: 'refunded', refund_cents: 450 })), pt({ ...hp[0], pay_status: 'refunded', refund_cents: 450 }));
+  // vērtējumi
+  await pas.rate(o.id, 5, '  Lielisks šoferis ');
+  err = null; try { await pas.rate(o.id, 1); } catch (e) { err = e; }
+  ok(err && err.code === 'duplicate', 'atkārtots vērtējums noraidīts');
+  err = null; try { await drv.rate(o.id, 9); } catch (e) { err = e; }
+  ok(err && /1 līdz 5/.test(err.message), 'zvaigznes 1–5');
+  await drv.rate(o.id, 4);
+  const stranger = new S(mem, 'k'); stranger.id = 'x';
+  err = null; try { await stranger.rate(o.id, 1); } catch (e) { err = e; }
+  ok(err && /dalībnieks/.test(err.message), 'svešais vērtēt nevar');
+  eq((await pas.myRating(o.id)).comment, 'Lielisks šoferis');
+  const hp2 = await pas.myHistory();
+  eq(hp2[0].my_stars, 5); eq(pending(hp2, []).length, 0, 'novērtēts — kopsavilkums vairs nav jārāda');
+  // otrs brauciens ar to pašu šoferi → vidējais
+  const r2 = await pas.createRequest({ ...req, depart_at: new Date(Date.now() + 60000).toISOString() });
+  await drv.offer(r2.id, { eta_min: 2 }); const o2 = (await pas.offersFor(r2.id))[0];
+  await pas.respond(o2.id, 'accepted'); await drv.driverUpdate(o2.id, { trip: 'done' });
+  await pas.rate(o2.id, 4);
+  const sum = await pas.ratingSummary(['drv', pas.id, 'nav']);
+  eq(sum.drv.avg, 4.5); eq(sum.drv.count, 2); eq(sum.drv.rides, 2); eq(sum[pas.id].avg, 4); eq(sum.nav.count, 0);
+  eq(rt(sum.drv), '★ 4,5 · 2 braucieni'); eq(rt({ avg: 4.66, count: 12, rides: 21 }), '★ 4,7 · 21 brauciens'); eq(rt(null), 'Vēl nav vērtējumu'); eq(rt(sum.nav), 'Vēl nav vērtējumu');
+  // atcelts brauciens: vēsturē abām lomām kā „atcelts”, vērtēt nevar, ziņot var
+  const r3 = await pas.createRequest({ ...req, depart_at: new Date(Date.now() + 120000).toISOString() });
+  await drv.offer(r3.id, { eta_min: 2 }); const o3 = (await pas.offersFor(r3.id))[0];
+  await pas.respond(o3.id, 'accepted'); await drv.cancelOffer(o3.id);
+  await pas.setRequestStatus(r3.id, 'cancelled');
+  const r4 = await pas.createRequest({ ...req, depart_at: new Date(Date.now() + 180000).toISOString() });
+  await pas.setRequestStatus(r4.id, 'cancelled');
+  const hp3 = await pas.myHistory(), hd3 = await drv.myHistory();
+  eq(hp3.map(h => h.status).join(), 'cancelled,cancelled,done,done', 'jaunākie augšā'); eq(hp3[0].offer_id, null, 'neviens nepieņēma');
+  eq(hd3.map(h => h.role + ':' + h.status).join(), 'driver:cancelled,driver:done,driver:done');
+  err = null; try { await pas.rate(o3.id, 1); } catch (e) { err = e; }
+  ok(err && /pabeigtu/.test(err.message), 'atceltu nevērtē');
+  await pas.reportUser(o3.id, 'no_show', 'Neatbrauca');
+  ok((await pas.myHistory()).find(h => h.offer_id === o3.id).reported, 'ziņojums saglabājies');
+  err = null; try { await pas.reportUser(o3.id, 'nezinams'); } catch (e) { err = e; }
+  ok(err && /iemeslu/.test(err.message));
+  err = null; try { await stranger.reportUser(o3.id, 'other'); } catch (e) { err = e; }
+  ok(err && /dalībnieks/.test(err.message), 'svešais ziņot nevar');
+});
+
+test('F13: UI — kopsavilkums, vēsture, ziņas kartītē (nevis statusa joslā), SQL drošība', () => {
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'rides-ui.js'), 'utf8');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'rides-9-ratings.sql'), 'utf8');
+  const fnOf = (src, name) => { const i = src.indexOf('function ' + name + '('); return i < 0 ? '' : src.slice(i, src.indexOf('\n}\n', i)); };
+  for (const f of ['ridesSummaryCard', 'ridesRateForm', 'ridesReportForm', 'ridesHistoryView', 'ridesHistoryLoad']) {
+    ok(fnOf(ui, f), f); ok(!/setStatus\(/.test(fnOf(ui, f)), f + ' — bez setStatus');
+  }
+  ok(/rideSummaryPending\(rides\.history, rides\.summarySeen, 'passenger'\)/.test(fnOf(ui, 'ridesNeedView')), 'pasažierim kopsavilkums augšā');
+  ok(/rideSummaryPending\(rides\.history, rides\.summarySeen, 'driver'\)/.test(fnOf(ui, 'ridesDriveView')), 'šoferim kopsavilkums augšā');
+  ok(/ridesHistoryAddLocal\(rideHistoryFromOffer\(o, r, 'driver'/.test(fnOf(ui, 'ridesMyOfferCard')), 'šoferim uzreiz pēc „pabeigts”');
+  ok(/'aria-label': n \+ \(n === 1 \? ' zvaigzne' : ' zvaigznes'\) \+ ' no 5'/.test(fnOf(ui, 'ridesStars')), 'zvaigznes ar aria-label');
+  ok(/ridesCardMsg\('rate:'/.test(fnOf(ui, 'ridesRateForm')) && /ridesCardMsg\('report:'/.test(fnOf(ui, 'ridesReportForm')), 'ziņas kartītē');
+  ok(/'cz\.rides\.summarySeen'/.test(ui) && /slice\(-50\)/.test(fnOf(ui, 'ridesSummarySeen')), 'aizvērtie localStorage');
+  ok(/rides\.historyView, rides\.historyOpen/.test(fnOf(ui, 'ridesViewSig')), 'ridesViewSig ietver jauno stāvokli');
+  ok(/Mani braucieni/.test(fnOf(ui, 'ridesAccountBar')), '„Mani braucieni” joslā');
+  ok(/rideRatingText\(sum\)/.test(fnOf(ui, 'ridesPerson')) && /o\.driver_id\),/.test(fnOf(ui, 'ridesRequestCard')), 'vērtējums piedāvājuma kartītē');
+  ok(!/create table if not exists public\.reports\b/.test(sql) && /public\.user_reports/.test(sql), 'tabula user_reports');
+  ok(/unique \(offer_id, rater_id\)/.test(sql) && /check \(stars between 1 and 5\)/.test(sql) && /char_length\(comment\) <= 200/.test(sql));
+  ok(/public\.is_offer_party\(offer_id\)/.test(sql), 'RLS — is_offer_party');
+  ok(/new\.rated_id := pas/.test(sql) && /new\.reported_id := drv/.test(sql), 'otru pusi aizpilda triggeris');
+  ok(/>= 10 then/.test(sql), '≤ 10 ziņojumi dienā');
+  const claim = sql.slice(sql.indexOf('function public.account_transfer_claim'), sql.indexOf('function public.delete_my_account'));
+  ok(/update ride_ratings set rater_id = me where rater_id = src/.test(claim) && /update ride_ratings set rated_id = me/.test(claim)
+     && /update user_reports set reporter_id = me/.test(claim) && /update user_reports set reported_id = me/.test(claim), 'pārcelšana pārceļ vērtējumus un ziņojumus');
+  ok(claim.indexOf('update ride_ratings') < claim.indexOf('delete from auth.users'), 'pirms anonīmā konta dzēšanas');
+  const del = sql.slice(sql.indexOf('function public.delete_my_account'));
+  ok(/delete from ride_ratings where rater_id = me or rated_id = me/.test(del) && /delete from user_reports where reporter_id = me/.test(del), 'konta dzēšana');
+  ok(!/service_role/.test(sql));
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
