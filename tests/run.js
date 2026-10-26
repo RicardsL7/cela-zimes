@@ -1410,8 +1410,9 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
     ok(/czToast\(state\.testMode \?/.test(app) && !/setStatus\(state\.testMode/.test(app), 'testa slēdzis');
     ok(/if \(!state\.mlyBadShown\) \{ state\.mlyBadShown = true; czToast\('Mapillary atslēga nav derīga/.test(app) && !/setStatus\('Mapillary atslēga/.test(app), 'Mapillary — vienreiz');
     ok(/czToast\('Maršrutu neizdevās atrast\. Pamēģini vēlreiz\.', true\)/.test(app) && !/setStatus\('Maršrutu neizdevās/.test(app));
-    const left = (app.match(/setStatus\([^)]*\)/g) || []).filter(x => !/^setStatus\(text\)$/.test(x));
-    eq(left.length, 5, 'app-gl.js: tikai kartes statuss (zīmju skaits, GPS, centrēšana): ' + left.join(' | '));
+    // F2: onGpsError un startGps ziņas tagad iet caur vienu gpsShow() izsaukumu (5 → 4)
+    const left = (app.match(/setStatus\([^)]*\)/g) || []).filter(x => !/^setStatus\(text(, force = false)?\)$/.test(x));
+    eq(left.length, 4, 'app-gl.js: tikai kartes statuss (zīmju skaits, GPS darbojas, GPS problēma, centrēšana): ' + left.join(' | '));
   });
 }
 
@@ -1531,6 +1532,41 @@ test('F13: UI — kopsavilkums, vēsture, ziņas kartītē (nevis statusa joslā
   ok(/delete from ride_ratings where rater_id = me or rated_id = me/.test(del) && /delete from user_reports where reporter_id = me/.test(del), 'konta dzēšana');
   ok(!/service_role/.test(sql));
 });
+
+// ---------- F2: atrašanās vieta liegta — saprotama ziņa, instrukcijas, bez tehniskā teksta ----------
+{
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const fnOf = (src, name) => { const i = src.indexOf('function ' + name + '('); return i < 0 ? '' : src.slice(i, src.indexOf('\n}\n', i)); };
+  test('F2: liegta atrašanās vieta → latviska ziņa, „Kā ieslēgt?”, ziņu nepārraksta; zīmju skaits tikai ar ?dev=1', () => {
+    // ziņu teksti un kļūdu kodi (izpilda gpsKind / gpsErrorText atsevišķā kontekstā)
+    const c = vm.createContext({});
+    vm.runInContext(app.slice(app.indexOf('const GPS_TEXT'), app.indexOf('// Ziņa statusa joslā')), c);
+    const txt = code => vm.runInContext(`gpsErrorText({ code: ${code} })`, c);
+    eq(txt(1), 'Atrašanās vieta nav atļauta. Ieslēdz to pārlūka iestatījumos.');
+    eq(txt(2), 'Neizdevās noteikt atrašanās vietu. Pārbaudi, vai ierīcē ir ieslēgta atrašanās vieta (GPS).');
+    eq(txt(3), 'Atrašanās vietu neizdevās noteikt laikā. Mēģinām vēlreiz…');
+    eq(vm.runInContext('GPS_TEXT.unsupported', c), 'Šis pārlūks neatbalsta atrašanās vietas noteikšanu.');
+    // bloķēšana: setStatus bez force neko nemaina
+    const el = { textContent: 'x' }, c2 = vm.createContext({ $: () => el });
+    vm.runInContext(app.slice(app.indexOf('let statusLock'), app.indexOf('const CZ_DEV')), c2);
+    vm.runInContext("statusLock = true; setStatus('Zīmes: 5'); ", c2); eq(el.textContent, 'x', 'bloķēts');
+    vm.runInContext("setStatus('GPS', true)", c2); eq(el.textContent, 'GPS', 'force');
+    vm.runInContext("statusLock = false; setStatus('Zīmes: 5')", c2); eq(el.textContent, 'Zīmes: 5');
+    const show = fnOf(app, 'gpsShow');
+    ok(/statusLock = kind === 'denied' \|\| kind === 'unsupported'/.test(show) && /\$\('gpsHelpBtn'\)\.hidden = kind !== 'denied'/.test(show), 'liegts → bloķē un rāda pogu');
+    ok(/if \(state\.nav\.active \|\| !CZ_DEV\) return;/.test(fnOf(app, 'showCounts')), 'zīmju skaits tikai ?dev=1');
+    ok(/gpsClear\(\)/.test(fnOf(app, 'onPosition')) && /setStatus\('GPS darbojas\.'\)/.test(fnOf(app, 'onPosition')), 'vieta → ziņa pazūd, „GPS darbojas.”');
+    ok(/kind === 'timeout' && !gpsRetryTimer/.test(fnOf(app, 'onGpsError')) && /startGps\(\)/.test(fnOf(app, 'onGpsError')), 'TIMEOUT → mēģina vēlreiz');
+    const perm = fnOf(app, 'gpsWatchPermission');
+    ok(/!navigator\.permissions/.test(perm) && /st\.onchange/.test(perm) && /gpsClear\(\); startGps\(\);/.test(perm) && /\.catch\(/.test(perm), 'permissions onchange (ja ir)');
+    ok(/if \(gpsState === 'denied'\) \{ openGpsHelp\(\); return; \}/.test(app), 'poga „Es” liegtā stāvoklī atver instrukcijas');
+    ok(/czToast\('Atrašanās vieta joprojām nav atļauta/.test(fnOf(app, 'gpsRetry')), '„Mēģināt vēlreiz” — ja joprojām liegts, czToast');
+    ok(/id="gpsHelpBtn"[^>]*hidden>Kā ieslēgt\?/.test(html) && /id="gpsSheet" class="sheet/.test(html) && /id="gpsRetry"[^>]*>Mēģināt vēlreiz/.test(html), 'HTML: poga, logs');
+    for (const d of ['android', 'ios', 'desktop']) ok(html.includes(`data-dev="${d}"`), 'instrukcija ' + d);
+    eq(html, fs.readFileSync(path.join(__dirname, '..', 'index-gl.html'), 'utf8'), 'index.html = index-gl.html');
+  });
+}
 
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
