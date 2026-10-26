@@ -1373,6 +1373,48 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
   });
 }
 
+// ---------- F9: ziņas nav paslēptas aiz atvērta loga ----------
+{
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'rides-ui.js'), 'utf8');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const fnOf = (src, name) => { const i = src.indexOf('function ' + name + '('); return i < 0 ? '' : src.slice(i, src.indexOf('\n}\n', i)); };
+  test('F9: maksājumu kartītēs (connect / checkout) kļūdas kartītē, nevis setStatus', () => {
+    const drv = fnOf(ui, 'ridesPayDriverCard'), pas = fnOf(ui, 'ridesPassengerPay');
+    ok(drv && !/setStatus/.test(drv), 'ridesPayDriverCard bez setStatus');
+    ok(/ridesSay\('connect', msg, 'Ieraksti savu e-pastu\.'/.test(drv) && /aria-invalid/.test(drv) && /email\.focus\(\)/.test(drv), 'e-pasta kļūda pie lauka, fokuss');
+    ok(/removeAttribute\('aria-invalid'\); ridesSay\('connect', msg, ''\)/.test(drv), 'sāk rakstīt — ziņa pazūd');
+    ok(/Neizdevās atvērt pieslēgšanu/.test(drv) && /, msg\);/.test(drv), 'pieslēgšanas kļūda kartītē');
+    ok(pas && !/setStatus/.test(pas) && /ridesSay\('pay:' \+ o\.id, msg, err\.message \|\| 'Neizdevās atvērt maksājumu\.'\)/.test(pas), 'maksājuma kļūda kartītē (F11)');
+  });
+  test('F9: ziņa kartītē saglabājas pēc loga pārzīmēšanas', () => {
+    const c = {};
+    const R = { cardMsg: null };
+    const fakeEl = () => ({ textContent: '', className: '', hidden: true, scrollIntoView() {} });
+    const say = new Function('rides', fnOf(ui, 'ridesSay') + '\n}; return ridesSay;')(R);
+    const el = fakeEl();
+    say('connect', el, 'Ieraksti savu e-pastu.', true, true);
+    eq(el.hidden, false); eq(el.className, 'r-msg bad'); eq(R.cardMsg.connect.text, 'Ieraksti savu e-pastu.');
+    say('connect', el, ''); eq(el.hidden, true); eq(R.cardMsg.connect, undefined);
+  });
+  test('F9: step() pogas, „Brauciens pabeigts”, publicēts, saskaņots, Stripe atgriešanās — uznirstošā ziņa', () => {
+    const card = fnOf(ui, 'ridesMyOfferCard');
+    ok(card && !/setStatus/.test(card), 'ridesMyOfferCard (step) bez setStatus');
+    ok(/ridesToast\('Neizdevās — pārbaudi internetu un mēģini vēlreiz\.', true\)/.test(card) && /ridesToast\('Brauciens pabeigts\. Paldies!'\)/.test(card));
+    ok(/ridesToast\('Pieprasījums publicēts — šoferi to redz\.'\)/.test(ui) && /ridesToast\('Brauciens saskaņots!'\)/.test(ui));
+    const ret = fnOf(ui, 'ridesPayReturn');
+    ok(ret && !/setStatus/.test(ret) && ret.indexOf('ridesOpen(true)') < ret.indexOf('ridesToast(msg'), 'ridesPayReturn: logs atveras, ziņa virs tā');
+    ok(/if \(rides\.open\) ridesToast\(msg\)/.test(ui), 'jaunumi atvērtā logā — uznirstoši');
+    eq((ui.match(/setStatus\(/g) || []).length, 2, 'rides-ui.js: palikuši tikai jaunumi aizvērtam logam un v91 „Paņemšu” (ziņa jau kartītē)');
+  });
+  test('F9: testa slēdzis, Mapillary atslēga (vienreiz), maršruts neatrasts — czToast', () => {
+    ok(/czToast\(state\.testMode \?/.test(app) && !/setStatus\(state\.testMode/.test(app), 'testa slēdzis');
+    ok(/if \(!state\.mlyBadShown\) \{ state\.mlyBadShown = true; czToast\('Mapillary atslēga nav derīga/.test(app) && !/setStatus\('Mapillary atslēga/.test(app), 'Mapillary — vienreiz');
+    ok(/czToast\('Maršrutu neizdevās atrast\. Pamēģini vēlreiz\.', true\)/.test(app) && !/setStatus\('Maršrutu neizdevās/.test(app));
+    const left = (app.match(/setStatus\([^)]*\)/g) || []).filter(x => !/^setStatus\(text\)$/.test(x));
+    eq(left.length, 5, 'app-gl.js: tikai kartes statuss (zīmju skaits, GPS, centrēšana): ' + left.join(' | '));
+  });
+}
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
