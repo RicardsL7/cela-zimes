@@ -1415,6 +1415,28 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
   });
 }
 
+// ---------- F11: „Maksāt ar karti” tikai, ja šoferis pieslēdzis maksājumus ----------
+{
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'rides-ui.js'), 'utf8');
+  const fn = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'ride-pay', 'index.ts'), 'utf8');
+  const fnOf = (src, name) => { const i = src.indexOf('function ' + name + '('); return i < 0 ? '' : src.slice(i, src.indexOf('\n}\n', i)); };
+  test('F11: poga paslēpta, ja šoferis nav gatavs', () => {
+    const pas = fnOf(ui, 'ridesPassengerPay');
+    const i = pas.indexOf('if (drvOk === false)'), j = pas.indexOf('\n', i);
+    ok(i > 0, 'skaidras naudas zars');
+    const branch = pas.slice(i, j);
+    ok(/Šoferis pieņem tikai skaidru naudu/.test(branch) && !/ridesTestNote|r-pay-btn/.test(branch), 'skaidrā nauda — bez pogas un testa kartes teksta');
+    ok(/return rEl\('div', \{ class: 'r-pay-wrap' \}, box, msg\)/.test(branch), 'ziņa (409) paliek kartītē');
+    ok(pas.indexOf('if (drvOk === false)') < pas.indexOf("text: 'Maksāt ar karti'") && /Pārbaudu kartes maksājumus…/.test(pas), 'kamēr nav zināms — poga nav redzama');
+    ok(/err\.status === 409 && \/Šoferis\/\.test\(err\.message \|\| ''\)\) \{ rides\.payDrvOk\[o\.id\] = false; ridesRender\(true\)/.test(pas), '409 → pārslēdzas uz skaidru naudu');
+    ok(/rides\.payDrvOk = Object\.assign\(\{\}, rides\.payDrvOk, j\.drv \|\| \{\}\)/.test(fnOf(ui, 'ridesPayRefresh')), 'klients saglabā drv');
+    ok(/rides\.payDrvOk = \{\}; rides\.payDrvTries = \{\}/.test(ui), 'iziešanā no konta notīra');
+    const st = fn.slice(fn.indexOf("case 'status'"), fn.indexOf("case 'refund'"));
+    ok(/rpc\/ride_driver_acct/.test(st) && /driverAccount\(acct\)/.test(st) && /ownerOk\(acct, a\.owner, o\.driver_id\)/.test(st), 'serveris: ride_driver_acct + Stripe gatavība + īpašnieks');
+    ok(/o\.request\.user_id !== uid/.test(st) && /json\(\{ pay: out, drv,/.test(st) && !/drv\[o\.id\] = acct/.test(st), 'tikai pasažierim, tikai true/false');
+  });
+}
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
