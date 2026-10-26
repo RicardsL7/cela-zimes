@@ -328,7 +328,23 @@ Deno.serve(async (req) => {
             if (i.refundedCents > 0 && r.status !== 'refunded' && i.refundId) await mark(r.offer_id, 'refunded', i.refundId, i.refundReason, i.refundedCents);
           }
         }
-        return json({ pay: out, test, fee_pct: FEE_PCT });
+        // F11: vai šoferis var pieņemt karti — tikai PASAŽIERA vēl nesamaksātiem braucieniem. Tikai true/false
+        // (šofera konta ID netiek atdots). Ja Stripe neatbild — lauku neliek (nav zināms), nevis false.
+        const drv: Record<string, boolean> = {};
+        const todo = ids.filter((x: string) => !(out[x] && out[x].paid));
+        if (todo.length) {
+          const offers = await db(`ride_offers?id=in.(${todo.join(',')})&select=id,driver_id,status,request:ride_requests(user_id)`).catch(() => []);
+          for (const o of offers ?? []) {
+            if (!o.request || o.request.user_id !== uid || o.status !== 'accepted') continue;   // šoferim / svešam — nerēķina
+            const acct = await db('rpc/ride_driver_acct', { method: 'POST', body: JSON.stringify({ oid: o.id }) }).catch(() => undefined);
+            if (acct === undefined) continue;
+            if (!acct) { drv[o.id] = false; continue; }                                         // nav pieslēdzis
+            const a = await driverAccount(acct);
+            if (!a) continue;                                                                    // Stripe neatbild
+            drv[o.id] = a.ready && await ownerOk(acct, a.owner, o.driver_id);
+          }
+        }
+        return json({ pay: out, drv, test, fee_pct: FEE_PCT });
       }
 
       // Šoferis: „Atmaksāt” (body.auto = true — atcelšana pirms iekāpšanas, to var izraisīt arī pasažieris)
@@ -347,7 +363,19 @@ Deno.serve(async (req) => {
           try { const r = await refund(oid, 'auto'); if (r && !r.already) done.push({ offer_id: oid, ...r }); }
           catch (e) { if (!(e instanceof Fail) || e.status >= 500) console.error('refund_sync', oid, e); }   // nav samaksāts u.tml. — izlaiž
         }
-        const recent = (await db('rpc/ride_refunds_recent', { method: 'POST', body: '{}' })) ?? [];
+        // Datubāzes ierakstam par atmaksu neuzticas (to var pierakstīt brauciena dalībnieks) — katru pārbauda Stripe
+        const rec: { offer_id: string; refund_cents: number }[] = ((await db('rpc/ride_refunds_recent', { method: 'POST', body: '{}' })) ?? [])
+          .filter((x: { offer_id: string }) => UUID.test(String(x.offer_id)));
+        const recent: unknown[] = [];
+        if (rec.length) {
+          const rows = await db(`ride_payments?offer_id=in.(${rec.map((x) => x.offer_id).join(',')})&select=offer_id,session_id`);
+          const sid = new Map((rows ?? []).map((r: { offer_id: string; session_id: string }) => [r.offer_id, r.session_id]));
+          for (const x of rec) {
+            const s = sid.get(x.offer_id);
+            const i = s ? await payInfo(s as string, x.offer_id) : null;
+            if (i && i.refundedCents > 0) recent.push({ ...x, refund_cents: i.refundedCents });
+          }
+        }
         return json({ done, recent });
       }
     }
