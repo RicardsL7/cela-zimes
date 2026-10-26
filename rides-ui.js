@@ -195,8 +195,8 @@ function ridesNotify(first) {
   else if (fresh.some(s => s.startsWith('o:') && s.endsWith(':pending'))) msg = 'Kāds šoferis piedāvā tevi aizvest!';
   else if (moreUnread && lastMsg) msg = `Ziņa no ${lastMsg.name}: ${lastMsg.body.slice(0, 60)}`;
   if (!msg) return;
-  setStatus(msg);
-  if (!rides.open) $('ridesBtn').classList.add('has-news');
+  if (rides.open) ridesToast(msg);                         // F9: logs atvērts — statusa josla aiz tā nav redzama
+  else { setStatus(msg); $('ridesBtn').classList.add('has-news'); }
   try { navigator.vibrate && navigator.vibrate([120, 80, 120]); } catch { /* */ }
 }
 function ridesBox() {
@@ -359,7 +359,7 @@ function ridesNeedForm() {
       depart_at: depart ? depart.toISOString() : '', seats: +seats.value, note: note.value.trim() };
     const e = rideValidate(req);
     if (e) { err.textContent = e; err.hidden = false; return; }
-    try { await rides.store.createRequest(req); rides.extraForm = false; await ridesRefresh(true); ridesRender(true); setStatus('Pieprasījums publicēts — šoferi to redz.'); }
+    try { await rides.store.createRequest(req); rides.extraForm = false; await ridesRefresh(true); ridesRender(true); ridesToast('Pieprasījums publicēts — šoferi to redz.'); }
     catch (x) { err.textContent = 'Neizdevās publicēt. Pamēģini vēlreiz.'; err.hidden = false; console.warn(x); }
   };
   return rEl('div', { class: 'r-form' },
@@ -417,7 +417,7 @@ function ridesRequestCard(r) {
         rEl('div', { class: 'r-actions' },
           ridesChatBtn(o.id, (o.driver && o.driver.name) || 'Šoferis'),
           rEl('button', { class: 'btn ghost', type: 'button', text: 'Noraidīt', onclick: async () => { await rides.store.respond(o.id, 'declined'); ridesRefresh(true); } }),
-          rEl('button', { class: 'btn primary', type: 'button', text: 'Pieņemt', onclick: async () => { await rides.store.respond(o.id, 'accepted'); ridesRefresh(true); setStatus('Brauciens saskaņots!'); } }))));
+          rEl('button', { class: 'btn primary', type: 'button', text: 'Pieņemt', onclick: async () => { await rides.store.respond(o.id, 'accepted'); ridesRefresh(true); ridesToast('Brauciens saskaņots!'); } }))));
     }
     card.append(rEl('button', { class: 'link-btn r-cancel', type: 'button', text: 'Atsaukt pieprasījumu', onclick: () => ridesConfirmCancel(r) }));
   }
@@ -529,7 +529,8 @@ function ridesMyOfferCard(o) {
   acts.append(ridesChatBtn(o.id, (o.passenger && o.passenger.name) || 'Pasažieris'));
   const step = (text, fn) => acts.append(rEl('button', { class: 'btn primary', type: 'button', text, onclick: async e => {
     e.target.disabled = true;
-    try { await fn(); } catch (err) { console.warn(err); setStatus('Neizdevās — pārbaudi internetu un mēģini vēlreiz.'); }
+    // F9: kļūda — uznirstošā ziņa (kartīte pēc ridesRefresh tiek pārzīmēta, ziņa tajā pazustu)
+    try { await fn(); } catch (err) { console.warn(err); ridesToast('Neizdevās — pārbaudi internetu un mēģini vēlreiz.', true); }
     ridesRefresh(true);
   } }));
   const pickup = { name: 'Pasažieris: ' + ((o.passenger && o.passenger.name) || ''), sub: r.from_name, lat: r.from_lat, lng: r.from_lng };
@@ -552,7 +553,7 @@ function ridesMyOfferCard(o) {
     step('Brauciens pabeigts', async () => {
       await rides.store.driverUpdate(o.id, { trip: 'done' });
       if (state.nav.active) endNav();
-      setStatus('Brauciens pabeigts. Paldies!');
+      ridesToast('Brauciens pabeigts. Paldies!');
     });
   }
   card.append(acts);
@@ -601,12 +602,20 @@ function ridesPayDriverCard() {
   // Jaunam kontam Stripe vajag e-pastu (izmaksu paziņojumiem)
   const email = d.connected ? null : rEl('input', { class: 'r-input', id: 'rpPayEmail', type: 'email', autocomplete: 'email', maxlength: 120, placeholder: 'tavs@epasts.lv' });
   if (email && rides.payEmail) email.value = rides.payEmail;
-  if (email) email.addEventListener('input', () => { rides.payEmail = email.value; });
+  const msg = ridesCardMsg('connect');                       // F9: ziņa kartītē pie lauka / pogas
+  if (email && rides.cardMsg && rides.cardMsg.connect && rides.cardMsg.connect.field) email.setAttribute('aria-invalid', 'true');
+  if (email) email.addEventListener('input', () => {
+    rides.payEmail = email.value;
+    if (email.getAttribute('aria-invalid')) { email.removeAttribute('aria-invalid'); ridesSay('connect', msg, ''); }   // sāk rakstīt — ziņa pazūd
+  });
   const go = async e => {
-    if (email && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email.value.trim())) { setStatus('Ieraksti savu e-pastu.'); email.focus(); return; }
-    e.target.disabled = true;
+    if (email && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email.value.trim())) {
+      ridesSay('connect', msg, 'Ieraksti savu e-pastu.', true, true); email.setAttribute('aria-invalid', 'true'); email.focus(); return;
+    }
+    const btn = e.currentTarget;
+    btn.disabled = true; ridesSay('connect', msg, '');
     try { const j = await rides.store.pay('connect', { return_url: ridesReturnUrl(), email: email ? email.value.trim() : '' }); location.href = j.url; }
-    catch (err) { setStatus(err.message || 'Neizdevās atvērt pieslēgšanu.'); e.target.disabled = false; }
+    catch (err) { ridesSay('connect', msg, err.message || 'Neizdevās atvērt pieslēgšanu.'); btn.disabled = false; }
   };
   const box = rEl('div', { class: 'r-pay-card' + (d.ready ? ' r-pay-ready' : '') },
     rEl('div', { class: 'r-pay-head' }, rEl('b', { text: '💳 Kartes maksājumi' }), rides.payCfg && rides.payCfg.test ? rEl('span', { class: 'r-pay-badge', text: 'TESTS' }) : null));
@@ -616,7 +625,7 @@ function ridesPayDriverCard() {
       ? 'Pieslēgšana nav pabeigta — Stripe vēl vajag dažus datus.'
       : `Lai pasažieri var samaksāt ar karti tieši lietotnē, pieslēdz maksājumu saņemšanu. Datus un bankas kontu pārbauda Stripe; tu saņem cenu mīnus ${pct} % komisija.` }));
     if (email) box.append(rEl('label', { class: 'r-label', for: 'rpPayEmail', text: 'Tavs e-pasts (uz to Stripe sūtīs paziņojumus par izmaksām)' }), email);
-    box.append(rEl('button', { class: 'btn primary', type: 'button', text: d.connected ? 'Turpināt pieslēgšanu' : 'Pieslēgt maksājumus', onclick: go }));
+    box.append(rEl('button', { class: 'btn primary', type: 'button', text: d.connected ? 'Turpināt pieslēgšanu' : 'Pieslēgt maksājumus', onclick: go }), msg);
   }
   return box;
 }
@@ -703,6 +712,17 @@ function ridesRefundSeen(id) {
   const l = ridesRefundSeenList(); if (l.includes(id)) return;
   l.push(id); try { localStorage.setItem('cz.rides.refundSeen', JSON.stringify(l.slice(-50))); } catch { /* */ }
 }
+// F9: ziņa tieši kartītē pie pogas / lauka. Teksts glabājas rides.cardMsg, lai to neizdzēš loga pārzīmēšana.
+function ridesCardMsg(key) {
+  const m = rides.cardMsg && rides.cardMsg[key];
+  return rEl('p', { class: 'r-msg' + (m && m.bad ? ' bad' : ''), role: 'alert', 'aria-live': 'polite', hidden: m ? null : true, text: m ? m.text : null });
+}
+function ridesSay(key, el, text, bad = true, field = false) {
+  const all = rides.cardMsg || (rides.cardMsg = {});
+  if (text) all[key] = { text, bad, field }; else delete all[key];
+  el.textContent = text || ''; el.className = 'r-msg' + (bad ? ' bad' : ''); el.hidden = !text;
+  if (text) try { el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch { /* */ }
+}
 function ridesToast(text, loud) { if (typeof czToast === 'function') czToast(text, loud); else if (typeof parkToast === 'function') parkToast(text, loud); }
 // Pasažierim: maksāt ar karti
 function ridesPassengerPay(o) {
@@ -716,12 +736,14 @@ function ridesPassengerPay(o) {
   }
   if (p && p.paid) { box.append(rEl('b', { text: '✓ Samaksāts ar karti' })); return box; }
   if (!ridesPayOn()) { box.append(rEl('small', { text: 'Samaksā šoferim, kā vienojāties.' })); return box; }
+  const msg = ridesCardMsg('pay:' + o.id);                  // F9 (arī F11): kļūda kartītē pie pogas
   const btn = rEl('button', { class: 'btn primary r-pay-btn', type: 'button', text: 'Maksāt ar karti', onclick: async e => {
-    e.target.disabled = true; e.target.textContent = 'Atveru…';
+    const b = e.currentTarget;
+    b.disabled = true; b.textContent = 'Atveru…'; ridesSay('pay:' + o.id, msg, '');
     try { const j = await rides.store.pay('checkout', { offer_id: o.id, return_url: ridesReturnUrl() }); location.href = j.url; }
-    catch (err) { setStatus(err.message || 'Neizdevās atvērt maksājumu.'); e.target.disabled = false; e.target.textContent = 'Maksāt ar karti'; }
+    catch (err) { ridesSay('pay:' + o.id, msg, err.message || 'Neizdevās atvērt maksājumu.'); b.disabled = false; b.textContent = 'Maksāt ar karti'; }
   } });
-  const wrap = rEl('div', { class: 'r-pay-wrap' }, box, btn);
+  const wrap = rEl('div', { class: 'r-pay-wrap' }, box, btn, msg);
   const t = ridesTestNote(); if (t) wrap.append(t);
   return wrap;
 }
@@ -733,9 +755,9 @@ function ridesPayReturn() {
   try { history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash); } catch { /* */ }
   const msg = { ok: 'Paldies! Maksājums pieņemts.', cancel: 'Maksājums atcelts — nauda netika ņemta.',
     connected: 'Atpakaļ no Stripe — pārbaudu maksājumu pieslēgšanu…', 'connect-retry': 'Saite novecoja — nospied „Turpināt pieslēgšanu” vēlreiz.' }[v];
-  if (msg) setStatus(msg);
   if (v === 'connected' || v === 'connect-retry') { rides.payDrv = null; if (rides.tab !== 'drive') ridesTab('drive'); }
   ridesOpen(true);
+  if (msg) ridesToast(msg, v === 'cancel' || v === 'connect-retry');   // F9: logs uzreiz atveras — ziņa virs tā
   if (v === 'ok') { rides.payAt = 0; ridesRefresh(false); }
 }
 

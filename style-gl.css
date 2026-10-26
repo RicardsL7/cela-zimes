@@ -721,6 +721,7 @@ html.navigating .alt-bubble { display: none; }
   background: color-mix(in srgb, var(--go) 12%, transparent); color: var(--go); }
 .r-msg.bad { background: color-mix(in srgb, #c81e3a 12%, transparent); color: #c81e3a; }
 .r-msg[hidden] { display: none; }
+.r-input[aria-invalid="true"] { border-color: #c81e3a; box-shadow: 0 0 0 3px color-mix(in srgb, #c81e3a 18%, transparent); }   /* F9 */
 
 /* ---------- Piekrišana noteikumiem (pirmajā atvēršanā) ---------- */
 .consent-gate { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px;

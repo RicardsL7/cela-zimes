@@ -871,7 +871,11 @@ async function loadMlyTiles(tiles) {
     const key = tiles[i][0] + ':' + tiles[i][1];
     mlyTilesLoading.delete(key);
     if (r.status === 'rejected') {
-      if (r.reason && r.reason.badToken) { setStatus('Mapillary atslēga nav derīga. Pārbaudi to iestatījumos.'); state.mlyToken = ''; }
+      if (r.reason && r.reason.badToken) {
+        // F9: uznirstošā ziņa (iestatījumu logs var būt atvērts) un tikai vienreiz, nevis par katru flīzi
+        if (!state.mlyBadShown) { state.mlyBadShown = true; czToast('Mapillary atslēga nav derīga. Pārbaudi to iestatījumos.', true); }
+        state.mlyToken = '';
+      }
       return;
     }
     state.mlyTiles.add(key);
@@ -1622,7 +1626,7 @@ async function previewRoute() {
     setTimeout(fitRoute, 350);
   } catch (err) {
     console.error(err);
-    setStatus('Maršrutu neizdevās atrast. Pamēģini vēlreiz.');
+    czToast('Maršrutu neizdevās atrast. Pamēģini vēlreiz.', true);   // F9: statusa joslu aizsedz maršruta kartīte / meklēšana / tastatūra
   } finally {
     setBusy('route', null);
   }
@@ -2622,7 +2626,7 @@ function wireUi() {
     state.testMode = e.target.checked;
     if (!state.testMode) stopSimulation();
     else if (state.nav.active) startSimulation();
-    setStatus(state.testMode ? 'Testa režīms: noklikšķini uz ceļa kartē vai sāc maršrutu — tas tiks nobraukts automātiski.' : 'Testa režīms izslēgts.');
+    czToast(state.testMode ? 'Testa režīms: noklikšķini uz ceļa kartē vai sāc maršrutu — tas tiks nobraukts automātiski.' : 'Testa režīms izslēgts.');   // F9: iestatījumu logs atvērts
   });
   $('centerBtn').addEventListener('click', () => {
     state.follow = true;
@@ -2680,7 +2684,7 @@ function wireUi() {
   $('mlySave').addEventListener('click', () => {
     const v = tokenInput.value.trim();
     if (v && !v.startsWith('MLY|')) { $('mlyNote').textContent = 'Atslēgai jāsākas ar MLY| — nokopē "Client Token" no Mapillary.'; return; }
-    store.set('mlyToken', v); state.mlyToken = v || mlyPublicToken(); state.mlyTiles.clear(); note(); loadMapillaryForView();
+    store.set('mlyToken', v); state.mlyBadShown = false; state.mlyToken = v || mlyPublicToken(); state.mlyTiles.clear(); note(); loadMapillaryForView();
   });
   note();
 }
