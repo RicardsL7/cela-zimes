@@ -1383,7 +1383,7 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
     ok(drv && !/setStatus/.test(drv), 'ridesPayDriverCard bez setStatus');
     ok(/ridesSay\('connect', msg, 'Ieraksti savu e-pastu\.'/.test(drv) && /aria-invalid/.test(drv) && /email\.focus\(\)/.test(drv), 'e-pasta kļūda pie lauka, fokuss');
     ok(/removeAttribute\('aria-invalid'\); ridesSay\('connect', msg, ''\)/.test(drv), 'sāk rakstīt — ziņa pazūd');
-    ok(/Neizdevās atvērt pieslēgšanu/.test(drv) && /, msg\);/.test(drv), 'pieslēgšanas kļūda kartītē');
+    ok(/Neizdevās atvērt pieslēgšanu/.test(drv) && /email, msg\);/.test(drv) && /if \(!email\) box\.append\(msg\)/.test(drv), 'ziņa zem e-pasta lauka (vai pie pogas)');
     ok(pas && !/setStatus/.test(pas) && /ridesSay\('pay:' \+ o\.id, msg, err\.message \|\| 'Neizdevās atvērt maksājumu\.'\)/.test(pas), 'maksājuma kļūda kartītē (F11)');
   });
   test('F9: ziņa kartītē saglabājas pēc loga pārzīmēšanas', () => {
