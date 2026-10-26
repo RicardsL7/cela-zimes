@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=104">
+  <link rel="stylesheet" href="style-gl.css?v=105">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -137,7 +137,8 @@
       <span class="speed-unit">km/h</span>
     </div>
     <div class="status" id="statusBox">
-      <p id="statusText" class="status-text">Meklē GPS…</p>
+      <p id="statusText" class="status-text" role="status">Meklē GPS…</p>
+      <button id="gpsHelpBtn" class="link-btn status-act" type="button" hidden>Kā ieslēgt?</button>
     </div>
     <div class="eta" id="etaBox" hidden>
       <div class="eta-time" id="etaTime">17:42</div>
@@ -145,6 +146,42 @@
     </div>
     <button id="endNav" class="btn danger small" type="button" hidden>Beigt</button>
   </footer>
+
+  <!-- F2: kā atļaut atrašanās vietu -->
+  <section id="gpsSheet" class="sheet gps-sheet" hidden aria-labelledby="gpsTitle">
+    <div class="sheet-head">
+      <h2 id="gpsTitle">Kā ieslēgt atrašanās vietu?</h2>
+      <button id="closeGpsHelp" class="link-btn" type="button">Aizvērt</button>
+    </div>
+    <p class="gps-lead">Bez atrašanās vietas karte rāda Rīgas centru, un zīmes, ātrums un navigācija nedarbojas.</p>
+    <div id="gpsHelpList" class="gps-help">
+      <details data-dev="android">
+        <summary>Chrome (Android)</summary>
+        <ol>
+          <li>Adreses joslā pieskaries slēdzenes ikonai.</li>
+          <li>Atver <b>Atļaujas</b> → <b>Atrašanās vieta</b>.</li>
+          <li>Izvēlies <b>Atļaut</b>.</li>
+        </ol>
+      </details>
+      <details data-dev="ios">
+        <summary>Safari (iPhone)</summary>
+        <ol>
+          <li>Atver <b>Iestatījumi</b> → <b>Privātums un drošība</b> → <b>Atrašanās vietas pakalpojumi</b>.</li>
+          <li>Atver <b>Safari vietnes</b> un izvēlies <b>„Lietojot lietotni”</b>.</li>
+          <li>Atgriezies šeit un pārlādē lapu.</li>
+        </ol>
+      </details>
+      <details data-dev="desktop">
+        <summary>Datorā</summary>
+        <ol>
+          <li>Adreses joslā noklikšķini uz slēdzenes ikonas.</li>
+          <li>Pie <b>Atrašanās vieta</b> izvēlies <b>Atļaut</b>.</li>
+          <li>Pārlādē lapu.</li>
+        </ol>
+      </details>
+    </div>
+    <button id="gpsRetry" class="btn primary gps-retry" type="button">Mēģināt vēlreiz</button>
+  </section>
 
   <!-- Ziņot par notikumu -->
   <section id="reportSheet" class="sheet" hidden aria-labelledby="reportTitle">
@@ -313,7 +350,7 @@
   <script src="traffic.js?v=93"></script>
   <script src="rides.js?v=104"></script>
   <script src="rides-ui.js?v=104"></script>
-  <script src="app-gl.js?v=102"></script>
+  <script src="app-gl.js?v=105"></script>
   <script src="park-gl.js?v=93"></script>
   <script src="park-dest-gl.js?v=93"></script>
   <script src="traffic-gl.js?v=98"></script>

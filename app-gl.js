@@ -69,7 +69,10 @@ function bearingDeg(lat1, lng1, lat2, lng2) {
   const x = Math.cos(lat1 * r) * Math.sin(lat2 * r) - Math.sin(lat1 * r) * Math.cos(lat2 * r) * Math.cos((lng2 - lng1) * r);
   return (Math.atan2(y, x) / r + 360) % 360;
 }
-function setStatus(text) { $('statusText').textContent = text; }
+// F2: kamēr atrašanās vieta liegta / nav atbalstīta, šo ziņu citi izsaukumi nepārraksta (force — tikai GPS ziņām)
+let statusLock = false;
+function setStatus(text, force = false) { if (statusLock && !force) return; $('statusText').textContent = text; }
+const CZ_DEV = /[?&]dev=1(&|$)/.test(location.search);       // F2: tehniskā info (zīmju skaits) tikai ar ?dev=1
 function clockIn(sec) {
   return new Date(Date.now() + sec * 1000).toLocaleTimeString('lv-LV', { hour: '2-digit', minute: '2-digit' });
 }
@@ -325,7 +328,7 @@ function attachPlateTimes() {
 }
 
 function showCounts() {
-  if (state.nav.active) return;
+  if (state.nav.active || !CZ_DEV) return;                    // F2: parastam lietotājam zīmju skaitu nerāda
   const parts = [];
   if (state.counts.mly) parts.push(`${state.counts.mly} no Mapillary`);
   if (state.counts.osm) parts.push(`${state.counts.osm} no OpenStreetMap`);
@@ -1172,34 +1175,89 @@ function onFix(lat, lng, speedKmh, gpsHeading, dur = 900, accuracy = null) {
 // ---------- GPS ----------
 let gpsProblem = 'Meklē GPS signālu… Ārā tas notiek ātrāk nekā telpās.';
 let watchId = null;
-function gpsErrorText(err) {
-  if (err.code === 1) return 'Atrašanās vieta ir bloķēta. Telefona iestatījumos atļauj atrašanās vietu pārlūkam un šai lapai, tad pārlādē lapu.';
-  if (err.code === 3) return 'GPS vēl meklē signālu. Pagaidi brīdi vai izej ārā.';
-  return 'GPS nav pieejams. Pārbaudi, vai telefonā ir ieslēgta atrašanās vieta.';
+let gpsState = null;              // F2: 'denied' | 'unavailable' | 'timeout' | 'unsupported' | null
+let gpsRetryTimer = null, gpsPermWatch = false;
+const GPS_TEXT = {
+  denied: 'Atrašanās vieta nav atļauta. Ieslēdz to pārlūka iestatījumos.',
+  unavailable: 'Neizdevās noteikt atrašanās vietu. Pārbaudi, vai ierīcē ir ieslēgta atrašanās vieta (GPS).',
+  timeout: 'Atrašanās vietu neizdevās noteikt laikā. Mēģinām vēlreiz…',
+  unsupported: 'Šis pārlūks neatbalsta atrašanās vietas noteikšanu.',
+};
+function gpsKind(err) { return err.code === 1 ? 'denied' : err.code === 3 ? 'timeout' : 'unavailable'; }
+function gpsErrorText(err) { return GPS_TEXT[gpsKind(err)]; }
+// Ziņa statusa joslā (+ poga „Kā ieslēgt?”, ja liegts). Liegts / neatbalsta — citi setStatus to nepārraksta.
+function gpsShow(kind) {
+  gpsState = kind; gpsProblem = kind ? GPS_TEXT[kind] : null;
+  statusLock = kind === 'denied' || kind === 'unsupported';
+  $('gpsHelpBtn').hidden = kind !== 'denied';
+  $('statusBox').classList.toggle('gps-off', statusLock);
+  if (kind) setStatus(gpsProblem, true);
+}
+function gpsClear() {
+  if (!gpsState) return;
+  gpsShow(null);
+  if (!$('gpsSheet').hidden) $('gpsSheet').hidden = true;
 }
 function onPosition(pos) {
   if (state.testMode) return;
   const sp = pos.coords.speed;
-  const first = !state.me;
+  const first = !state.me, wasOff = !!gpsState;
+  gpsClear();                                                  // F2: vieta ir — ziņa un poga pazūd
   onFix(pos.coords.latitude, pos.coords.longitude, sp == null || sp < 0 ? null : sp * 3.6, pos.coords.heading, first ? 0 : 900, pos.coords.accuracy);
   if (first && state.nav.dest && !state.nav.active) previewRoute(); // maršruts no manas īstās vietas
   else if (first) { map.jumpTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: Math.max(map.getZoom(), 15.5) }); loadAllForView(); }
   gpsProblem = null;
-  if (!state.nav.active && !state.counts.mly && !state.counts.osm) setStatus('GPS darbojas.');
+  if (!state.nav.active && (first || wasOff || (CZ_DEV && !state.counts.mly && !state.counts.osm))) setStatus('GPS darbojas.');
 }
 function onGpsError(err) {
-  gpsProblem = gpsErrorText(err);
-  if (!state.me) setStatus(gpsProblem);
+  const kind = gpsKind(err);
+  if (kind === 'denied') return gpsShow('denied');             // liegts — rāda vienmēr (arī ja vieta bija)
+  gpsProblem = GPS_TEXT[kind];
+  if (state.me) return;
+  gpsShow(kind);
+  if (kind === 'timeout' && !gpsRetryTimer) gpsRetryTimer = setTimeout(() => { gpsRetryTimer = null; if (!state.me && gpsState === 'timeout') startGps(); }, 5000);
 }
-function startGps() {
-  if (!('geolocation' in navigator) || !window.isSecureContext) {
-    gpsProblem = 'Šis pārlūks nedod atrašanās vietu. Atver lapu Chrome vai Safari (nevis Messenger, Telegram u.c. iebūvētajā pārlūkā).';
-    setStatus(gpsProblem);
-    return;
-  }
-  navigator.geolocation.getCurrentPosition(onPosition, () => {}, { enableHighAccuracy: false, maximumAge: 60000, timeout: 10000 });
+// Atļaujas maiņa bez lapas pārlādes (Permissions API; vecākā Safari tās nav — tad iztiek bez tās)
+function gpsWatchPermission() {
+  if (gpsPermWatch || !navigator.permissions || !navigator.permissions.query) return;
+  gpsPermWatch = true;
+  navigator.permissions.query({ name: 'geolocation' }).then(st => {
+    if (st.state === 'denied') gpsShow('denied');
+    st.onchange = () => {
+      if (st.state === 'denied') gpsShow('denied');
+      else { gpsClear(); startGps(); }                          // atļauts → pirmā vieta pārvieto karti
+    };
+  }).catch(() => { gpsPermWatch = false; });
+}
+// onDenied — izsauc, ja atļauja joprojām liegta (poga „Mēģināt vēlreiz”)
+function startGps(onDenied) {
+  if (!('geolocation' in navigator) || !window.isSecureContext) { gpsShow('unsupported'); return; }
+  gpsWatchPermission();
+  navigator.geolocation.getCurrentPosition(onPosition, err => { if (err.code === 1) { gpsShow('denied'); if (onDenied) onDenied(); } },
+    { enableHighAccuracy: false, maximumAge: 60000, timeout: 10000 });
   if (watchId != null) navigator.geolocation.clearWatch(watchId);
   watchId = navigator.geolocation.watchPosition(onPosition, onGpsError, { enableHighAccuracy: true, maximumAge: 1000, timeout: 30000 });
+}
+// „Kā ieslēgt?” — instrukcijas; ierīcei atbilstošā pirmā un atvērta
+function gpsDevice() {
+  const ua = navigator.userAgent || '';
+  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
+  if (/Android/.test(ua)) return 'android';
+  return 'desktop';
+}
+function openGpsHelp() {
+  const box = $('gpsHelpList'), dev = gpsDevice();
+  const items = [...box.querySelectorAll('details')];
+  items.sort((a, b) => (b.dataset.dev === dev) - (a.dataset.dev === dev)).forEach(d => { d.open = d.dataset.dev === dev; box.append(d); });
+  if (typeof toggleSettings === 'function') toggleSettings(false);
+  $('gpsSheet').hidden = false;
+  $('gpsRetry').focus({ preventScroll: true });
+}
+function gpsRetry() {
+  const btn = $('gpsRetry');
+  btn.disabled = true;
+  setTimeout(() => { btn.disabled = false; }, 2500);
+  startGps(() => czToast('Atrašanās vieta joprojām nav atļauta. Ieslēdz to pārlūka iestatījumos un pārlādē lapu.', true));
 }
 
 // ---------- Galamērķa meklēšana ----------
@@ -2630,10 +2688,14 @@ function wireUi() {
   });
   $('centerBtn').addEventListener('click', () => {
     state.follow = true;
+    if (gpsState === 'denied') { openGpsHelp(); return; }      // F2: liegts — instrukcijas
     if (state.me) followCamera(800);
     else { setStatus(gpsProblem || 'Meklē atrašanās vietu…'); startGps(); }
   });
   wireFabMore();
+  $('gpsHelpBtn').addEventListener('click', openGpsHelp);       // F2
+  $('closeGpsHelp').addEventListener('click', () => { $('gpsSheet').hidden = true; });
+  $('gpsRetry').addEventListener('click', gpsRetry);
   $('settingsBtn').addEventListener('click', () => { if ($('settings').hidden) closePlaces(); toggleSettings($('settings').hidden); });
   $('closeSettings').addEventListener('click', () => toggleSettings(false));
 

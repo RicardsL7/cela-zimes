@@ -845,3 +845,16 @@ html.navigating .alt-bubble { display: none; }
   .r-acc-bar { flex-wrap: wrap; }
 }
 .r-rate .btn:disabled { opacity: .5; box-shadow: none; }
+
+/* ---- F2: atrašanās vieta liegta ---- */
+.status-act { display: block; padding: 2px 0 0; font-size: 14px; text-decoration: underline; text-underline-offset: 2px; }
+.status-act[hidden] { display: none; }
+.status.gps-off .status-text { color: var(--fg); font-weight: 600; }
+.gps-lead { margin: 4px 0 12px; color: var(--muted); font-size: 15px; }
+.gps-help { display: grid; gap: 8px; }
+.gps-help details { border: 1.5px solid var(--line); border-radius: 14px; background: var(--bg); }
+.gps-help details[open] { border-color: var(--accent); }
+.gps-help summary { cursor: pointer; padding: 12px 14px; font-weight: 700; font-size: 16px; list-style-position: inside; }
+.gps-help ol { margin: 0; padding: 0 16px 12px 36px; font-size: 15px; line-height: 1.5; }
+.gps-help li { margin: 2px 0; }
+.gps-retry { width: 100%; margin-top: 14px; }
