@@ -8,6 +8,7 @@ const rides = {
   timer: null, markers: [], seen: null, from: null, to: null,
   msgs: {}, seenMsg: {}, chat: null, unreadTotal: 0,             // čats
   pay: {}, payCfg: null, payDrv: null, payAt: 0, payDrvBusy: false,      // kartes maksājumi
+  payDrvOk: {}, payDrvTries: {},                                          // F11: vai šoferis pieņem karti (pasažierim)
   live: { timer: null, lastDrv: null, lastPas: 0, route: null, routeKey: '', routeAt: 0, carMarker: null, pasMarker: null, destMarker: null },
 };
 try { rides.seenMsg = JSON.parse(localStorage.getItem('cz.rides.seenMsg') || '{}'); } catch { rides.seenMsg = {}; }
@@ -567,6 +568,8 @@ function ridesPayIds() {
   for (const o of rides.myOffers) if (o.status === 'accepted' && o.price_cents) ids.push(o.id);
   return ids;
 }
+// F11: cik reižu šofera gatavību neizdevās noskaidrot (Stripe neatbild) — pēc 2 reizēm poga tomēr redzama (serveris pārbauda pats)
+function ridesPayDrvMiss(ids) { for (const id of ids) rides.payDrvTries[id] = (rides.payDrvTries[id] || 0) + 1; }
 async function ridesPayRefresh(force) {
   if (!ridesPayOn()) return;
   const ids = ridesPayIds();
@@ -575,7 +578,9 @@ async function ridesPayRefresh(force) {
   try {
     const j = await rides.store.pay('status', { offer_ids: ids });
     rides.pay = j.pay || {}; rides.payCfg = { test: !!j.test, fee_pct: j.fee_pct ?? RIDE_FEE_PCT };
-  } catch (e) { if (e.status === 503) rides.payCfg = { off: true }; else console.warn('Maksājumi', e); }
+    rides.payDrvOk = Object.assign({}, rides.payDrvOk, j.drv || {});   // F11: šofera gatavība (true / false)
+    ridesPayDrvMiss(ids.filter(id => !(j.drv && id in j.drv)));
+  } catch (e) { if (e.status === 503) rides.payCfg = { off: true }; else console.warn('Maksājumi', e); ridesPayDrvMiss(ids); }
 }
 async function ridesPayDriverLoad() {
   if (rides.payDrvBusy || !ridesPayOn()) return;
@@ -738,11 +743,19 @@ function ridesPassengerPay(o) {
   if (p && p.paid) { box.append(rEl('b', { text: '✓ Samaksāts ar karti' })); return box; }
   if (!ridesPayOn()) { box.append(rEl('small', { text: 'Samaksā šoferim, kā vienojāties.' })); return box; }
   const msg = ridesCardMsg('pay:' + o.id);                  // F9 (arī F11): kļūda kartītē pie pogas
+  // F11: pogu rāda tikai, ja šoferim kartes maksājumi ir gatavi
+  const drvOk = rides.payDrvOk[o.id];
+  if (drvOk === false) { box.append(rEl('small', { text: 'Šoferis pieņem tikai skaidru naudu' })); return rEl('div', { class: 'r-pay-wrap' }, box, msg); }
+  if (drvOk !== true && (rides.payDrvTries[o.id] || 0) < 2) { box.append(rEl('small', { text: 'Pārbaudu kartes maksājumus…' })); return box; }
   const btn = rEl('button', { class: 'btn primary r-pay-btn', type: 'button', text: 'Maksāt ar karti', onclick: async e => {
     const b = e.currentTarget;
     b.disabled = true; b.textContent = 'Atveru…'; ridesSay('pay:' + o.id, msg, '');
     try { const j = await rides.store.pay('checkout', { offer_id: o.id, return_url: ridesReturnUrl() }); location.href = j.url; }
-    catch (err) { ridesSay('pay:' + o.id, msg, err.message || 'Neizdevās atvērt maksājumu.'); b.disabled = false; b.textContent = 'Maksāt ar karti'; }
+    catch (err) {
+      ridesSay('pay:' + o.id, msg, err.message || 'Neizdevās atvērt maksājumu.'); b.disabled = false; b.textContent = 'Maksāt ar karti';
+      // F11: šoferis atvienoja maksājumus pēc kartītes atvēršanas — pārslēdz uz skaidru naudu (ziņa paliek kartītē)
+      if (err.status === 409 && /Šoferis/.test(err.message || '')) { rides.payDrvOk[o.id] = false; ridesRender(true); }
+    }
   } });
   const wrap = rEl('div', { class: 'r-pay-wrap' }, box, btn, msg);
   const t = ridesTestNote(); if (t) wrap.append(t);
@@ -1096,7 +1109,7 @@ async function ridesDeleteAccount(say) {
     }
     await rides.store.deleteAccount(unclosed);
     a.forgetLocal(); ridesSetSignedOut(true);
-    rides.profile = null; rides.myReqs = []; rides.offers = {}; rides.myOffers = []; rides.msgs = {}; rides.pay = {}; rides.payDrv = null;
+    rides.profile = null; rides.myReqs = []; rides.offers = {}; rides.myOffers = []; rides.msgs = {}; rides.pay = {}; rides.payDrv = null; rides.payDrvOk = {}; rides.payDrvTries = {};
     rides.accountMode = null;
     rides.accountMsg = { text: '✓ Konts un tā dati ir dzēsti.' + (unclosed ? ' Kartes maksājumu (Stripe) kontu lietotnes īpašnieks slēgs manuāli.' : ''), bad: false };
     ridesRender(true);
