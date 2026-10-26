@@ -721,6 +721,7 @@ html.navigating .alt-bubble { display: none; }
   background: color-mix(in srgb, var(--go) 12%, transparent); color: var(--go); }
 .r-msg.bad { background: color-mix(in srgb, #c81e3a 12%, transparent); color: #c81e3a; }
 .r-msg[hidden] { display: none; }
+.r-pay-card .r-msg, .r-pay-wrap .r-msg { max-width: none; margin: 6px 0 8px; }   /* F9: ziņa kartītē visā platumā */
 .r-input[aria-invalid="true"] { border-color: #c81e3a; box-shadow: 0 0 0 3px color-mix(in srgb, #c81e3a 18%, transparent); }   /* F9 */
 
 /* ---------- Piekrišana noteikumiem (pirmajā atvēršanā) ---------- */

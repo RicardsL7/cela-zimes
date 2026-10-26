@@ -624,8 +624,9 @@ function ridesPayDriverCard() {
     box.append(rEl('p', { class: 'r-pay-txt', text: d.connected
       ? 'Pieslēgšana nav pabeigta — Stripe vēl vajag dažus datus.'
       : `Lai pasažieri var samaksāt ar karti tieši lietotnē, pieslēdz maksājumu saņemšanu. Datus un bankas kontu pārbauda Stripe; tu saņem cenu mīnus ${pct} % komisija.` }));
-    if (email) box.append(rEl('label', { class: 'r-label', for: 'rpPayEmail', text: 'Tavs e-pasts (uz to Stripe sūtīs paziņojumus par izmaksām)' }), email);
-    box.append(rEl('button', { class: 'btn primary', type: 'button', text: d.connected ? 'Turpināt pieslēgšanu' : 'Pieslēgt maksājumus', onclick: go }), msg);
+    if (email) box.append(rEl('label', { class: 'r-label', for: 'rpPayEmail', text: 'Tavs e-pasts (uz to Stripe sūtīs paziņojumus par izmaksām)' }), email, msg);   // ziņa zem lauka
+    box.append(rEl('button', { class: 'btn primary', type: 'button', text: d.connected ? 'Turpināt pieslēgšanu' : 'Pieslēgt maksājumus', onclick: go }));
+    if (!email) box.append(msg);
   }
   return box;
 }
