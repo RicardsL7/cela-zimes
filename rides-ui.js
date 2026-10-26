@@ -9,9 +9,12 @@ const rides = {
   msgs: {}, seenMsg: {}, chat: null, unreadTotal: 0,             // čats
   pay: {}, payCfg: null, payDrv: null, payAt: 0, payDrvBusy: false,      // kartes maksājumi
   payDrvOk: {}, payDrvTries: {},                                          // F11: vai šoferis pieņem karti (pasažierim)
+  history: [], historyAt: 0, historyErr: false, historyView: false, historyOpen: null,  // F13: „Mani braucieni”
+  ratingSum: {}, ratingAt: {}, rateDraft: {}, reportOpen: null, reportDraft: {}, summarySeen: [],
   live: { timer: null, lastDrv: null, lastPas: 0, route: null, routeKey: '', routeAt: 0, carMarker: null, pasMarker: null, destMarker: null },
 };
 try { rides.seenMsg = JSON.parse(localStorage.getItem('cz.rides.seenMsg') || '{}'); } catch { rides.seenMsg = {}; }
+try { rides.summarySeen = JSON.parse(localStorage.getItem('cz.rides.summarySeen') || '[]'); } catch { rides.summarySeen = []; }
 
 function rEl(tag, attrs = {}, ...kids) {
   const el = document.createElement(tag);
@@ -124,6 +127,7 @@ async function ridesRefresh(first) {
   if (!rides.ready) return ridesRender();
   if (!rides.store.hasAccount()) {
     rides.profile = null; rides.myReqs = []; rides.offers = {}; rides.myOffers = []; rides.openList = []; rides.msgs = {};
+    if (rides.history.length || rides.historyView) ridesHistoryReset();
     return ridesRender();
   }
   try {
@@ -133,6 +137,7 @@ async function ridesRefresh(first) {
       try { await rides.store.expire(); } catch (e) { console.warn('Braucienu tīrīšana', e); }
     }
     rides.profile = await rides.store.profile();
+    const wasActive = ridesActiveOfferIds();
     rides.myReqs = await rides.store.myRequests();
     rides.offers = {};
     for (const r of rides.myReqs) rides.offers[r.id] = await rides.store.offersFor(r.id);
@@ -149,6 +154,10 @@ async function ridesRefresh(first) {
     rides.msgs = msgs;
     await ridesPayRefresh(first);
     await ridesRefundSync();
+    // F13: pazudis aktīvs brauciens (pabeigts / atcelts) → uzreiz ielādē vēsturi (kopsavilkums)
+    const nowActive = ridesActiveOfferIds();
+    await ridesHistoryLoad(first || [...wasActive].some(id => !nowActive.has(id)));
+    await ridesRatingsLoad();
   } catch (err) { console.warn('Kopbraucieni: neizdevās atjaunot', err); }
   ridesNotify(first);
   ridesRender();
@@ -221,7 +230,11 @@ function ridesViewSig() {
     rides.tab === 'drive' ? rides.openList.map(r => r.id + r.status) : null,
     rides.pay, rides.payCfg, rides.payDrv,
     rides.accountView, rides.accountMode, rides.accountBusy, rides.accountMsg, rides.providers,
-    rides.store && rides.store.auth ? [rides.store.auth.userId, rides.store.auth.isAnon, rides.store.auth.email] : null]);
+    rides.store && rides.store.auth ? [rides.store.auth.userId, rides.store.auth.isAnon, rides.store.auth.email] : null,
+    // F13: vēsture, kopsavilkumi, vērtējumi, ziņošana
+    rides.historyView, rides.historyOpen, rides.historyErr, rides.reportOpen, rides.summarySeen.length,
+    rides.history.map(h => (h.offer_id || h.request_id) + h.status + (h.my_stars || 0) + (h.reported ? 1 : 0)),
+    rides.ratingSum]);
 }
 function ridesRender(force = false) {
   if (!rides.open) return;
@@ -247,6 +260,7 @@ function ridesRender(force = false) {
       rEl('p', { class: 'r-err', text: rides.accountErr || 'Kopbraucieniem vajadzīgs konts.' }),
       rEl('button', { class: 'btn primary', type: 'button', text: 'Mēģināt vēlreiz', onclick: () => { ridesSetSignedOut(false); ridesEnsureAccount(); } })));
   }
+  if (rides.historyView && rides.profile && !rides.chat) return body.append(ridesHistoryView());   // F13
   if (!rides.chat) body.append(ridesAccountBar());
   if (!rides.profile) return body.append(ridesProfileForm());
   rides.renderedChat = rides.chat ? rides.chat.offerId : null;
@@ -329,6 +343,14 @@ function ridesPlaceInput(id, placeholder, onPick, initial) {
 
 function ridesNeedView() {
   const wrap = rEl('div');
+  // F13: pabeigta brauciena kopsavilkums (vērtējums) augšā; tukšo formu rāda tikai, ja tādu nav
+  const sums = rideSummaryPending(rides.history, rides.summarySeen, 'passenger');
+  for (const h of sums) wrap.append(ridesSummaryCard(h));
+  if (sums.length && !rides.myReqs.length) {
+    if (rides.extraForm) wrap.append(ridesNeedForm());
+    else wrap.append(rEl('button', { class: 'btn ghost r-wide', type: 'button', text: '+ Jauns brauciens', onclick: () => { rides.extraForm = true; ridesRender(true); } }));
+    return wrap;
+  }
   for (const r of rides.myReqs) wrap.append(ridesRequestCard(r));
   if (rides.myReqs.length) {
     if (rides.extraForm) wrap.append(ridesNeedForm());
@@ -380,11 +402,13 @@ function ridesRoute(r) {
     rEl('div', { class: 'r-stop' }, rEl('span', { class: 'r-dot r-dot-a' }), rEl('span', { text: r.from_name || 'Sākums' })),
     rEl('div', { class: 'r-stop' }, rEl('span', { class: 'r-dot r-dot-b' }), rEl('span', { text: r.to_name || 'Galamērķis' })));
 }
-function ridesPerson(p, phone, extra) {
+function ridesPerson(p, phone, extra, userId) {
+  const sum = userId ? rides.ratingSum[userId] : undefined;          // F13: vidējais vērtējums
   return rEl('div', { class: 'r-person' },
     rEl('span', { class: 'r-avatar', text: ((p && p.name) || '?').trim().charAt(0).toUpperCase() }),
     rEl('div', { class: 'r-pinfo' }, rEl('strong', { text: (p && p.name) || 'Lietotājs' }),
-      rEl('small', { text: [p && p.car, extra].filter(Boolean).join(' · ') })),
+      rEl('small', { text: [p && p.car, extra].filter(Boolean).join(' · ') }),
+      sum !== undefined ? rEl('small', { class: 'r-rating' + (sum && sum.count ? '' : ' none'), text: rideRatingText(sum) }) : null),
     phone ? rEl('a', { class: 'r-call', href: 'tel:' + phone.replace(/[^\d+]/g, ''), text: 'Zvanīt' }) : null);
 }
 function ridesRequestCard(r) {
@@ -399,7 +423,7 @@ function ridesRequestCard(r) {
   if (accepted) {
     const st = rideStage(accepted);
     card.querySelector('.r-badge').textContent = { matched: 'Šoferis atrasts', coming: 'Šoferis brauc pakaļ', arrived: 'Šoferis ir klāt!', onboard: 'Ceļā' }[st] || 'Šoferis atrasts';
-    card.append(ridesPerson(accepted.driver, accepted.phone, ''));
+    card.append(ridesPerson(accepted.driver, accepted.phone, '', accepted.driver_id));
     card.append(rEl('p', { class: 'r-trip', id: 'trip-' + accepted.id, text: ridePassengerStatus(accepted, r) }));
     const payEl = ridesPassengerPay(accepted);
     if (payEl) card.append(payEl);
@@ -413,7 +437,7 @@ function ridesRequestCard(r) {
     if (!pending.length) card.append(rEl('p', { class: 'fine r-wait', text: 'Pieprasījumu redz šoferi, kuri brauc tajā pusē. Kad kāds piedāvās, tas parādīsies šeit.' }));
     for (const o of pending) {
       card.append(rEl('div', { class: 'r-offer' },
-        ridesPerson(o.driver, '', [o.eta_min != null ? `var paņemt pēc ~${o.eta_min} min` : '', o.price_cents ? 'cena ' + rideMoney(o.price_cents) : 'bez maksas / vienosieties'].filter(Boolean).join(' · ')),
+        ridesPerson(o.driver, '', [o.eta_min != null ? `var paņemt pēc ~${o.eta_min} min` : '', o.price_cents ? 'cena ' + rideMoney(o.price_cents) : 'bez maksas / vienosieties'].filter(Boolean).join(' · '), o.driver_id),
         o.note ? rEl('p', { class: 'r-note', text: '“' + o.note + '”' }) : null,
         rEl('div', { class: 'r-actions' },
           ridesChatBtn(o.id, (o.driver && o.driver.name) || 'Šoferis'),
@@ -441,6 +465,7 @@ function ridesConfirmCancel(r) {
 
 function ridesDriveView() {
   const wrap = rEl('div');
+  for (const h of rideSummaryPending(rides.history, rides.summarySeen, 'driver')) wrap.append(ridesSummaryCard(h));   // F13
   if (rides.profile && !rides.profile.car) wrap.append(ridesCarPrompt());
   const payCard = ridesPayDriverCard();
   if (payCard) wrap.append(payCard);
@@ -476,7 +501,7 @@ function ridesOpenCard(x) {
   const meta = [rideTimeText(r.depart_at), r.seats + ' cilv.',
     x.match ? `+${x.match.detourMin} min apkārtceļš` : x.dist != null ? rideDistText(x.dist) + ' no tevis' : ''].filter(Boolean).join(' · ');
   return rEl('div', { class: 'r-card' },
-    ridesPerson(r.passenger, '', meta),
+    ridesPerson(r.passenger, '', meta, r.user_id),
     ridesRoute(r),
     r.note ? rEl('p', { class: 'r-note', text: '“' + r.note + '”' }) : null,
     rEl('label', { class: 'r-price-row' },
@@ -516,7 +541,7 @@ function ridesMyOfferCard(o) {
     rEl('div', { class: 'r-card-top' },
       rEl('span', { class: 'r-badge', text: badge }),
       rEl('span', { class: 'r-when', text: rideTimeText(r.depart_at) })),
-    ridesPerson(o.passenger, ok ? o.phone : '', ''),
+    ridesPerson(o.passenger, ok ? o.phone : '', '', r.user_id),
     ridesRoute(r));
   if (ok) card.append(rEl('p', { class: 'r-trip', id: 'trip-' + o.id, text: rideDriverStatus(o, state.me) }));
   if (o.price_cents) card.append(ridesDriverPayLine(o, ok));
@@ -554,6 +579,7 @@ function ridesMyOfferCard(o) {
     step('Brauciens pabeigts', async () => {
       await rides.store.driverUpdate(o.id, { trip: 'done' });
       if (state.nav.active) endNav();
+      ridesHistoryAddLocal(rideHistoryFromOffer(o, r, 'driver', o.passenger));   // F13: kopsavilkums uzreiz
       ridesToast('Brauciens pabeigts. Paldies!');
     });
   }
@@ -951,14 +977,15 @@ function ridesAccountBar() {
   const a = rides.store && rides.store.auth;
   if (!a || !a.hasSession()) return document.createDocumentFragment();
   const open = () => { rides.accountView = true; rides.accountMode = null; rides.accountMsg = null; ridesRender(true); };
+  const hist = rides.profile ? rEl('button', { class: 'link-btn', type: 'button', text: 'Mani braucieni', onclick: ridesOpenHistory }) : null;   // F13
   if (a.isAnon) {
     return rEl('div', { class: 'r-acc-bar warn' },
       rEl('span', { text: '🔒 Konts saglabāts tikai šajā ierīcē' }),
-      rEl('button', { class: 'link-btn', type: 'button', text: 'Saglabāt kontu', onclick: open }));
+      rEl('span', { class: 'r-acc-links' }, hist, rEl('button', { class: 'link-btn', type: 'button', text: 'Saglabāt kontu', onclick: open })));
   }
   return rEl('div', { class: 'r-acc-bar' },
     rEl('span', { text: '✓ ' + (a.email || 'Pieslēdzies') }),
-    rEl('button', { class: 'link-btn', type: 'button', text: 'Konts', onclick: open }));
+    rEl('span', { class: 'r-acc-links' }, hist, rEl('button', { class: 'link-btn', type: 'button', text: 'Konts', onclick: open })));
 }
 // Atver konta skatu (arī no iestatījumiem)
 function ridesOpenAccount() {
@@ -1012,6 +1039,7 @@ function ridesAccountView() {
   wrap.append(rEl('div', { class: 'r-acc-head' },
     rEl('button', { class: 'link-btn', type: 'button', text: '← Atpakaļ', onclick: back }),
     rEl('b', { text: 'Konts' })));
+  if (a.hasSession() && rides.profile && rides.accountMode !== 'delete') wrap.append(ridesMyRatingRow());   // F13
 
   // E-pasta lauks + poga (mode: 'link' — saglabāt šo kontu; 'other' — pieslēgties citam kontam; 'signin' — pieslēgties)
   const emailForm = (mode, label) => {
@@ -1089,7 +1117,7 @@ function ridesAccountView() {
     wrap.append(rEl('p', { class: 'r-lead', text: `Pieslēdzies kā ${a.email || 'Google konts'}. Ar šo e-pastu vari pieslēgties jebkurā ierīcē.` }), msg,
       rEl('button', { class: 'btn ghost', type: 'button', text: 'Izrakstīties', onclick: async () => {
         await a.signOut(); ridesSetSignedOut(true);
-        rides.profile = null; rides.myReqs = []; rides.offers = {}; rides.myOffers = []; rides.msgs = {};
+        rides.profile = null; rides.myReqs = []; rides.offers = {}; rides.myOffers = []; rides.msgs = {}; ridesHistoryReset();
         rides.accountMsg = { text: 'Tu esi izrakstījies. Lai turpinātu, pieslēdzies vēlreiz.', bad: false };
         ridesRender(true);
       } }));
@@ -1110,6 +1138,7 @@ async function ridesDeleteAccount(say) {
     await rides.store.deleteAccount(unclosed);
     a.forgetLocal(); ridesSetSignedOut(true);
     rides.profile = null; rides.myReqs = []; rides.offers = {}; rides.myOffers = []; rides.msgs = {}; rides.pay = {}; rides.payDrv = null; rides.payDrvOk = {}; rides.payDrvTries = {};
+    ridesHistoryReset();
     rides.accountMode = null;
     rides.accountMsg = { text: '✓ Konts un tā dati ir dzēsti.' + (unclosed ? ' Kartes maksājumu (Stripe) kontu lietotnes īpašnieks slēgs manuāli.' : ''), bad: false };
     ridesRender(true);
@@ -1117,6 +1146,221 @@ async function ridesDeleteAccount(say) {
     console.warn('Konta dzēšana', e);
     say('Kontu neizdevās dzēst. Pārbaudi internetu un mēģini vēlreiz.');
   }
+}
+
+// ---------- F13: brauciena kopsavilkums, vērtējums, ziņošana, „Mani braucieni” ----------
+// Aktīvie (pieņemtie) braucieni — ja kāds pazūd no saraksta, tas ir pabeigts vai atcelts → ielādē vēsturi.
+function ridesActiveOfferIds() {
+  const ids = new Set();
+  for (const r of rides.myReqs) for (const o of rides.offers[r.id] || []) if (o.status === 'accepted') ids.add(o.id);
+  for (const o of rides.myOffers) if (o.status === 'accepted') ids.add(o.id);
+  return ids;
+}
+function ridesHistoryReset() {
+  rides.history = []; rides.historyAt = 0; rides.historyErr = false; rides.historyView = false; rides.historyOpen = null;
+  rides.historyFor = null; rides.rateDraft = {}; rides.reportOpen = null; rides.reportDraft = {}; rides.ratingSum = {}; rides.ratingAt = {};
+}
+// Vēsture: atverot „Kopā”, kad pazūd aktīvs brauciens, skatā „Mani braucieni” un citādi ik 2 min.
+async function ridesHistoryLoad(force) {
+  if (!rides.store || !rides.store.myHistory) return;
+  if (rides.historyFor && rides.historyFor !== rides.store.id) ridesHistoryReset();     // cits konts
+  if (!force && !rides.historyView && Date.now() - rides.historyAt < 120000) return;
+  rides.historyAt = Date.now();
+  try {
+    const list = await rides.store.myHistory(50);
+    // uzreiz pievienotie (ridesHistoryAddLocal), kurus serveris vēl neatdod, paliek
+    const keep = rides.history.filter(h => h.local && !(list || []).some(x => x.offer_id === h.offer_id));
+    rides.history = keep.concat(list || []);
+    rides.historyFor = rides.store.id; rides.historyErr = false;
+  } catch (e) { console.warn('Braucienu vēsture', e); rides.historyErr = true; }
+}
+function ridesHistoryAddLocal(h) {
+  if (rides.history.some(x => x.offer_id === h.offer_id)) return;
+  rides.history.unshift({ ...h, local: true });
+}
+// Vidējie vērtējumi: šoferi piedāvājumos, pasažieri šofera sarakstā, es pats (kešs 5 min)
+async function ridesRatingsLoad(extra = []) {
+  if (!rides.store || !rides.store.ratingSummary) return;
+  const ids = new Set(extra);
+  if (rides.store.id) ids.add(rides.store.id);
+  for (const r of rides.myReqs) for (const o of rides.offers[r.id] || []) ids.add(o.driver_id);
+  for (const o of rides.myOffers) if (o.request) ids.add(o.request.user_id);
+  for (const r of rides.openList || []) ids.add(r.user_id);
+  for (const h of rides.history.slice(0, 20)) if (h.other_id) ids.add(h.other_id);
+  const need = [...ids].filter(id => id && Date.now() - (rides.ratingAt[id] || 0) > 300000).slice(0, 100);
+  if (!need.length) return;
+  for (const id of need) rides.ratingAt[id] = Date.now();
+  try {
+    const sum = await rides.store.ratingSummary(need);
+    const next = { ...rides.ratingSum };
+    for (const id of need) next[id] = sum[id] || null;
+    rides.ratingSum = next;
+  } catch (e) { console.warn('Vērtējumi', e); for (const id of need) rides.ratingAt[id] = 0; }
+}
+function ridesSummarySeen(id) {
+  if (!id || rides.summarySeen.includes(id)) return;
+  rides.summarySeen = rides.summarySeen.concat(id).slice(-50);
+  try { localStorage.setItem('cz.rides.summarySeen', JSON.stringify(rides.summarySeen)); } catch { /* */ }
+}
+function ridesOpenHistory() {
+  rides.historyView = true; rides.historyOpen = null; rides.reportOpen = null;
+  ridesRender(true);
+  ridesHistoryLoad(true).then(() => ridesRender(true));
+}
+// Mans vidējais vērtējums (konta skatā un vēsturē)
+function ridesMyRatingRow() {
+  const sum = rides.store && rides.ratingSum[rides.store.id];
+  return rEl('div', { class: 'r-my-rating' },
+    rEl('span', {}, rEl('small', { text: 'Tavs vērtējums' }), rEl('b', { text: sum === undefined ? '…' : rideRatingText(sum) })),
+    rides.historyView ? null : rEl('button', { class: 'link-btn', type: 'button', text: 'Mani braucieni', onclick: () => { rides.accountView = false; rides.accountMsg = null; ridesOpenHistory(); } }));
+}
+// Zvaigžņu pogas (lielas pieskārienam). value — izvēlētais, onPick(n)
+function ridesStars(value, onPick) {
+  const row = rEl('div', { class: 'r-stars', role: 'group', 'aria-label': 'Vērtējums no 1 līdz 5' });
+  for (let n = 1; n <= 5; n++) {
+    row.append(rEl('button', { class: 'r-star' + (n <= value ? ' on' : ''), type: 'button', text: '★',
+      'aria-label': n + (n === 1 ? ' zvaigzne' : ' zvaigznes') + ' no 5', 'aria-pressed': n === value ? 'true' : 'false',
+      onclick: () => onPick(n) }));
+  }
+  return row;
+}
+// Kopsavilkums: h — vēstures ieraksts (piedāvājums + pieprasījums + mana loma). inHistory — atvērts no „Mani braucieni”.
+function ridesSummaryCard(h, inHistory = false) {
+  const id = h.offer_id, done = h.status === 'done';
+  const other = { name: h.other_name || (h.offer_id ? 'Lietotājs' : ''), car: h.other_car };
+  const card = rEl('div', { class: 'r-card r-summary' + (done ? ' r-ok' : '') },
+    rEl('div', { class: 'r-card-top' },
+      rEl('span', { class: 'r-badge', text: done ? '✓ Brauciens pabeigts' : 'Brauciens atcelts' }),
+      rEl('span', { class: 'r-when', text: rideDateText(h.depart_at) }),
+      inHistory ? null : rEl('button', { class: 'r-x', type: 'button', 'aria-label': 'Aizvērt kopsavilkumu', text: '×',
+        onclick: () => { ridesSummarySeen(id); ridesRender(true); } })),
+    ridesRoute(h));
+  if (h.offer_id) card.append(ridesPerson(other, '', h.role === 'driver' ? 'Pasažieris' : 'Šoferis', h.other_id));
+  else card.append(rEl('p', { class: 'fine', text: 'Neviens šoferis braucienu nepieņēma.' }));
+  if (h.price_cents) {
+    const live = rides.pay[id];
+    const pay = ridePayText(h, live);
+    card.append(rEl('div', { class: 'r-pay-line' + (pay === 'Samaksāts ar karti' ? ' r-paid' : '') },
+      rEl('span', { text: 'Cena ' + rideMoney(h.price_cents) }),
+      rEl(pay.startsWith('↩') || pay.startsWith('Samaksāts') ? 'b' : 'small', { class: pay.startsWith('↩') ? 'r-refunded' : null, text: pay })));
+  }
+  if (!h.offer_id) return card;
+  // Vērtējums
+  if (h.my_stars) {
+    card.append(rEl('div', { class: 'r-rated' },
+      rEl('span', { text: 'Tavs vērtējums: ' }), rEl('b', { class: 'r-stars-text', 'aria-label': h.my_stars + ' no 5', text: rideStarsText(h.my_stars) }),
+      h.my_comment ? rEl('p', { class: 'r-note', text: '“' + h.my_comment + '”' }) : null));
+  } else if (done) card.append(ridesRateForm(h, inHistory));
+  // Ziņot par problēmu
+  if (h.reported) card.append(rEl('p', { class: 'fine r-reported', text: '✓ Ziņojums par šo braucienu nosūtīts. Paldies!' }));
+  else if (rides.reportOpen === id) card.append(ridesReportForm(h));
+  else card.append(rEl('button', { class: 'link-btn r-report-link', type: 'button', text: 'Ziņot par problēmu',
+    onclick: () => { rides.reportOpen = id; ridesRender(true); } }));
+  return card;
+}
+function ridesRateForm(h, inHistory) {
+  const id = h.offer_id, draft = rides.rateDraft[id] || (rides.rateDraft[id] = { stars: 0, comment: '' });
+  const who = h.role === 'driver' ? 'pasažieri' : 'šoferi';
+  const msg = ridesCardMsg('rate:' + id);
+  const comment = rEl('textarea', { class: 'r-input r-comment', id: 'rRate-' + id, maxlength: 200, rows: 2, placeholder: 'Komentārs (neobligāti)', 'aria-label': 'Komentārs (neobligāti, līdz 200 zīmēm)' });
+  comment.value = draft.comment;
+  comment.addEventListener('input', () => { draft.comment = comment.value; });
+  const send = rEl('button', { class: 'btn primary', type: 'button', text: 'Nosūtīt vērtējumu', disabled: draft.stars ? null : true, onclick: async e => {
+    if (!draft.stars) { ridesSay('rate:' + id, msg, 'Izvēlies, cik zvaigznes.'); return; }
+    const b = e.currentTarget; b.disabled = true; ridesSay('rate:' + id, msg, 'Sūta…', false);
+    try {
+      await rides.store.rate(id, draft.stars, draft.comment);
+      ridesSay('rate:' + id, msg, '');
+      Object.assign(h, { my_stars: draft.stars, my_comment: draft.comment.trim() });
+      delete rides.rateDraft[id]; delete rides.ratingAt[h.other_id];
+      ridesToast('Paldies par vērtējumu!');
+      ridesRatingsLoad([h.other_id]).then(() => ridesRender(true));
+      ridesRender(true);
+    } catch (err) {
+      console.warn('Vērtējums', err);
+      if (err.code === 'duplicate' || rideRateErr(err)) {
+        ridesSay('rate:' + id, msg, 'Tu šo braucienu jau novērtēji — otrreiz vērtēt nevar.');
+        ridesHistoryLoad(true).then(() => ridesRender(true));
+      } else ridesSay('rate:' + id, msg, /Novērtēt var tikai/.test(err.message) ? 'Novērtēt var tikai pabeigtu braucienu.' : 'Neizdevās nosūtīt vērtējumu — pārbaudi internetu un mēģini vēlreiz.');
+      b.disabled = false;
+    }
+  } });
+  const acts = rEl('div', { class: 'r-actions' },
+    inHistory ? null : rEl('button', { class: 'btn ghost', type: 'button', text: 'Izlaist', title: 'Novērtēt varēsi vēlāk sadaļā „Mani braucieni”',
+      onclick: () => { ridesSummarySeen(id); ridesToast('Novērtēt varēsi vēlāk sadaļā „Mani braucieni”.'); ridesRender(true); } }),
+    send);
+  return rEl('div', { class: 'r-rate' },
+    rEl('b', { class: 'r-rate-q', text: `Kā tev patika brauciens? Novērtē ${who}` }),
+    ridesStars(draft.stars, n => { draft.stars = n; ridesSay('rate:' + id, msg, ''); ridesRender(true); }),
+    comment, msg, acts);
+}
+function ridesReportForm(h) {
+  const id = h.offer_id, draft = rides.reportDraft[id] || (rides.reportDraft[id] = { reason: '', details: '' });
+  const msg = ridesCardMsg('report:' + id);
+  const reasons = rEl('div', { class: 'r-reasons', role: 'radiogroup', 'aria-label': 'Iemesls' });
+  for (const [k, label] of RIDE_REPORT_REASONS) {
+    const inp = rEl('input', { type: 'radio', name: 'rRep-' + id, value: k });
+    inp.checked = draft.reason === k;
+    inp.addEventListener('change', () => { draft.reason = k; ridesSay('report:' + id, msg, ''); });
+    reasons.append(rEl('label', { class: 'r-reason' }, inp, rEl('span', { text: label })));
+  }
+  const det = rEl('textarea', { class: 'r-input r-comment', id: 'rRepD-' + id, maxlength: 500, rows: 3, placeholder: 'Kas notika? (neobligāti, līdz 500 zīmēm)', 'aria-label': 'Apraksts' });
+  det.value = draft.details;
+  det.addEventListener('input', () => { draft.details = det.value; });
+  const send = rEl('button', { class: 'btn danger', type: 'button', text: 'Nosūtīt ziņojumu', onclick: async e => {
+    if (!draft.reason) { ridesSay('report:' + id, msg, 'Izvēlies iemeslu.'); return; }
+    if (draft.reason === 'other' && !draft.details.trim()) { ridesSay('report:' + id, msg, 'Īsi apraksti, kas notika.'); det.focus(); return; }
+    const b = e.currentTarget; b.disabled = true; ridesSay('report:' + id, msg, 'Sūta…', false);
+    try {
+      await rides.store.reportUser(id, draft.reason, draft.details);
+      ridesSay('report:' + id, msg, '');
+      h.reported = true; rides.reportOpen = null; delete rides.reportDraft[id];
+      ridesToast('Paldies — ziņojums nosūtīts. Lietotnes komanda to izskatīs.');
+      ridesRender(true);
+    } catch (err) {
+      console.warn('Ziņojums', err);
+      ridesSay('report:' + id, msg, /Pārāk daudz/.test(err.message) ? 'Šodien nosūtīts pārāk daudz ziņojumu — mēģini rīt.' : 'Neizdevās nosūtīt ziņojumu — pārbaudi internetu un mēģini vēlreiz.');
+      b.disabled = false;
+    }
+  } });
+  return rEl('div', { class: 'r-report' },
+    rEl('b', { text: 'Ziņot par problēmu' }),
+    rEl('p', { class: 'fine', text: 'Ziņojumu redz tikai lietotnes komanda — otrs brauciena dalībnieks to neredzēs. Ja kāds ir apdraudēts, zvani 112.' }),
+    reasons, det, msg,
+    rEl('div', { class: 'r-actions' },
+      rEl('button', { class: 'btn ghost', type: 'button', text: 'Atcelt', onclick: () => { rides.reportOpen = null; ridesSay('report:' + id, msg, ''); ridesRender(true); } }),
+      send));
+}
+// „Mani braucieni” — abas lomas, jaunākie augšā; pieskaroties — kopsavilkums, vērtējums, ziņošana
+function ridesHistoryView() {
+  const wrap = rEl('div', { class: 'r-history' });
+  const back = () => { rides.historyView = false; rides.historyOpen = null; rides.reportOpen = null; ridesRender(true); };
+  wrap.append(rEl('div', { class: 'r-acc-head' },
+    rEl('button', { class: 'link-btn', type: 'button', text: '← Atpakaļ', onclick: back }),
+    rEl('b', { text: 'Mani braucieni' })));
+  wrap.append(ridesMyRatingRow());
+  if (rides.historyErr && !rides.history.length) {
+    const msg = rEl('p', { class: 'r-msg bad', role: 'alert', text: 'Braucienu vēsturi neizdevās ielādēt. Pārbaudi internetu un mēģini vēlreiz.' });
+    wrap.append(msg, rEl('button', { class: 'btn ghost', type: 'button', text: 'Mēģināt vēlreiz', onclick: () => ridesOpenHistory() }));
+    return wrap;
+  }
+  if (!rides.historyFor && !rides.history.length) { wrap.append(rEl('p', { class: 'fine', text: 'Ielādē…' })); return wrap; }
+  if (!rides.history.length) { wrap.append(rEl('p', { class: 'fine r-wait', text: 'Vēl nav neviena pabeigta vai atcelta brauciena.' })); return wrap; }
+  for (const h of rides.history) {
+    const key = h.offer_id || h.request_id, open = rides.historyOpen === key;
+    const pay = ridePayText(h, rides.pay[h.offer_id]);
+    const meta = [h.role === 'driver' ? 'Šoferis' : 'Pasažieris', h.status === 'done' ? 'pabeigts' : 'atcelts',
+      h.price_cents ? rideMoney(h.price_cents) + (pay ? ' · ' + pay : '') : '',
+      h.status === 'done' ? (h.my_stars ? rideStarsText(h.my_stars) : 'nav novērtēts') : ''].filter(Boolean).join(' · ');
+    const row = rEl('button', { class: 'r-hist-item' + (open ? ' open' : '') + (h.status === 'done' ? '' : ' cancelled'), type: 'button', 'aria-expanded': open ? 'true' : 'false',
+      onclick: () => { rides.historyOpen = open ? null : key; rides.reportOpen = null; ridesRender(true); } },
+      rEl('span', { class: 'r-hist-top' }, rEl('b', { text: rideDateText(h.depart_at) }), rEl('span', { class: 'r-hist-who', text: h.other_name || '' })),
+      rEl('span', { class: 'r-hist-route', text: (h.from_name || 'Sākums') + ' → ' + (h.to_name || 'Galamērķis') }),
+      rEl('small', { text: meta }));
+    wrap.append(row);
+    if (open) wrap.append(ridesSummaryCard(h, true));
+  }
+  return wrap;
 }
 
 // Drošībai: ja app-gl.js to vēl nav izsaucis (ielādes secība), palaiž, kad lapa ielādēta.

@@ -37,6 +37,32 @@ Naudu aplikācija neapstrādā. Izmaksas var sadalīt savā starpā (pārvadāju
 Datubāzes daļa: `supabase/rides-2-chat-trip.sql`. Brauciena gaitu var mainīt tikai šoferis, un tikai caur
 drošām funkcijām.
 
+## Pēc brauciena: kopsavilkums, vērtējums, ziņošana (F13)
+
+* Kad šoferis nospiež **„Brauciens pabeigts”**, abi (pasažieris cilnē „Man vajag aizbraukt”, šoferis cilnē
+  „Es braucu”) augšā redz **kopsavilkumu**: maršruts, datums un laiks, otras puses vārds un auto, cena un
+  maksājuma statuss („Samaksāts ar karti” / „↩ Atmaksāts …” / „Skaidrā naudā vai nav samaksāts”).
+  Kartīte rādās, kamēr to aizver (×), nospiež „Izlaist” vai novērtē (aizvērtās — `localStorage`
+  `cz.rides.summarySeen`, pēdējās 50). Pēc 3 dienām tā vairs pati neparādās — novērtēt var „Mani braucienos”.
+* **Vērtējums**: 1–5 zvaigznes (lielas pogas ar `aria-label` „3 zvaigznes no 5”) + neobligāts komentārs
+  līdz 200 zīmēm. Pasažieris vērtē šoferi, šoferis — pasažieri. Katrs vienu reizi par braucienu; mainīt vai
+  dzēst nevar. Vērtēt var tikai pabeigtu braucienu.
+* **Vidējais vērtējums** („★ 4,7 · 12 braucieni” vai „Vēl nav vērtējumu”) redzams: šofera piedāvājumā, ko
+  redz pasažieris, saskaņotā brauciena kartītē, šofera sarakstā pie pasažiera, konta skatā un „Mani braucienos”.
+  Atsevišķus komentārus citi neredz.
+* **„Ziņot par problēmu”** (kopsavilkumā un vēsturē, arī par atceltu braucienu): „Bīstama braukšana”,
+  „Neatbilstoša uzvedība”, „Neieradās”, „Problēma ar maksājumu”, „Cits” + apraksts līdz 500 zīmēm.
+  Ziņojumu redz tikai pats ziņotājs un lietotnes īpašnieks (Supabase → Table editor → `user_reports`);
+  otrs lietotājs — nē. Ne vairāk kā 10 ziņojumi dienā.
+* **„Mani braucieni”** (saite joslā loga augšā un konta skatā): pabeigtie un atceltie braucieni abās lomās,
+  jaunākie augšā — datums, maršruts, loma, statuss, cena un samaksa, mans vērtējums. Pieskaroties —
+  kopsavilkums, „Novērtēt” (ja vēl nav) un „Ziņot par problēmu”.
+
+Datubāze: `supabase/rides-9-ratings.sql` — tabulas `ride_ratings` un `user_reports` (nosaukums `reports` jau
+aizņemts ceļa ziņojumiem), funkcijas `rating_summary(ids)` un `my_ride_history(lim)`. Kuru vērtē / par kuru
+ziņo, aizpilda datubāze pati (klienta vērtībai netic). Konta pārcelšana (F1) pārceļ arī vērtējumus un
+ziņojumus; konta dzēšana dzēš savus vērtējumus un ziņojumus (ziņojumi par dzēsto lietotāju paliek anonīmi).
+
 ## Serveris (Supabase)
 
 Kamēr `rides-config.js` ir tukšs, viss darbojas **demo režīmā**: dati glabājas tikai šajā ierīcē, un
@@ -59,8 +85,8 @@ Kopīgai darbībai:
 * Piedāvājumu var nosūtīt tikai atvērtam pieprasījumam, un ne savam. Šoferis var tikai atcelt
   piedāvājumu, pasažieris var to pieņemt vai noraidīt.
 * Vienam lietotājam vienlaikus var būt ne vairāk kā 5 aktīvi pieprasījumi (pret mēstulēm).
+* Vērtēt un ziņot var tikai brauciena dalībnieks un tikai par otru pusi; vērtējumu — tikai pēc pabeigta brauciena.
 
 ## Vēl nav (nākamie soļi)
 
-Vērtējumi pēc brauciena, ziņošana par lietotāju, čats aplikācijā, push paziņojumi, kad lapa ir
-aizvērta, un brauciena kopīgošana ar tuviniekiem.
+Push paziņojumi, kad lapa ir aizvērta, un brauciena kopīgošana ar tuviniekiem.

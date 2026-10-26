@@ -795,3 +795,53 @@ html.navigating .alt-bubble { display: none; }
 .tr-c-h { margin-top: 8px; font-weight: 600; font-size: 13.5px; color: var(--fg); }
 .tr-c-b .tr-c-btn { flex: 1; background: var(--bg); color: var(--fg); border: 1px solid var(--line); font-weight: 700; }
 .tr-c-b { justify-content: stretch; }
+
+/* ---- Brauciena kopsavilkums, vērtējumi, „Mani braucieni” (F13) ---- */
+.r-card .r-msg { max-width: none; }
+.r-summary .r-card-top { align-items: flex-start; }
+.r-summary .r-when { margin-left: auto; }
+.r-x { flex: none; border: 0; background: none; color: var(--muted); font-size: 24px; line-height: 1; padding: 0 4px; margin: -4px -4px 0 0; cursor: pointer; }
+.r-rating { color: #b07800 !important; font-weight: 700; }
+.r-rating.none { color: var(--muted) !important; font-weight: 500; }
+.r-rate { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 10px; }
+.r-rate-q { font: 700 15px var(--font-body); }
+.r-stars { display: flex; gap: 4px; }
+.r-star { flex: 1 1 0; max-width: 56px; min-height: 48px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--panel);
+  color: var(--line); font-size: 28px; line-height: 1; cursor: pointer; padding: 0; transition: color .12s, transform .12s; }
+.r-star.on { color: #f5a400; border-color: color-mix(in srgb, #f5a400 55%, var(--line)); background: color-mix(in srgb, #f5a400 10%, var(--panel)); }
+.r-star:active { transform: scale(.92); }
+.r-comment { resize: vertical; min-height: 44px; font-size: 15px; }
+.r-rated { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; font-weight: 600; }
+.r-rated .r-note { flex-basis: 100%; }
+.r-stars-text { color: #f5a400; font-size: 18px; letter-spacing: 1px; }
+.r-report-link { justify-self: start; color: var(--muted); font-size: 14px; }
+.r-reported { margin: 0; color: var(--go); font-weight: 600; }
+.r-report { display: grid; gap: 8px; padding: 10px; border-radius: 12px; border: 1.5px solid color-mix(in srgb, var(--danger) 35%, var(--line)); }
+.r-report .fine { margin: 0; }
+.r-reasons { display: grid; gap: 4px; }
+.r-reason { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 8px; border-radius: 10px; font-weight: 600; cursor: pointer; }
+.r-reason:has(input:checked) { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.r-reason input { width: 20px; height: 20px; margin: 0; accent-color: var(--danger); }
+.r-acc-links { display: flex; gap: 4px 10px; flex-wrap: wrap; justify-content: flex-end; }
+.r-my-rating { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg); }
+.r-my-rating > span { display: grid; }
+.r-my-rating small { color: var(--muted); font-size: 12.5px; }
+.r-history { display: flex; flex-direction: column; gap: 8px; }
+.r-hist-item { display: grid; gap: 2px; width: 100%; text-align: left; border: 1.5px solid var(--line); border-radius: 14px; padding: 10px 12px;
+  background: var(--panel); color: var(--fg); font: 500 15px var(--font-body); cursor: pointer; }
+.r-hist-item.open { border-color: var(--accent); }
+.r-hist-item.cancelled { opacity: .78; }
+.r-hist-top { display: flex; justify-content: space-between; gap: 8px; }
+.r-hist-who { color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-hist-route { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-hist-item small { color: var(--muted); font-size: 13px; }
+.r-history .r-summary { margin-top: -2px; }
+@media (prefers-color-scheme: dark) {
+  .r-rating { color: #ffc94d !important; }
+  .r-star.on { color: #ffc23a; }
+}
+@media (max-width: 380px) {
+  .r-star { min-height: 44px; font-size: 24px; }
+  .r-acc-bar { flex-wrap: wrap; }
+}
+.r-rate .btn:disabled { opacity: .5; box-shadow: none; }

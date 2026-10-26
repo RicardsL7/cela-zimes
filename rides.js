@@ -167,6 +167,49 @@ function rideUuid() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); });
 }
 
+// ---------- Vērtējumi, ziņošana un vēsture (F13) ----------
+const RIDE_REPORT_REASONS = [['dangerous_driving', 'Bīstama braukšana'], ['behaviour', 'Neatbilstoša uzvedība'],
+  ['no_show', 'Neieradās'], ['payment', 'Problēma ar maksājumu'], ['other', 'Cits']];
+const RIDE_SUMMARY_DAYS = 3;                       // cik dienas pēc brauciena kopsavilkums parādās pats
+// „1 brauciens”, „2 braucieni”, „11 braucieni”, „21 brauciens”
+function rideCountText(n) { return n + (n % 10 === 1 && n % 100 !== 11 ? ' brauciens' : ' braucieni'); }
+// Vidējais vērtējums: „★ 4,7 · 12 braucieni” vai „Vēl nav vērtējumu”
+function rideRatingText(sum) {
+  if (!sum || !sum.count) return 'Vēl nav vērtējumu' + (sum && sum.rides ? ' · ' + rideCountText(sum.rides) : '');
+  return '★ ' + Number(sum.avg).toFixed(1).replace('.', ',') + ' · ' + rideCountText(sum.rides || sum.count);
+}
+function rideStarsText(n) { return '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n); }
+// Vidējais no zvaigznēm (noapaļots līdz 0,1)
+function rideAvg(stars) { return stars.length ? Math.round(stars.reduce((a, b) => a + b, 0) / stars.length * 10) / 10 : null; }
+// Datums vēsturei: „26.10. 14:30” (citā gadā — ar gadu)
+function rideDateText(iso, now = Date.now()) {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  const p = x => String(x).padStart(2, '0');
+  return p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + (d.getFullYear() !== new Date(now).getFullYear() ? d.getFullYear() + '.' : '') + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+// Maksājuma statuss kopsavilkumā / vēsturē. live — rides.pay[id] no servera (ja ir), citādi h.pay_status no vēstures.
+function ridePayText(h, live) {
+  if (!h || !h.price_cents) return '';
+  if ((live && live.refunded) || h.pay_status === 'refunded') return '↩ Atmaksāts ' + rideMoney((live && (live.refund_cents || live.amount)) || h.refund_cents || h.price_cents);
+  if ((live && live.paid) || h.pay_status === 'paid') return 'Samaksāts ar karti';
+  return 'Skaidrā naudā vai nav samaksāts';
+}
+// Kuriem braucieniem rādīt kopsavilkumu: pabeigts, vēl nav novērtēts un nav aizvērts, ne vecāks par 3 dienām.
+function rideSummaryPending(history, seen = [], role = null, now = Date.now()) {
+  return (history || []).filter(h => h.status === 'done' && h.offer_id && !h.my_stars && !seen.includes(h.offer_id)
+    && (!role || h.role === role) && Date.parse(h.depart_at) > now - RIDE_SUMMARY_DAYS * 86400000);
+}
+// Kopsavilkuma ieraksts uzreiz pēc „Brauciens pabeigts” (pirms vēsture ielādēta no servera)
+function rideHistoryFromOffer(o, req, role, other) {
+  return { offer_id: o.id, request_id: req.id, role, status: 'done', trip: 'done', depart_at: req.depart_at,
+    from_name: req.from_name, to_name: req.to_name, from_lat: req.from_lat, from_lng: req.from_lng, to_lat: req.to_lat, to_lng: req.to_lng,
+    seats: req.seats, price_cents: o.price_cents ?? null, pay_status: null, refund_cents: null,
+    other_id: role === 'driver' ? req.user_id : o.driver_id, other_name: (other && other.name) || '', other_car: (other && other.car) || '',
+    my_stars: null, my_comment: '', reported: false };
+}
+function rideRateErr(e) { return /409|23505|duplicate/.test(String(e && (e.code || e.message))) ? 'duplicate' : null; }
+
 // ---------- Demo krātuve (tikai šajā ierīcē) ----------
 class LocalRideStore {
   constructor(storage = (typeof localStorage !== 'undefined' ? localStorage : null), key = 'cz.rides.demo') {
@@ -230,6 +273,7 @@ class LocalRideStore {
     if (!req || req.user_id !== this.id) return;
     o.status = status;
     if (status === 'accepted') {
+      o.was_accepted = true;
       req.status = 'matched';
       for (const x of d.offers) if (x.request_id === req.id && x.id !== o.id && x.status === 'pending') x.status = 'declined';
     }
@@ -412,6 +456,98 @@ SupabaseRideStore.prototype.pay = async function (action, body = {}) {
   return j;
 };
 
+// ---------- Vērtējumi, ziņošana, vēsture (F13; supabase/rides-9-ratings.sql) ----------
+SupabaseRideStore.prototype.myHistory = function (limit = 50) {
+  return this._rest('rpc/my_ride_history', { method: 'POST', body: JSON.stringify({ lim: limit }) });
+};
+SupabaseRideStore.prototype.rate = async function (offerId, stars, comment = '') {
+  try {
+    await this._rest('ride_ratings', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ offer_id: offerId, stars, comment: String(comment || '').trim().slice(0, 200) }) });
+  } catch (e) { if (rideRateErr(e)) e.code = 'duplicate'; throw e; }
+};
+SupabaseRideStore.prototype.myRatings = async function (ids) {
+  if (!ids || !ids.length) return {};
+  const rows = await this._rest(`ride_ratings?offer_id=in.(${ids.join(',')})&rater_id=eq.${this.id}&select=offer_id,stars,comment`);
+  return Object.fromEntries((rows || []).map(r => [r.offer_id, { stars: r.stars, comment: r.comment }]));
+};
+SupabaseRideStore.prototype.myRating = async function (offerId) { return (await this.myRatings([offerId]))[offerId] || null; };
+SupabaseRideStore.prototype.ratingSummary = async function (userIds) {
+  const ids = [...new Set((userIds || []).filter(Boolean))].slice(0, 100);
+  if (!ids.length) return {};
+  const rows = await this._rest('rpc/rating_summary', { method: 'POST', body: JSON.stringify({ ids }) });
+  return Object.fromEntries((rows || []).map(r => [r.user_id, { avg: r.avg != null ? Number(r.avg) : null, count: r.count || 0, rides: r.rides || 0 }]));
+};
+SupabaseRideStore.prototype.reportUser = function (offerId, reason, details = '') {
+  return this._rest('user_reports', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ offer_id: offerId, reason, details: String(details || '').trim().slice(0, 500) }) });
+};
+
+// Demo krātuve: tie paši noteikumi kā datubāzē
+LocalRideStore.prototype._ride = function (d, offerId) {
+  const o = d.offers.find(x => x.id === offerId);
+  const r = o && d.requests.find(x => x.id === o.request_id);
+  if (!o || !r) throw new Error('Brauciens nav atrasts');
+  const other = o.driver_id === this.id ? r.user_id : r.user_id === this.id ? o.driver_id : null;
+  if (!other) throw new Error('Tu nebiji šī brauciena dalībnieks');
+  return { o, r, other };
+};
+LocalRideStore.prototype.myHistory = async function (limit = 50) {
+  const d = this._load(), me = this.id, out = [];
+  const ratings = d.ratings || [], reports = d.reports || [];
+  for (const o of d.offers) {
+    const r = d.requests.find(x => x.id === o.request_id);
+    if (!r || !(o.was_accepted || o.status === 'accepted') || (o.driver_id !== me && r.user_id !== me)) continue;
+    const done = o.status === 'accepted' && o.trip === 'done';
+    if (!(done || o.status === 'cancelled' || r.status === 'cancelled' || r.status === 'done')) continue;
+    const role = o.driver_id === me ? 'driver' : 'passenger';
+    const other = role === 'driver' ? r.user_id : o.driver_id, p = d.profiles[other] || {};
+    const mine = ratings.find(x => x.offer_id === o.id && x.rater_id === me);
+    out.push({ offer_id: o.id, request_id: r.id, role, status: done ? 'done' : 'cancelled', trip: o.trip || '', depart_at: r.depart_at,
+      from_name: r.from_name, to_name: r.to_name, from_lat: r.from_lat, from_lng: r.from_lng, to_lat: r.to_lat, to_lng: r.to_lng, seats: r.seats,
+      price_cents: o.price_cents ?? null, pay_status: null, refund_cents: null, other_id: other, other_name: p.name || '', other_car: p.car || '',
+      my_stars: mine ? mine.stars : null, my_comment: mine ? mine.comment : null, reported: reports.some(x => x.offer_id === o.id && x.reporter_id === me) });
+  }
+  for (const r of d.requests) {
+    if (r.user_id !== me || r.status !== 'cancelled' || d.offers.some(o => o.request_id === r.id && (o.was_accepted || o.status === 'accepted'))) continue;
+    out.push({ offer_id: null, request_id: r.id, role: 'passenger', status: 'cancelled', trip: '', depart_at: r.depart_at, from_name: r.from_name, to_name: r.to_name,
+      from_lat: r.from_lat, from_lng: r.from_lng, to_lat: r.to_lat, to_lng: r.to_lng, seats: r.seats, price_cents: null, pay_status: null, refund_cents: null,
+      other_id: null, other_name: null, other_car: null, my_stars: null, my_comment: null, reported: false });
+  }
+  return out.sort((a, b) => Date.parse(b.depart_at) - Date.parse(a.depart_at)).slice(0, limit);
+};
+LocalRideStore.prototype.rate = async function (offerId, stars, comment = '') {
+  const d = this._load(); d.ratings = d.ratings || [];
+  const { o, other } = this._ride(d, offerId);
+  if (!(o.status === 'accepted' && o.trip === 'done')) throw new Error('Novērtēt var tikai pabeigtu braucienu');
+  if (!Number.isInteger(stars) || stars < 1 || stars > 5) throw new Error('Vērtējums ir no 1 līdz 5');
+  if (d.ratings.some(x => x.offer_id === offerId && x.rater_id === this.id)) throw Object.assign(new Error('Tu jau novērtēji šo braucienu'), { code: 'duplicate' });
+  d.ratings.push({ id: d.ratings.length + 1, offer_id: offerId, rater_id: this.id, rated_id: other, stars, comment: String(comment || '').trim().slice(0, 200), created_at: new Date().toISOString() });
+  this._save(d);
+};
+LocalRideStore.prototype.myRatings = async function (ids) {
+  const out = {};
+  for (const x of this._load().ratings || []) if (x.rater_id === this.id && ids.includes(x.offer_id)) out[x.offer_id] = { stars: x.stars, comment: x.comment };
+  return out;
+};
+LocalRideStore.prototype.myRating = async function (offerId) { return (await this.myRatings([offerId]))[offerId] || null; };
+LocalRideStore.prototype.ratingSummary = async function (userIds) {
+  const d = this._load(), out = {};
+  for (const id of new Set((userIds || []).filter(Boolean))) {
+    const stars = (d.ratings || []).filter(x => x.rated_id === id).map(x => x.stars);
+    const rides = d.offers.filter(o => o.status === 'accepted' && o.trip === 'done' && (o.driver_id === id || (d.requests.find(r => r.id === o.request_id) || {}).user_id === id)).length;
+    out[id] = { avg: rideAvg(stars), count: stars.length, rides };
+  }
+  return out;
+};
+LocalRideStore.prototype.reportUser = async function (offerId, reason, details = '') {
+  const d = this._load(); d.reports = d.reports || [];
+  const { o, r, other } = this._ride(d, offerId);
+  if (!((o.status === 'accepted' && (o.trip === 'done' || r.status === 'cancelled')) || o.status === 'cancelled')) throw new Error('Ziņot var par pabeigtu vai atceltu braucienu');
+  if (!RIDE_REPORT_REASONS.some(([k]) => k === reason)) throw new Error('Izvēlies iemeslu');
+  if (d.reports.filter(x => x.reporter_id === this.id && Date.parse(x.created_at) > Date.now() - 86400000).length >= 10) throw new Error('Pārāk daudz ziņojumu — mēģini rīt');
+  d.reports.push({ id: d.reports.length + 1, offer_id: offerId, reporter_id: this.id, reported_id: other, reason, details: String(details || '').trim().slice(0, 500), status: 'new', created_at: new Date().toISOString() });
+  this._save(d);
+};
+
 function createRideStore(cfg) {
   if (cfg && cfg.url && cfg.anonKey) return new SupabaseRideStore(cfg);
   return new LocalRideStore();
@@ -419,5 +555,5 @@ function createRideStore(cfg) {
 
 if (typeof module !== 'undefined') {
   module.exports = { rideFareCapCents, rideParsePrice, rideMoney, rideSplit, RIDE_FEE_PCT, rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
-    rideTimeText, rideDistText, rideStage, rideFresh, rideEtaMinutes, ridePassengerStatus, rideDriverStatus, rideUnread, rideMsgTime, LocalRideStore, SupabaseRideStore, createRideStore, RIDE_OFFER_STATUS };
+    rideTimeText, rideDistText, rideStage, rideFresh, rideEtaMinutes, ridePassengerStatus, rideDriverStatus, rideUnread, rideMsgTime, RIDE_REPORT_REASONS, rideCountText, rideRatingText, rideStarsText, rideAvg, rideDateText, ridePayText, rideSummaryPending, rideHistoryFromOffer, rideRateErr, LocalRideStore, SupabaseRideStore, createRideStore, RIDE_OFFER_STATUS };
 }
