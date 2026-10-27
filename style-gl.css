@@ -876,3 +876,26 @@ html.navigating .alt-bubble { display: none; }
 .r-declined .r-person, .r-declined .r-route { opacity: .7; }
 .r-declined .r-badge { color: var(--muted); }
 .r-declined-msg { margin: 0; font-weight: 700; color: var(--fg); }
+
+/* ---- F16: statistika ---- */
+.r-stats { display: flex; flex-direction: column; gap: 10px; }
+.r-stat-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.r-stat-links .btn { flex: 1 1 160px; }
+.r-stat-card { gap: 4px; }
+.r-stat-t { font: 700 16px var(--font-body); margin-bottom: 2px; }
+.r-stat { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.r-stat:last-of-type { border-bottom: 0; }
+.r-stat > span { display: grid; min-width: 0; }
+.r-stat small { color: var(--muted); font-size: 12.5px; }
+.r-stat b { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.r-stat-empty { margin: 0 0 4px; }
+.r-stat-card .fine { margin: 6px 0 0; }
+.r-stat-scroll { overflow-x: auto; }
+.r-stat-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.r-stat-table th, .r-stat-table td { padding: 6px 4px; text-align: right; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.r-stat-table td:first-child, .r-stat-table th:first-child { text-align: left; }
+.r-stat-table thead th { color: var(--muted); font-weight: 700; font-size: 13px; }
+.r-stat-sec th { text-align: left !important; padding-top: 12px; color: var(--accent); font-weight: 700; }
+.r-stat-refresh { align-self: flex-start; }
+.r-stat-table td:not(:first-child), .r-stat-table th:not(:first-child) { white-space: nowrap; }
+@media (max-width: 400px) { .r-stat-table { font-size: 13px; } .r-stat-table th, .r-stat-table td { padding: 6px 3px; } }
