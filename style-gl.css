@@ -858,3 +858,15 @@ html.navigating .alt-bubble { display: none; }
 .gps-help ol { margin: 0; padding: 0 16px 12px 36px; font-size: 15px; line-height: 1.5; }
 .gps-help li { margin: 2px 0; }
 .gps-retry { width: 100%; margin-top: 14px; }
+
+/* ---- F6: izstrādātāja bloks ---- */
+#settingsTitle { -webkit-user-select: none; user-select: none; }
+.dev-box { margin-top: 10px; padding: 4px 12px 10px; border: 1.5px dashed var(--line); border-radius: 14px; }
+.dev-box[hidden] { display: none; }
+.dev-box-t { padding-top: 8px; font: 700 13px var(--font-body); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.dev-off { margin-top: 6px; }
+.dev-box .test-speed input { width: 110px; min-width: 0; }
+.dev-box .test-speed-row > span:first-child { min-width: 0; }
+.dev-box .token-row input { min-width: 0; flex: 1 1 auto; width: auto; }
+.dev-box .token-box { grid-template-columns: minmax(0, 1fr); }
+.dev-box .test-speed-row { flex-wrap: wrap; }

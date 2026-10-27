@@ -72,7 +72,17 @@ function bearingDeg(lat1, lng1, lat2, lng2) {
 // F2: kamēr atrašanās vieta liegta / nav atbalstīta, šo ziņu citi izsaukumi nepārraksta (force — tikai GPS ziņām)
 let statusLock = false;
 function setStatus(text, force = false) { if (statusLock && !force) return; $('statusText').textContent = text; }
-const CZ_DEV = /[?&]dev=1(&|$)/.test(location.search);       // F2: tehniskā info (zīmju skaits) tikai ar ?dev=1
+// F2/F6: izstrādātāja režīms — tehniskā info un izstrādātāja iestatījumi. Ieslēdz ?dev=1 vai 7 pieskārieni iestatījumu virsrakstam;
+// izslēdz ?dev=0 vai poga blokā „Izstrādātājam”. Saglabājas localStorage 'devMode'.
+let CZ_DEV = czDevInit();
+function czDevInit() {
+  const q = location.search, on = /[?&]dev=1(&|$)/.test(q), off = /[?&]dev=0(&|$)/.test(q);
+  try {
+    if (on) localStorage.setItem('devMode', '1');
+    else if (off) localStorage.removeItem('devMode');
+    return localStorage.getItem('devMode') === '1';
+  } catch { return on; }
+}
 function clockIn(sec) {
   return new Date(Date.now() + sec * 1000).toLocaleTimeString('lv-LV', { hour: '2-digit', minute: '2-digit' });
 }
@@ -2675,6 +2685,12 @@ function wireUi() {
     $('testSwitch').addEventListener('change', showTs);
     showTs();
   }
+  // F6: testa režīms nekad nesākas ieslēgts (pārlūks var atjaunot slēdža stāvokli); izstrādātāja bloks — tikai izstrādātājam
+  $('testSwitch').checked = state.testMode;
+  if ($('testSpeedRow')) $('testSpeedRow').hidden = true;
+  applyDevMode();
+  wireDevTaps();
+  $('devOff').addEventListener('click', () => setDevMode(false));
   $('testSwitch').addEventListener('change', e => {
     state.testMode = e.target.checked;
     if (!state.testMode) stopSimulation();
@@ -2744,6 +2760,31 @@ function wireUi() {
     store.set('mlyToken', v); state.mlyBadShown = false; state.mlyToken = v || mlyPublicToken(); state.mlyTiles.clear(); note(); loadMapillaryForView();
   });
   note();
+}
+
+// ---------- F6: izstrādātāja režīms ----------
+function applyDevMode() {
+  $('devBox').hidden = !CZ_DEV;
+  if (!CZ_DEV && (state.testMode || $('testSwitch').checked)) {     // paslēptā slēdzī nedrīkst „iestrēgt”
+    state.testMode = false; $('testSwitch').checked = false; stopSimulation();
+    if ($('testSpeedRow')) $('testSpeedRow').hidden = true;
+  }
+}
+function setDevMode(on) {
+  CZ_DEV = on;
+  try { if (on) localStorage.setItem('devMode', '1'); else localStorage.removeItem('devMode'); } catch { /* tikai šai sesijai */ }
+  applyDevMode();
+  if (on) showCounts();
+  czToast(on ? 'Izstrādātāja režīms ieslēgts' : 'Izstrādātāja režīms izslēgts');
+}
+// 7 ātri pieskārieni (3 s laikā) iestatījumu virsrakstam
+function wireDevTaps() {
+  let taps = [];
+  $('settingsTitle').addEventListener('click', () => {
+    const now = Date.now();
+    taps = taps.filter(t => now - t < 3000).concat(now);
+    if (taps.length >= 7) { taps = []; if (!CZ_DEV) setDevMode(true); }
+  });
 }
 
 function cancelPreview() {

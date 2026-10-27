@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=105">
+  <link rel="stylesheet" href="style-gl.css?v=108">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -265,14 +265,6 @@
       <span>Brīdināt, ja pārsniedz ātrumu</span>
       <input type="checkbox" id="warnSwitch" class="switch" checked>
     </label>
-    <label class="row">
-      <span>Testa režīms (klikšķis uz kartes = mana vieta; ar maršrutu — simulēts brauciens)</span>
-      <input type="checkbox" id="testSwitch" class="switch">
-    </label>
-    <label class="row test-speed-row" id="testSpeedRow" hidden>
-      <span>Testa ātrums (klikšķis uz kartes bez maršruta)</span>
-      <span class="test-speed"><input type="range" id="testSpeed" min="5" max="150" step="5" value="55"> <b id="testSpeedVal">55 km/h</b></span>
-    </label>
     <div class="row arrow-row">
       <span>Bultas krāsa</span>
       <div id="arrowColors" class="arrow-colors" role="group" aria-label="Bultas krāsa"></div>
@@ -294,13 +286,26 @@
       <button id="accountBtn" type="button" class="link-btn">Atvērt</button>
     </div>
     <p class="fine set-legal"><a href="terms.html" target="_blank" rel="noopener">Lietošanas noteikumi</a> · <a href="privacy.html" target="_blank" rel="noopener">Privātuma politika</a></p>
-    <div class="token-box">
-      <label for="mlyToken">Mapillary atslēga (Client Token)</label>
-      <div class="token-row">
-        <input id="mlyToken" type="password" placeholder="MLY|…" autocomplete="off" spellcheck="false">
-        <button id="mlySave" type="button" class="save-btn">Saglabāt</button>
+    <!-- F6: izstrādātāja iestatījumi (?dev=1 vai 7 pieskārieni virsrakstam) -->
+    <div id="devBox" class="dev-box" hidden>
+      <div class="dev-box-t">Izstrādātājam</div>
+      <label class="row">
+        <span>Testa režīms (klikšķis uz kartes = mana vieta; ar maršrutu — simulēts brauciens)</span>
+        <input type="checkbox" id="testSwitch" class="switch">
+      </label>
+      <label class="row test-speed-row" id="testSpeedRow" hidden>
+        <span>Testa ātrums (klikšķis uz kartes bez maršruta)</span>
+        <span class="test-speed"><input type="range" id="testSpeed" min="5" max="150" step="5" value="55"> <b id="testSpeedVal">55 km/h</b></span>
+      </label>
+      <div class="token-box">
+        <label for="mlyToken">Mapillary atslēga (Client Token)</label>
+        <div class="token-row">
+          <input id="mlyToken" type="password" placeholder="MLY|…" autocomplete="off" spellcheck="false">
+          <button id="mlySave" type="button" class="save-btn">Saglabāt</button>
+        </div>
+        <p id="mlyNote" class="fine"></p>
       </div>
-      <p id="mlyNote" class="fine"></p>
+      <button id="devOff" type="button" class="link-btn dev-off">Izslēgt izstrādātāja režīmu</button>
     </div>
     <p class="fine">Dati: © OpenStreetMap līdzautori, © Mapillary, © OpenFreeMap. Maršruti: OSRM. Meklēšana: Photon, Nominatim. Laikapstākļi: Open-Meteo. Vietas: OpenStreetMap (Overpass).</p>
   </section>
@@ -350,7 +355,7 @@
   <script src="traffic.js?v=93"></script>
   <script src="rides.js?v=104"></script>
   <script src="rides-ui.js?v=104"></script>
-  <script src="app-gl.js?v=107"></script>
+  <script src="app-gl.js?v=108"></script>
   <script src="park-gl.js?v=93"></script>
   <script src="park-dest-gl.js?v=93"></script>
   <script src="traffic-gl.js?v=98"></script>
