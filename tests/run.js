@@ -1549,7 +1549,7 @@ test('F13: UI — kopsavilkums, vēsture, ziņas kartītē (nevis statusa joslā
     eq(vm.runInContext('GPS_TEXT.unsupported', c), 'Šis pārlūks neatbalsta atrašanās vietas noteikšanu.');
     // bloķēšana: setStatus bez force neko nemaina
     const el = { textContent: 'x' }, c2 = vm.createContext({ $: () => el });
-    vm.runInContext(app.slice(app.indexOf('let statusLock'), app.indexOf('const CZ_DEV')), c2);
+    vm.runInContext(app.slice(app.indexOf('let statusLock'), app.indexOf('// F2/F6: izstrādātāja režīms')), c2);
     vm.runInContext("statusLock = true; setStatus('Zīmes: 5'); ", c2); eq(el.textContent, 'x', 'bloķēts');
     vm.runInContext("setStatus('GPS', true)", c2); eq(el.textContent, 'GPS', 'force');
     vm.runInContext("statusLock = false; setStatus('Zīmes: 5')", c2); eq(el.textContent, 'Zīmes: 5');
@@ -1600,6 +1600,40 @@ test('F5: cancelPreview notīra lauku, paslēpj ×, aizver ieteikumus, nesāk ja
   ok(!/runSearch|searchPhoton|dispatchEvent/.test(fn), 'jauns pieprasījums netiek sūtīts');
   eq((app.match(/cancelPreview\(\)/g) || []).length, 2, 'izsauc tikai × un „Atcelt” (navigācijas sākšana to neizsauc)');
   ok(/\$\('cancelRoute'\)\.addEventListener\('click', cancelPreview\)/.test(app));
+});
+
+// ---------- F6: izstrādātāja iestatījumi paslēpti ----------
+test('F6: testa režīms un Mapillary atslēga tikai izstrādātājam (?dev=1 / 7 pieskārieni), saglabājas, izslēdzot testa režīms izslēgts', () => {
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const box = html.slice(html.indexOf('<div id="devBox"'), html.indexOf('Izslēgt izstrādātāja režīmu'));
+  ok(/<div id="devBox" class="dev-box" hidden>/.test(html), 'bloks pēc noklusējuma paslēpts');
+  ok(box.includes('id="testSwitch"') && box.includes('id="testSpeedRow"') && box.includes('id="mlyToken"'), 'abi iestatījumi blokā');
+  eq((html.match(/id="testSwitch"/g) || []).length, 1); eq((html.match(/id="mlyToken"/g) || []).length, 1);
+  // czDevInit: ?dev=1 saglabā, ?dev=0 dzēš, bez parametra — no localStorage
+  const fnOf = n => { const i = app.indexOf('function ' + n + '('); return app.slice(i, app.indexOf('\n}\n', i) + 2); };
+  const run = (search, stored, throws) => {
+    const mem = { devMode: stored };
+    const ls = { getItem: k => { if (throws) throw new Error('x'); return mem[k] ?? null; }, setItem: (k, v) => { if (throws) throw new Error('x'); mem[k] = v; }, removeItem: k => { delete mem[k]; } };
+    const c = vm.createContext({ location: { search }, localStorage: ls });
+    vm.runInContext(fnOf('czDevInit'), c);
+    return [vm.runInContext('czDevInit()', c), mem.devMode ?? null];
+  };
+  eq(JSON.stringify(run('', undefined)), '[false,null]', 'parasti — izslēgts');
+  eq(JSON.stringify(run('?dev=1', undefined)), '[true,"1"]', '?dev=1 ieslēdz un saglabā');
+  eq(JSON.stringify(run('', '1')), '[true,"1"]', 'pēc pārlādes bez parametra — joprojām ieslēgts');
+  eq(JSON.stringify(run('?x=1&dev=0', '1')), '[false,null]', '?dev=0 izslēdz');
+  eq(JSON.stringify(run('?dev=1', undefined, true)), '[true,null]', 'localStorage kļūda — nesalūzt');
+  // 7 pieskārieni 3 s laikā; 6 — nekas
+  const tapsSrc = fnOf('wireDevTaps');
+  const tap = (n, gap) => { let handler, on = 0, t = 0; const c = vm.createContext({ $: () => ({ addEventListener: (e, h) => { handler = h; } }), Date: { now: () => t }, setDevMode: () => { on++; }, get CZ_DEV() { return false; } });
+    vm.runInContext(tapsSrc, c); vm.runInContext('wireDevTaps()', c); for (let i = 0; i < n; i++) { t += gap; handler(); } return on; };
+  eq(tap(7, 300), 1, '7 ātri pieskārieni → ieslēdz'); eq(tap(6, 300), 0, '6 → nekas'); eq(tap(7, 600), 0, 'pārāk lēni (>3 s) → nekas');
+  const apply = fnOf('applyDevMode');
+  ok(/\$\('devBox'\)\.hidden = !CZ_DEV/.test(apply) && /state\.testMode = false; \$\('testSwitch'\)\.checked = false; stopSimulation\(\)/.test(apply), 'izslēdzot — testa režīms izslēgts');
+  ok(/czToast\(on \? 'Izstrādātāja režīms ieslēgts'/.test(fnOf('setDevMode')) && /localStorage\.removeItem\('devMode'\)/.test(fnOf('setDevMode')), 'paziņojums, saglabāšana');
+  ok(/\$\('testSwitch'\)\.checked = state\.testMode;/.test(app), 'testa režīms nesākas ieslēgts');
+  ok(/mlyToken: store\.get\('mlyToken', ''\) \|\| mlyPublicToken\(\)/.test(app), 'Mapillary atslēga — kā līdz šim (paslēpta, bet lietota)');
 });
 
 Promise.all(pending).then(() => {
