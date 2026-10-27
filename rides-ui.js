@@ -15,6 +15,9 @@ const rides = {
 };
 try { rides.seenMsg = JSON.parse(localStorage.getItem('cz.rides.seenMsg') || '{}'); } catch { rides.seenMsg = {}; }
 try { rides.summarySeen = JSON.parse(localStorage.getItem('cz.rides.summarySeen') || '[]'); } catch { rides.summarySeen = []; }
+// F12: noraidītie piedāvājumi — „Labi” nospiestie un brīdis, kad lietotne noraidījumu pamanīja (ja datubāzē nav responded_at)
+try { rides.declOk = JSON.parse(localStorage.getItem('cz.rides.declOk') || '[]'); } catch { rides.declOk = []; }
+try { rides.declSeen = JSON.parse(localStorage.getItem('cz.rides.declSeen') || '{}'); } catch { rides.declSeen = {}; }
 
 function rEl(tag, attrs = {}, ...kids) {
   const el = document.createElement(tag);
@@ -141,7 +144,9 @@ async function ridesRefresh(first) {
     rides.myReqs = await rides.store.myRequests();
     rides.offers = {};
     for (const r of rides.myReqs) rides.offers[r.id] = await rides.store.offersFor(r.id);
+    const wasPending = new Set(rides.myOffers.filter(o => o.status === 'pending').map(o => o.id));
     rides.myOffers = await rides.store.myOffers();
+    ridesDeclinedTrack(wasPending);
     if (rides.open && rides.tab === 'drive') rides.openList = await rides.store.openRequests(ridesBox());
     // Čata ziņas visiem aktīvajiem piedāvājumiem (gaida atbildi vai pieņemti)
     const ids = ridesChatOffers().map(x => x.o.id);
@@ -201,7 +206,10 @@ function ridesNotify(first) {
   else if (fresh.some(s => s.startsWith('t:') && s.endsWith(':coming'))) msg = 'Šoferis dodas pie tevis — redzi viņu kartē.';
   else if (fresh.some(s => s.startsWith('t:') && s.endsWith(':onboard'))) msg = 'Brauciens sācies — maršruts redzams kartē.';
   else if (fresh.some(s => s.startsWith('m:') && s.endsWith(':accepted'))) msg = 'Pasažieris pieņēma tavu piedāvājumu!';
-  else if (fresh.some(s => s.startsWith('m:') && s.endsWith(':declined'))) msg = 'Pasažieris izvēlējās citu šoferi.';
+  else if (fresh.some(s => s.startsWith('m:') && s.endsWith(':declined'))) {
+    const d = rides.myOffers.find(o => o.status === 'declined' && fresh.includes('m:' + o.id + ':declined'));
+    msg = (d ? rideDeclinedText(d) : 'Pasažieris izvēlējās citu šoferi') + '.';                    // F12: arī kartītē
+  }
   else if (fresh.some(s => s.startsWith('o:') && s.endsWith(':pending'))) msg = 'Kāds šoferis piedāvā tevi aizvest!';
   else if (moreUnread && lastMsg) msg = `Ziņa no ${lastMsg.name}: ${lastMsg.body.slice(0, 60)}`;
   if (!msg) return;
@@ -234,7 +242,8 @@ function ridesViewSig() {
     // F13: vēsture, kopsavilkumi, vērtējumi, ziņošana
     rides.historyView, rides.historyOpen, rides.historyErr, rides.reportOpen, rides.summarySeen.length,
     rides.history.map(h => (h.offer_id || h.request_id) + h.status + (h.my_stars || 0) + (h.reported ? 1 : 0)),
-    rides.ratingSum]);
+    rides.ratingSum,
+    ridesDeclinedList().map(o => o.id)]);                                // F12: noraidītie (pazūd pēc 10 min / „Labi”)
 }
 function ridesRender(force = false) {
   if (!rides.open) return;
@@ -470,9 +479,11 @@ function ridesDriveView() {
   const payCard = ridesPayDriverCard();
   if (payCard) wrap.append(payCard);
   const mine = rides.myOffers.filter(o => o.status === 'accepted' || o.status === 'pending');
-  if (mine.length) {
+  const declined = ridesDeclinedList();                                   // F12
+  if (mine.length || declined.length) {
     wrap.append(rEl('h3', { class: 'r-h3', text: 'Tavi piedāvājumi' }));
     for (const o of mine) wrap.append(ridesMyOfferCard(o));
+    for (const o of declined) wrap.append(ridesDeclinedCard(o));
   }
   const route = state.nav.route;
   const along = state.nav.active && state.nav.along != null ? state.nav.along : 0;
@@ -585,6 +596,34 @@ function ridesMyOfferCard(o) {
   }
   card.append(acts);
   return card;
+}
+// ---------- F12: noraidīts piedāvājums — šoferis redz, kāpēc tas pazūd ----------
+function ridesDeclinedList() { return rideDeclinedRecent(rides.myOffers, rides.declOk, rides.declSeen); }
+// Ja datubāzē vēl nav responded_at — atceras brīdi, kad gaidošais piedāvājums kļuva noraidīts
+function ridesDeclinedTrack(wasPending) {
+  let changed = false;
+  for (const o of rides.myOffers) {
+    if (o.status === 'declined' && !o.responded_at && wasPending.has(o.id) && !rides.declSeen[o.id]) { rides.declSeen[o.id] = Date.now(); changed = true; }
+  }
+  const cut = Date.now() - RIDE_DECLINED_SHOW_MS;
+  for (const [id, t] of Object.entries(rides.declSeen)) if (t < cut) { delete rides.declSeen[id]; changed = true; }
+  if (changed) try { localStorage.setItem('cz.rides.declSeen', JSON.stringify(rides.declSeen)); } catch { /* */ }
+}
+function ridesDeclinedOk(id) {
+  if (!rides.declOk.includes(id)) rides.declOk = rides.declOk.concat(id).slice(-50);
+  try { localStorage.setItem('cz.rides.declOk', JSON.stringify(rides.declOk)); } catch { /* */ }
+  ridesRender(true);
+}
+function ridesDeclinedCard(o) {
+  const r = o.request || {};
+  return rEl('div', { class: 'r-card r-declined', role: 'status' },
+    rEl('div', { class: 'r-card-top' },
+      rEl('span', { class: 'r-badge', text: 'Piedāvājums noraidīts' }),
+      rEl('span', { class: 'r-when', text: rideTimeText(r.depart_at) })),
+    ridesPerson(o.passenger, '', ''),
+    ridesRoute(r),
+    rEl('p', { class: 'r-declined-msg', text: rideDeclinedText(o) }),
+    rEl('div', { class: 'r-actions' }, rEl('button', { class: 'btn ghost', type: 'button', text: 'Labi', onclick: () => ridesDeclinedOk(o.id) })));
 }
 // ---------- Kartes maksājumi (Stripe caur servera funkciju ride-pay) ----------
 function ridesPayOn() { return !!(rides.store && rides.store.pay) && !(rides.payCfg && rides.payCfg.off); }

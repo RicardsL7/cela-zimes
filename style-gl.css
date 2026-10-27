@@ -870,3 +870,9 @@ html.navigating .alt-bubble { display: none; }
 .dev-box .token-row input { min-width: 0; flex: 1 1 auto; width: auto; }
 .dev-box .token-box { grid-template-columns: minmax(0, 1fr); }
 .dev-box .test-speed-row { flex-wrap: wrap; }
+
+/* ---- F12: noraidīts piedāvājums (šoferim) ---- */
+.r-card.r-declined { background: color-mix(in srgb, var(--muted) 9%, var(--panel)); border-style: dashed; }
+.r-declined .r-person, .r-declined .r-route { opacity: .7; }
+.r-declined .r-badge { color: var(--muted); }
+.r-declined-msg { margin: 0; font-weight: 700; color: var(--fg); }

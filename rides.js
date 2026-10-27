@@ -118,6 +118,20 @@ function rideMoney(c) { return (c / 100).toFixed(2).replace('.', ',') + ' €'; 
 function rideSplit(c, pct = RIDE_FEE_PCT) { const fee = Math.round(c * pct / 100); return { fee, driver: c - fee }; }
 function rideDistText(m) { return m < 1000 ? `${Math.round(m / 50) * 50 || 50} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0).replace('.', ',')} km`; }
 const RIDE_OFFER_STATUS = { pending: 'Gaida atbildi', accepted: 'Pieņemts', declined: 'Noraidīts', cancelled: 'Atcelts' };
+// F12: noraidīts piedāvājums šoferim vēl ~10 min redzams ar paskaidrojumu (līdz „Labi”)
+const RIDE_DECLINED_SHOW_MS = 10 * 60000;
+// Kad noraidīts: datubāzes laiks (responded_at, rides-10-declined.sql) vai brīdis, kad lietotne to pamanīja (firstSeen)
+function rideDeclinedAt(o, firstSeen = {}) { return Date.parse(o.responded_at || '') || firstSeen[o.id] || null; }
+function rideDeclinedRecent(offers, dismissed = [], firstSeen = {}, now = Date.now()) {
+  return (offers || []).filter(o => {
+    if (o.status !== 'declined' || dismissed.includes(o.id)) return false;
+    const at = rideDeclinedAt(o, firstSeen);
+    return at != null && now - at < RIDE_DECLINED_SHOW_MS && now - at > -60000;
+  });
+}
+function rideDeclinedText(o) {
+  return o.request && o.request.status === 'cancelled' ? 'Pasažieris atsauca braucienu' : 'Pasažieris izvēlējās citu šoferi';
+}
 
 // ---------- Brauciena gaita ----------
 // Posms: pending · matched (pieņemts) · coming (šoferis brauc pakaļ) · arrived (ir klāt) · onboard (ceļā) · done
@@ -264,18 +278,18 @@ class LocalRideStore {
       const req = d.requests.find(r => r.id === o.request_id) || null;
       return { ...o, request: req, passenger: req ? d.profiles[req.user_id] || null : null,
         phone: o.status === 'accepted' && req ? (d.contacts[req.user_id] || {}).phone || '' : '' };
-    }).filter(o => o.request && o.request.status !== 'cancelled' && o.request.status !== 'done');
+    }).filter(o => o.request && (o.status === 'declined' || (o.request.status !== 'cancelled' && o.request.status !== 'done')));   // F12: noraidītos arī
   }
   async respond(offerId, status) {
     const d = this._load(); const o = d.offers.find(x => x.id === offerId);
     if (!o) return;
     const req = d.requests.find(r => r.id === o.request_id);
     if (!req || req.user_id !== this.id) return;
-    o.status = status;
+    o.status = status; o.responded_at = new Date().toISOString();
     if (status === 'accepted') {
       o.was_accepted = true;
       req.status = 'matched';
-      for (const x of d.offers) if (x.request_id === req.id && x.id !== o.id && x.status === 'pending') x.status = 'declined';
+      for (const x of d.offers) if (x.request_id === req.id && x.id !== o.id && x.status === 'pending') { x.status = 'declined'; x.responded_at = o.responded_at; }
     }
     this._save(d);
   }
@@ -401,7 +415,7 @@ class SupabaseRideStore {
   }
   async myOffers() {
     const list = await this._rest(`ride_offers?driver_id=eq.${this.id}&status=neq.cancelled&select=*,request:ride_requests(*,passenger:profiles(name,car))&order=created_at.desc`);
-    const ok = list.filter(o => o.request && o.request.status !== 'cancelled' && o.request.status !== 'done');
+    const ok = list.filter(o => o.request && (o.status === 'declined' || (o.request.status !== 'cancelled' && o.request.status !== 'done')));   // F12: noraidītos arī
     const ph = await this._phones(ok.filter(o => o.status === 'accepted').map(o => o.request.user_id));
     return ok.map(o => ({ ...o, passenger: o.request.passenger, phone: ph[o.request.user_id] || '' }));
   }
@@ -555,5 +569,5 @@ function createRideStore(cfg) {
 
 if (typeof module !== 'undefined') {
   module.exports = { rideFareCapCents, rideParsePrice, rideMoney, rideSplit, RIDE_FEE_PCT, rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
-    rideTimeText, rideDistText, rideStage, rideFresh, rideEtaMinutes, ridePassengerStatus, rideDriverStatus, rideUnread, rideMsgTime, RIDE_REPORT_REASONS, rideCountText, rideRatingText, rideStarsText, rideAvg, rideDateText, ridePayText, rideSummaryPending, rideHistoryFromOffer, rideRateErr, LocalRideStore, SupabaseRideStore, createRideStore, RIDE_OFFER_STATUS };
+    rideTimeText, rideDistText, rideStage, rideFresh, rideEtaMinutes, ridePassengerStatus, rideDriverStatus, rideUnread, rideMsgTime, RIDE_DECLINED_SHOW_MS, rideDeclinedAt, rideDeclinedRecent, rideDeclinedText, RIDE_REPORT_REASONS, rideCountText, rideRatingText, rideStarsText, rideAvg, rideDateText, ridePayText, rideSummaryPending, rideHistoryFromOffer, rideRateErr, LocalRideStore, SupabaseRideStore, createRideStore, RIDE_OFFER_STATUS };
 }
