@@ -1718,6 +1718,21 @@ test('F16: UI, SQL un ride-pay — īpašnieks tikai pēc servera pārbaudes', (
   ok(/if \(isAdmin !== true\) throw new Fail\('Nav piekļuves', 403\)/.test(c), '403');
 });
 
+// ---------- F16: administrēšanas lapa ----------
+test('F16: admin.html — atsevišķa sesija, servera pārbaude, nav e-pasta', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'admin.html'), 'utf8');
+  const js = fs.readFileSync(path.join(__dirname, '..', 'admin.js'), 'utf8');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'stats-f16.sql'), 'utf8');
+  ok(/name="robots" content="noindex, nofollow"/.test(html), 'noindex');
+  ok(/localStorage\.getItem\('cz\.admin\.' \+ k\)/.test(js) && /new CzAuth\(RIDES_CONFIG, \{ storage: admStorage \}\)/.test(js), 'atsevišķa sesija — lietotnes konts nemainās');
+  ok(js.indexOf("admRpc('is_app_admin')") < js.indexOf("admRpc('admin_stats')"), 'vispirms is_app_admin');
+  ok(!/service_role|sk_(test|live)_/.test(js + html), 'nav slepenu atslēgu');
+  ok(!/[A-Za-z0-9._%+-]+@(?!example\.|epasts\.lv)[A-Za-z0-9.-]+\.[a-z]{2,}/.test(js + html + sql), 'nav īsta e-pasta');
+  const fn = name => { const i = sql.indexOf('function public.' + name + '('); return sql.slice(i, sql.indexOf('$$;', sql.indexOf('$$', i) + 2)); };
+  ok(/if not is_app_admin\(\) then raise exception 'forbidden'/.test(fn('admin_user_reports')) && /if not is_app_admin\(\) then raise exception 'forbidden'/.test(fn('admin_user_report_set')), 'ziņojumi — tikai īpašniekam');
+  ok(/new\.email_confirmed_at is not null/.test(fn('app_admin_from_pending')), 'īpašnieks tikai ar apstiprinātu e-pastu');
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
