@@ -1568,6 +1568,28 @@ test('F13: UI — kopsavilkums, vēsture, ziņas kartītē (nevis statusa joslā
   });
 }
 
+// ---------- F3: meklēšanas rezultāti latviski ----------
+test('F3: Photon ar lang=default; Latvijā valsti nerāda, ārzemēs — latviski; drošības tabula', () => {
+  const P = require('../places.js');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  eq(P.PHOTON_LANG, 'default', 'lang=lv serveris neatbalsta (400)');
+  ok(/&lang=\$\{PHOTON_LANG\}/.test(app) && /cachedJson\('photon-lv'/.test(app), 'meklēšanas pieprasījums ar lang + jauna kešatmiņa');
+  ok(P.buildPhotonPlacesUrl('fuel', 56.95, 24.1, 5).includes('&lang=default'), 'vietas tuvumā arī latviski');
+  const F = (props, c = [24.1, 56.95]) => P.photonSearchItem({ properties: props, geometry: { coordinates: c } });
+  const tur = F({ name: 'Turība', street: 'Elijas iela', city: 'Rīga', country: 'Latvija', countrycode: 'LV' });
+  eq(tur.name, 'Turība'); eq(tur.sub, 'Elijas iela, Rīga');
+  const riga = F({ name: 'Rīga', country: 'Latvija', countrycode: 'LV' });
+  eq(riga.name, 'Rīga'); eq(riga.sub, '', 'bez „Latvija”');
+  const ogreEn = F({ name: 'Ogre', country: 'Latvia', countrycode: 'LV' });
+  eq(ogreEn.sub, '', 'arī angliskā „Latvia” nerādās');
+  const rigaEn = F({ name: 'Brīvības iela 1', city: 'Riga', country: 'Latvia', countrycode: 'LV' });
+  eq(rigaEn.sub, 'Rīga', 'drošības tabula: Riga → Rīga');
+  const tal = F({ name: 'Tallinn', country: 'Eesti', countrycode: 'EE' });
+  eq(tal.sub, 'Igaunija', 'ārzemēs valsts latviski');
+  eq(F({ name: 'X', country: 'Ísland', countrycode: 'IS' }).sub, 'Ísland', 'nezināma valsts — kā atnāk');
+  eq(F({ street: 'Elijas iela', housenumber: '17', city: 'Rīga', countrycode: 'LV' }).name, 'Elijas iela 17');
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
