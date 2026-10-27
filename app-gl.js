@@ -2758,6 +2758,9 @@ function cancelPreview() {
   $('routeCard').hidden = true;
   $('bottombar').hidden = false;
   document.documentElement.classList.remove('previewing');
+  // F5: lauks kā pirms meklēšanas (vērtības iestatīšana „input” notikumu neizraisa — jauna meklēšana nesākas)
+  clearTimeout(searchTimer); searchSeq++; lastResults = [];
+  $('searchInput').value = ''; $('clearSearch').hidden = true; $('results').hidden = true;
 }
 
 // ---------- Vietas tuvumā (degviela, ēdiens, viesnīcas…) ----------
