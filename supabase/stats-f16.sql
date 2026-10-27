@@ -66,7 +66,7 @@ $$ insert into user_stat_counters (user_id, kind, n) select p_user, p_kind, p_n 
 
 -- Īpašnieks pēc e-pasta, ja konts ar šo e-pastu vēl nav izveidots / saglabāts:
 --   insert into public.app_admin_pending values ('[TAVS E-PASTS]') on conflict do nothing;
--- Kad konts ar šo (apstiprināto) e-pastu parādās, tas automātiski tiek pievienots app_admins.
+-- Kad konts ar šo e-pastu parādās UN e-pasts ir apstiprināts (saite atvērta), tas automātiski tiek pievienots app_admins.
 create table if not exists public.app_admin_pending (
   email text primary key check (email = lower(email))
 );
@@ -74,17 +74,19 @@ alter table public.app_admin_pending enable row level security;     -- bez polit
 create or replace function public.app_admin_from_pending() returns trigger
   language plpgsql security definer set search_path = public as
 $$ begin
-  if new.email is not null and exists (select 1 from app_admin_pending where email = lower(new.email)) then
+  if new.email is not null and new.email_confirmed_at is not null
+     and exists (select 1 from app_admin_pending where email = lower(new.email)) then
     insert into app_admins (user_id) values (new.id) on conflict do nothing;
   end if;
   return new;
 end $$;
 revoke all on function public.app_admin_from_pending() from public, anon, authenticated;
 drop trigger if exists app_admin_from_pending on auth.users;
-create trigger app_admin_from_pending after insert or update of email on auth.users
+create trigger app_admin_from_pending after insert or update of email, email_confirmed_at on auth.users
   for each row execute function public.app_admin_from_pending();
 insert into public.app_admins (user_id)
-  select u.id from auth.users u join public.app_admin_pending p on p.email = lower(u.email) on conflict do nothing;
+  select u.id from auth.users u join public.app_admin_pending p on p.email = lower(u.email)
+  where u.email_confirmed_at is not null on conflict do nothing;
 
 revoke all on function public.stat_bump(text, bigint) from public, anon, authenticated;
 revoke all on function public.stat_user_bump(uuid, text, bigint) from public, anon, authenticated;
@@ -345,6 +347,40 @@ begin
     'since',     (select value from stat_meta where key = 'since'));
 end
 $$;
+
+-- ---------- Admin lapa (admin.html): ziņojumi par lietotājiem („Ziņot par problēmu”) ----------
+create or replace function public.admin_user_reports(lim int default 100)
+  returns table (id bigint, created_at timestamptz, reason text, details text, status text,
+                 reporter_name text, reported_name text, offer_id uuid, reported_reports bigint)
+  language plpgsql stable security definer set search_path = public as
+$$
+begin
+  if not is_app_admin() then raise exception 'forbidden'; end if;
+  return query
+    select u.id, u.created_at, u.reason, u.details, u.status,
+           (select name from profiles where profiles.id = u.reporter_id),
+           (select name from profiles where profiles.id = u.reported_id),
+           u.offer_id,
+           (select count(*) from user_reports x where x.reported_id = u.reported_id and u.reported_id is not null)
+    from user_reports u
+    order by (u.status = 'new') desc, u.created_at desc
+    limit greatest(1, least(coalesce(lim, 100), 500));
+end
+$$;
+create or replace function public.admin_user_report_set(p_id bigint, p_status text) returns boolean
+  language plpgsql security definer set search_path = public as
+$$
+begin
+  if not is_app_admin() then raise exception 'forbidden'; end if;
+  if p_status not in ('new', 'reviewed', 'closed') then raise exception 'bad_status'; end if;
+  update user_reports set status = p_status where id = p_id;
+  return found;
+end
+$$;
+revoke all on function public.admin_user_reports(int) from public, anon;
+revoke all on function public.admin_user_report_set(bigint, text) from public, anon;
+grant execute on function public.admin_user_reports(int) to authenticated;
+grant execute on function public.admin_user_report_set(bigint, text) to authenticated;
 
 revoke all on function public.admin_stats() from public, anon;
 revoke all on function public.my_stats() from public, anon;
