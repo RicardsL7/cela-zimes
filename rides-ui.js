@@ -1483,6 +1483,7 @@ async function ridesOpenAdmin() {
 function ridesAdminView() {
   const wrap = rEl('div', { class: 'r-stats' });
   wrap.append(ridesStatHead('Statistika', () => { rides.adminView = false; ridesRender(true); }));
+  wrap.append(rEl('a', { class: 'link-btn r-stat-full', href: 'admin.html', target: '_blank', rel: 'noopener', text: 'Atvērt pilno administrēšanas lapu ↗' }));
   const refresh = rEl('button', { class: 'btn ghost r-stat-refresh', type: 'button', text: rides.adminBusy ? 'Ielādē…' : 'Atjaunot', disabled: rides.adminBusy ? true : null, onclick: ridesOpenAdmin });
   if (rides.adminErr) { wrap.append(rEl('p', { class: 'r-msg bad', role: 'alert', text: rides.adminErr }), refresh); return wrap; }
   const a = rides.admin;

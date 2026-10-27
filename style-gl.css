@@ -899,3 +899,4 @@ html.navigating .alt-bubble { display: none; }
 .r-stat-refresh { align-self: flex-start; }
 .r-stat-table td:not(:first-child), .r-stat-table th:not(:first-child) { white-space: nowrap; }
 @media (max-width: 400px) { .r-stat-table { font-size: 13px; } .r-stat-table th, .r-stat-table td { padding: 6px 3px; } }
+.r-stat-full { align-self: flex-start; }

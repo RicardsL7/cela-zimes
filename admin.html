@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Administrēšana — Ceļa Zīmes</title>
+  <link rel="stylesheet" href="admin.css?v=111">
+</head>
+<body>
+<main class="adm">
+  <header class="adm-head">
+    <div>
+      <p class="adm-back"><a href="./">← Uz lietotni</a></p>
+      <h1>Ceļa Zīmes — administrēšana</h1>
+    </div>
+    <div id="admUser" class="adm-user" hidden>
+      <span id="admEmail"></span>
+      <button id="admRefresh" class="btn ghost" type="button">Atjaunot</button>
+      <button id="admSignOut" class="btn ghost" type="button">Izrakstīties</button>
+    </div>
+  </header>
+
+  <p id="admMsg" class="adm-msg" role="status" hidden></p>
+
+  <!-- Pieslēgšanās -->
+  <section id="admLogin" class="card" hidden>
+    <h2>Pieslēgties</h2>
+    <p class="fine">Šo lapu var izmantot tikai lietotnes īpašnieks. Ieraksti savu e-pastu — tev atsūtīs pieslēgšanās saiti (parole nav vajadzīga). Saiti atver šajā pašā pārlūkā.</p>
+    <form id="admLoginForm" class="adm-form">
+      <label for="admLoginEmail" class="sr">E-pasts</label>
+      <input id="admLoginEmail" type="email" inputmode="email" autocomplete="email" maxlength="254" placeholder="tavs@epasts.lv" required>
+      <button class="btn primary" type="submit">Sūtīt pieslēgšanās saiti</button>
+    </form>
+  </section>
+
+  <!-- Nav piekļuves -->
+  <section id="admDenied" class="card" hidden>
+    <h2>Nav piekļuves</h2>
+    <p>Šim kontam nav administratora tiesību. Ja tas ir tavs lietotnes konts — pārbaudi, vai pieslēdzies ar pareizo e-pastu.</p>
+  </section>
+
+  <!-- Panelis -->
+  <section id="admPanel" hidden>
+    <nav class="adm-tabs" role="tablist">
+      <button class="adm-tab" role="tab" data-tab="stats" aria-selected="true" type="button">Statistika</button>
+      <button class="adm-tab" role="tab" data-tab="reports" aria-selected="false" type="button">Ziņojumi par lietotājiem <span id="admNewCount" class="adm-badge" hidden></span></button>
+    </nav>
+    <div id="admStats" class="card" role="tabpanel"></div>
+    <div id="admReports" class="card" role="tabpanel" hidden></div>
+    <p class="fine adm-foot">Dati: Supabase (lietotāji, braucieni, ziņojumi) un Stripe (komisijas). Laiks — Rīgas. Detalizēti dati — Supabase un Stripe paneļos.</p>
+  </section>
+</main>
+
+<script src="rides-config.js?v=93"></script>
+<script src="auth.js?v=95"></script>
+<script src="alerts.js?v=95"></script>
+<script src="rides.js?v=110"></script>
+<script src="admin.js?v=111"></script>
+</body>
+</html>
