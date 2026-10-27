@@ -114,6 +114,18 @@ async function payInfo(sessionId: string, oid: string): Promise<PayInfo | null> 
 }
 const REASONS = ['cancelled_before_pickup', 'driver_refund', 'stripe_dashboard'];
 
+// F16: Rīgas dienas / mēneša sākums (sekundes, UTC) — Stripe `created` salīdzināšanai
+function rigaStart(unit: 'day' | 'month', now = Date.now()): number {
+  const parts = (t: number) => Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Riga', hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    .formatToParts(new Date(t)).map((p) => [p.type, Number(p.value)]));
+  const p = parts(now);
+  const guess = Date.UTC(p.year, p.month - 1, unit === 'day' ? p.day : 1);
+  const q = parts(guess);                                         // Rīgas pulkstenis brīdī `guess` → nobīde
+  const off = Date.UTC(q.year, q.month - 1, q.day, q.hour, q.minute, q.second) - guess;
+  return Math.floor((guess - off) / 1000);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   try {
@@ -352,6 +364,27 @@ Deno.serve(async (req) => {
         const oid = String(body.offer_id ?? '');
         if (!UUID.test(oid)) throw new Fail('Nederīgs brauciens');
         return json(await refund(oid, body.auto === true ? 'auto' : 'driver'));
+      }
+
+      // F16: lietotnes komisijas no Stripe — TIKAI īpašniekam (app_admins, supabase/stats-f16.sql). Pārbaude pirms Stripe izsaukuma.
+      case 'admin_stats': {
+        const isAdmin = await db('rpc/is_app_admin', { method: 'POST', body: '{}' }).catch(() => false);
+        if (isAdmin !== true) throw new Fail('Nav piekļuves', 403);
+        const d0 = rigaStart('day'), m0 = rigaStart('month');
+        let today = 0, month = 0, total = 0, n = 0, after = '', more = true, pages = 0;
+        while (more && pages < 20) {                                   // līdz 2000 komisijām; vairāk — total_partial
+          const j = await stripe('application_fees?limit=100' + (after ? '&starting_after=' + after : ''));
+          for (const f of j.data ?? []) {
+            const net = (Number(f.amount) || 0) - (Number(f.amount_refunded) || 0);
+            total += net; n++;
+            if (f.created >= m0) month += net;
+            if (f.created >= d0) today += net;
+          }
+          more = !!j.has_more && (j.data ?? []).length > 0;
+          after = more ? j.data[j.data.length - 1].id : '';
+          pages++;
+        }
+        return json({ fees: { today, month, total }, count: n, total_partial: more, fee_pct: FEE_PCT, test });
       }
 
       // Atverot „Kopā”: automātiski atmaksā visus maniem braucieniem, kas atcelti pirms iekāpšanas, bet vēl nav atmaksāti
