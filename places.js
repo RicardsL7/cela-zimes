@@ -274,11 +274,32 @@ function resortPlaces(places, lat, lng) {
   return places.map(p => Object.assign({}, p, { d: placeDistM(lat, lng, p.lat, p.lng) })).sort((a, b) => a.d - b.d);
 }
 
+// ---------- F3: Photon nosaukumi latviski / vietējā valodā ----------
+// Bez `lang` Photon izvēlas valodu pēc pārlūka Accept-Language (piem. en-US → „Riga, Latvia”).
+// `lang=lv` publiskais serveris neatbalsta (HTTP 400); `lang=default` atdod OSM `name` — Latvijā tas ir latviski.
+const PHOTON_LANG = 'default';
+// Drošības tabula: ja kāds lauks tomēr atnāk angliski (vai valsts vietējā valodā ārpus Latvijas)
+const PHOTON_LV_NAMES = { Riga: 'Rīga', Latvia: 'Latvija', Jelgava: 'Jelgava', Liepaja: 'Liepāja', Jurmala: 'Jūrmala', Daugavpils: 'Daugavpils' };
+const PHOTON_LV_COUNTRY = { LV: 'Latvija', EE: 'Igaunija', LT: 'Lietuva', RU: 'Krievija', BY: 'Baltkrievija', PL: 'Polija',
+  FI: 'Somija', SE: 'Zviedrija', DE: 'Vācija', NO: 'Norvēģija', DK: 'Dānija', UA: 'Ukraina', GB: 'Lielbritānija', US: 'ASV' };
+function photonLv(s) { return s && Object.prototype.hasOwnProperty.call(PHOTON_LV_NAMES, s) ? PHOTON_LV_NAMES[s] : s; }
+// Meklēšanas rezultāts: nosaukums + adreses rinda (Latvijā valsti nerāda; ārzemēs — valsts latviski, ja zināma)
+function photonSearchItem(f) {
+  const p = f.properties || {};
+  const street = [p.street, p.housenumber].filter(Boolean).join(' ');
+  const place = photonLv(p.city || p.town || p.village || p.district);
+  const name = photonLv(p.name) || street || place || 'Vieta';
+  const cc = String(p.countrycode || '').toUpperCase();
+  const country = cc === 'LV' ? '' : (PHOTON_LV_COUNTRY[cc] || p.country || '');
+  const sub = [p.name && street ? street : '', place !== name ? place : '', country].filter(Boolean).join(', ');
+  return { name, sub, lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] };
+}
+
 // ---------- Ātrais ceļš: Photon (tuvākās vietas uzreiz) ----------
 function buildPhotonPlacesUrl(catId, lat, lng, radiusKm, limit = 25) {
   const tags = PLACE_PHOTON_TAGS[catId];
   if (!tags) throw new Error('Nezināma kategorija: ' + catId);
-  return `https://photon.komoot.io/reverse?lat=${lat.toFixed(5)}&lon=${lng.toFixed(5)}&radius=${radiusKm}&limit=${limit}` +
+  return `https://photon.komoot.io/reverse?lat=${lat.toFixed(5)}&lon=${lng.toFixed(5)}&radius=${radiusKm}&limit=${limit}&lang=${PHOTON_LANG}` +
     tags.map(t => '&osm_tag=' + encodeURIComponent(t)).join('');
 }
 const PHOTON_OSM_TYPE = { N: 'node', W: 'way', R: 'relation' };
@@ -339,5 +360,5 @@ function mergePlaceDetails(places, elements, now = new Date(), parse = null) {
 if (typeof module !== 'undefined') {
   module.exports = { PLACE_CATEGORIES, PLACE_PHOTON_TAGS, buildPlacesQuery, parsePlaces, placeOpenNow, placeIconSvg,
     buildPhotonPlacesUrl, parsePhotonPlaces, buildPlaceDetailsQuery, mergePlaceDetails, parseTilePlaces, resortPlaces, PLACE_TILE_SUBCLASS, placeStatus,
-    placeContacts, placePhone, placeWebsite, placeBrand, PLACE_BRANDS };
+    placeContacts, placePhone, placeWebsite, placeBrand, PLACE_BRANDS, PHOTON_LANG, photonLv, photonSearchItem };
 }

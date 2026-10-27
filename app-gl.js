@@ -1266,24 +1266,19 @@ const PIN_ICON = '<svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 2
 
 async function searchPhoton(q) {
   const c = state.me || { lat: map.getCenter().lat, lng: map.getCenter().lng };
-  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=7&lat=${c.lat.toFixed(2)}&lon=${c.lng.toFixed(2)}`;
-  // Tas pats teksts ~1 km apkārtnē — no kešatmiņas (1 diena)
-  const json = await cachedJson('photon', q.toLowerCase() + '@' + c.lat.toFixed(2) + ',' + c.lng.toFixed(2), 24 * 3600 * 1000,
+  // F3: lang=default — vietējie (Latvijā latviskie) nosaukumi neatkarīgi no pārlūka valodas
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=7&lat=${c.lat.toFixed(2)}&lon=${c.lng.toFixed(2)}&lang=${PHOTON_LANG}`;
+  // Tas pats teksts ~1 km apkārtnē — no kešatmiņas (1 diena); 'photon-lv' — vecie angliskie rezultāti netiek ņemti
+  const json = await cachedJson('photon-lv', q.toLowerCase() + '@' + c.lat.toFixed(2) + ',' + c.lng.toFixed(2), 24 * 3600 * 1000,
     () => fetchJson(url, {}, 7000));
-  return (json.features || []).map(f => {
-    const p = f.properties || {};
-    const street = [p.street, p.housenumber].filter(Boolean).join(' ');
-    const name = p.name || street || p.city || 'Vieta';
-    const sub = [p.name && street ? street : '', p.city || p.town || p.village || p.district, p.country].filter(Boolean).join(', ');
-    return { name, sub, lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] };
-  });
+  return (json.features || []).map(photonSearchItem);
 }
 async function searchNominatim(q) {
   const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=lv&q=' + encodeURIComponent(q);
   const json = await cachedJson('nominatim', q.toLowerCase(), 24 * 3600 * 1000, () => fetchJson(url, {}, 8000));
   return json.map(it => {
     const [name, ...rest] = it.display_name.split(', ');
-    return { name, sub: rest.slice(0, 3).join(', '), lat: +it.lat, lng: +it.lon };
+    return { name, sub: rest.filter(x => x !== 'Latvija').slice(0, 3).join(', '), lat: +it.lat, lng: +it.lon };   // F3: valsti Latvijā nerāda
   });
 }
 async function runSearch(q, enter) {
