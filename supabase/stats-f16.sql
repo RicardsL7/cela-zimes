@@ -64,6 +64,28 @@ create or replace function public.stat_user_bump(p_user uuid, p_kind text, p_n b
 $$ insert into user_stat_counters (user_id, kind, n) select p_user, p_kind, p_n where p_user is not null and p_n > 0
      on conflict (user_id, kind) do update set n = user_stat_counters.n + excluded.n $$;
 
+-- Īpašnieks pēc e-pasta, ja konts ar šo e-pastu vēl nav izveidots / saglabāts:
+--   insert into public.app_admin_pending values ('[TAVS E-PASTS]') on conflict do nothing;
+-- Kad konts ar šo (apstiprināto) e-pastu parādās, tas automātiski tiek pievienots app_admins.
+create table if not exists public.app_admin_pending (
+  email text primary key check (email = lower(email))
+);
+alter table public.app_admin_pending enable row level security;     -- bez politikām
+create or replace function public.app_admin_from_pending() returns trigger
+  language plpgsql security definer set search_path = public as
+$$ begin
+  if new.email is not null and exists (select 1 from app_admin_pending where email = lower(new.email)) then
+    insert into app_admins (user_id) values (new.id) on conflict do nothing;
+  end if;
+  return new;
+end $$;
+revoke all on function public.app_admin_from_pending() from public, anon, authenticated;
+drop trigger if exists app_admin_from_pending on auth.users;
+create trigger app_admin_from_pending after insert or update of email on auth.users
+  for each row execute function public.app_admin_from_pending();
+insert into public.app_admins (user_id)
+  select u.id from auth.users u join public.app_admin_pending p on p.email = lower(u.email) on conflict do nothing;
+
 revoke all on function public.stat_bump(text, bigint) from public, anon, authenticated;
 revoke all on function public.stat_user_bump(uuid, text, bigint) from public, anon, authenticated;
 revoke all on function public.is_app_admin() from public, anon;
