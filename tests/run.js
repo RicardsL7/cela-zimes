@@ -1672,6 +1672,52 @@ test('F12: noraidīts / cits šoferis izvēlēts → kartīte 10 min ar „Labi�
   ok(/add column if not exists responded_at timestamptz/.test(sql) && /new\.status in \('accepted', 'declined'\)/.test(sql) && /new\.responded_at := old\.responded_at/.test(sql), 'SQL: laiku liek datubāze');
 });
 
+// ---------- F16: statistika ----------
+test('F16: LocalRideStore.myStats — lomas, atceltie, tukšs konts', async () => {
+  const S = G('LocalRideStore'), empty = G('rideStatsEmpty');
+  const mem = { d: {}, getItem(k) { return this.d[k] ?? null; }, setItem(k, v) { this.d[k] = v; } };
+  const pas = new S(mem, 'k'); await pas.saveProfile({ name: 'Anna' });
+  const drv = new S(mem, 'k'); drv.id = 'drv'; await drv.saveProfile({ name: 'Jānis' });
+  const st0 = await pas.myStats();
+  ok(empty(st0), 'tukšs konts'); eq(st0.driver_done + st0.passenger_done + st0.km_approx + st0.carried, 0, 'nulles');
+  const req = { from_lat: 56.95, from_lng: 24.10, to_lat: 56.95, to_lng: 24.20, from_name: 'A', to_name: 'B', seats: 2, note: '', depart_at: new Date().toISOString() };
+  const r = await pas.createRequest(req); await drv.offer(r.id, { eta_min: 3 });
+  const o = (await pas.offersFor(r.id))[0]; await pas.respond(o.id, 'accepted'); await drv.driverUpdate(o.id, { trip: 'done' });
+  const r2 = await pas.createRequest({ ...req, seats: 1 }); await drv.offer(r2.id, { eta_min: 3 });
+  const o2 = (await pas.offersFor(r2.id))[0]; await pas.respond(o2.id, 'accepted'); await drv.cancelOffer(o2.id);
+  const sp = await pas.myStats(), sd = await drv.myStats();
+  eq(sp.passenger_done, 1, 'pasažierim pabeigts'); eq(sp.driver_done, 0); eq(sp.passenger_cancelled, 1, 'atcelts atsevišķi');
+  eq(sd.driver_done, 1, 'šoferim pabeigts'); eq(sd.passenger_done, 0); eq(sd.driver_cancelled, 1); eq(sd.carried, 2, 'pārvesti 2 cilvēki');
+  ok(sd.km_approx >= 7 && sd.km_approx <= 10, 'aptuveni km ' + sd.km_approx); ok(!empty(sd));
+  eq(await pas.isAdmin(), false, 'demo — admin nav');
+});
+test('F16: UI, SQL un ride-pay — īpašnieks tikai pēc servera pārbaudes', () => {
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'rides-ui.js'), 'utf8');
+  const fnOf = n => { const i = ui.indexOf('function ' + n + '('); return ui.slice(i, ui.indexOf('\n}\n', i)); };
+  ok(/rides\.isAdmin \? rEl\('button'[^)]*'Statistika \(īpašniekam\)'/.test(ui), 'admin poga tikai ar rides.isAdmin');
+  ok(/rides\.isAdmin = rides\.store\.isAdmin \? await rides\.store\.isAdmin\(\) : false/.test(ui), 'isAdmin no servera');
+  ok(/text: 'Mana statistika', onclick: ridesOpenStats/.test(fnOf('ridesAccountBar')), '„Mana statistika” konta joslā');
+  for (const f of ['ridesMyStatsView', 'ridesAdminView', 'ridesOpenStats', 'ridesOpenAdmin']) ok(fnOf(f) && !/setStatus/.test(fnOf(f)), f + ' bez setStatus');
+  ok(/r-msg bad/.test(fnOf('ridesMyStatsView')) && /r-msg bad/.test(fnOf('ridesAdminView')), 'kļūda logā');
+  ok(/Vēl nav braucienu\./.test(fnOf('ridesMyStatsView')) && /aptuveni/.test(fnOf('ridesMyStatsView')), 'tukšs / aptuveni');
+  ok(/Komisija \(aptuveni/.test(fnOf('ridesAdminView')), 'aptuvenā komisija, ja Stripe nav');
+  ok(/rides\.statsView, rides\.myStats/.test(fnOf('ridesViewSig')), 'ridesViewSig');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'stats-f16.sql'), 'utf8');
+  const fn = name => { const i = sql.indexOf('function public.' + name + '('); return sql.slice(i, sql.indexOf('$$;', sql.indexOf('$$', i) + 2)); };
+  ok(/if not is_app_admin\(\) then raise exception 'forbidden'/.test(fn('admin_stats')), 'admin_stats pārbauda is_app_admin');
+  ok(/revoke all on function public\.admin_stats\(\) from public, anon;/.test(sql) && /revoke all on function public\.my_stats\(\) from public, anon;/.test(sql), 'revoke no anon');
+  ok(/alter table public\.app_admins enable row level security;/.test(sql) && !/create policy[^;]*app_admins/.test(sql), 'app_admins bez politikām');
+  ok(/declare me uuid := auth\.uid\(\)/.test(fn('my_stats')) && /if me is null then return null;/.test(fn('my_stats')), 'my_stats — auth.uid()');
+  ok(!/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}/.test(sql.replace("'[TAVS E-PASTS]'", '')), 'repozitorijā nav e-pasta');
+  ok(/delete from user_stat_counters where user_id = me;/.test(fn('delete_my_account')) && /insert into user_stat_counters \(user_id, kind, n\) select me, kind, n from user_stat_counters where user_id = src/.test(fn('account_transfer_claim')), 'dzēšana / pārcelšana');
+  ok(/if n >= 10 then raise exception 'rate_limit'/.test(fn('report_create')) && /if n >= 60 then raise exception 'vote_limit'/.test(fn('report_vote')) && /q\.n \+ cnt > 1500/.test(fn('traffic_report')), 'limiti nemainīti');
+  ok(/prev is distinct from 'still'/.test(fn('report_vote')), 'atkārtots „vēl ir” neskaitās');
+  const rp = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'ride-pay', 'index.ts'), 'utf8');
+  const c = rp.slice(rp.indexOf("case 'admin_stats'"), rp.indexOf("case 'refund_sync'"));
+  ok(c.indexOf("rpc/is_app_admin") > 0 && c.indexOf("rpc/is_app_admin") < c.indexOf("stripe('application_fees"), 'ride-pay: is_app_admin pirms Stripe');
+  ok(/if \(isAdmin !== true\) throw new Fail\('Nav piekļuves', 403\)/.test(c), '403');
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
