@@ -1636,6 +1636,42 @@ test('F6: testa režīms un Mapillary atslēga tikai izstrādātājam (?dev=1 / 
   ok(/mlyToken: store\.get\('mlyToken', ''\) \|\| mlyPublicToken\(\)/.test(app), 'Mapillary atslēga — kā līdz šim (paslēpta, bet lietota)');
 });
 
+// ---------- F12: šoferis redz, ka piedāvājums noraidīts ----------
+test('F12: noraidīts / cits šoferis izvēlēts → kartīte 10 min ar „Labi”; SQL responded_at', async () => {
+  const S = G('LocalRideStore'), recent = G('rideDeclinedRecent'), txt = G('rideDeclinedText');
+  const mem = { d: {}, getItem(k) { return this.d[k] ?? null; }, setItem(k, v) { this.d[k] = v; } };
+  const pas = new S(mem, 'k'); await pas.saveProfile({ name: 'Anna' });
+  const d1 = new S(mem, 'k'); d1.id = 'd1'; await d1.saveProfile({ name: 'Jānis' });
+  const d2 = new S(mem, 'k'); d2.id = 'd2'; await d2.saveProfile({ name: 'Pēteris' });
+  const d3 = new S(mem, 'k'); d3.id = 'd3'; await d3.saveProfile({ name: 'Ilze' });
+  const req = { from_lat: 56.95, from_lng: 24.1, to_lat: 56.96, to_lng: 24.2, from_name: 'A', to_name: 'B', seats: 1, note: '', depart_at: new Date().toISOString() };
+  const r = await pas.createRequest(req);
+  await d1.offer(r.id, { eta_min: 3 }); await d2.offer(r.id, { eta_min: 4 }); await d3.offer(r.id, { eta_min: 5 });
+  const offs = await pas.offersFor(r.id);
+  await pas.respond(offs.find(o => o.driver_id === 'd3').id, 'declined');               // tieši noraidīts
+  await pas.respond(offs.find(o => o.driver_id === 'd2').id, 'accepted');               // izvēlas citu → d1 noraidīts automātiski
+  const m1 = await d1.myOffers(), m3 = await d3.myOffers();
+  eq(m1.length, 1, 'noraidītais vēl šofera sarakstā'); eq(m1[0].status, 'declined'); ok(m1[0].responded_at, 'laiks');
+  eq(m3[0].status, 'declined');
+  const now = Date.parse(m1[0].responded_at);
+  eq(recent(m1, [], {}, now + 60000).length, 1, 'redzams'); eq(recent(m1, [], {}, now + 11 * 60000).length, 0, 'pēc 10 min pazūd');
+  eq(recent(m1, [m1[0].id], {}, now + 60000).length, 0, '„Labi” → pazūd');
+  eq(recent([{ id: 'x', status: 'declined' }], [], {}, now).length, 0, 'bez laika (veci) — nerāda');
+  eq(recent([{ id: 'x', status: 'declined' }], [], { x: now - 5000 }, now).length, 1, 'lietotne pamanīja pāreju — rāda');
+  eq(recent([{ id: 'p', status: 'pending', responded_at: m1[0].responded_at }], [], {}, now).length, 0);
+  eq(txt(m1[0]), 'Pasažieris izvēlējās citu šoferi'); eq(txt({ request: { status: 'cancelled' } }), 'Pasažieris atsauca braucienu');
+  eq((await d2.myOffers())[0].status, 'accepted', 'izvēlētais šoferis — kā līdz šim');
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'rides-ui.js'), 'utf8');
+  const fnOf = n => { const i = ui.indexOf('function ' + n + '('); return ui.slice(i, ui.indexOf('\n}\n', i)); };
+  const card = fnOf('ridesDeclinedCard');
+  ok(/r-card r-declined/.test(card) && /text: 'Labi'/.test(card) && /rideDeclinedText\(o\)/.test(card) && !/setStatus|ridesChatBtn|cancelOffer/.test(card), 'kartīte: teksts + tikai „Labi”');
+  ok(/'cz\.rides\.declOk'/.test(fnOf('ridesDeclinedOk')) && /try \{ localStorage\.setItem/.test(fnOf('ridesDeclinedOk')), '„Labi” — localStorage');
+  ok(/for \(const o of declined\) wrap\.append\(ridesDeclinedCard\(o\)\)/.test(fnOf('ridesDriveView')), 'šofera sarakstā');
+  ok(/ridesDeclinedList\(\)\.map\(o => o\.id\)/.test(fnOf('ridesViewSig')), 'pārzīmē, kad pazūd');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'rides-10-declined.sql'), 'utf8');
+  ok(/add column if not exists responded_at timestamptz/.test(sql) && /new\.status in \('accepted', 'declined'\)/.test(sql) && /new\.responded_at := old\.responded_at/.test(sql), 'SQL: laiku liek datubāze');
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
