@@ -4,50 +4,72 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#173a6e">
   <title>Administrēšana — Ceļa Zīmes</title>
-  <link rel="stylesheet" href="admin.css?v=111">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
+  <link rel="stylesheet" href="admin.css?v=112">
 </head>
 <body>
-<main class="adm">
-  <header class="adm-head">
-    <div>
-      <p class="adm-back"><a href="./">← Uz lietotni</a></p>
-      <h1>Ceļa Zīmes — administrēšana</h1>
-    </div>
+<header class="adm-bar">
+  <div class="adm-bar-in">
+    <a class="adm-brand" href="./" title="Uz lietotni">
+      <span class="adm-logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 3v3M12 10.5v3M12 18v3" /><path d="M5 21 9.5 3M19 21 14.5 3" /></svg>
+      </span>
+      <span class="adm-brand-t"><small>Ceļa Zīmes</small><b>Administrēšana</b></span>
+    </a>
     <div id="admUser" class="adm-user" hidden>
-      <span id="admEmail"></span>
-      <button id="admRefresh" class="btn ghost" type="button">Atjaunot</button>
-      <button id="admSignOut" class="btn ghost" type="button">Izrakstīties</button>
+      <span class="adm-chip"><span id="admAvatar" class="adm-avatar" aria-hidden="true"></span><span id="admEmail"></span></span>
+      <button id="admRefresh" class="icon-btn" type="button" title="Atjaunot datus" aria-label="Atjaunot datus">
+        <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 4v7h-7" /></svg>
+      </button>
+      <button id="admSignOut" class="icon-btn" type="button" title="Izrakstīties" aria-label="Izrakstīties">
+        <svg viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" /><path d="M10 17l-5-5 5-5M5 12h11" /></svg>
+      </button>
     </div>
-  </header>
+  </div>
+</header>
 
+<main class="adm">
   <p id="admMsg" class="adm-msg" role="status" hidden></p>
 
   <!-- Pieslēgšanās -->
-  <section id="admLogin" class="card" hidden>
-    <h2>Pieslēgties</h2>
+  <section id="admLogin" class="card adm-login" hidden>
+    <span class="adm-login-ic" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+    </span>
+    <h1>Pieslēgties</h1>
     <p class="fine">Šo lapu var izmantot tikai lietotnes īpašnieks. Ieraksti savu e-pastu — tev atsūtīs pieslēgšanās saiti (parole nav vajadzīga). Saiti atver šajā pašā pārlūkā.</p>
     <form id="admLoginForm" class="adm-form">
       <label for="admLoginEmail" class="sr">E-pasts</label>
       <input id="admLoginEmail" type="email" inputmode="email" autocomplete="email" maxlength="254" placeholder="tavs@epasts.lv" required>
       <button class="btn primary" type="submit">Sūtīt pieslēgšanās saiti</button>
     </form>
+    <p class="fine"><a href="./">← Atpakaļ uz lietotni</a></p>
   </section>
 
   <!-- Nav piekļuves -->
-  <section id="admDenied" class="card" hidden>
-    <h2>Nav piekļuves</h2>
-    <p>Šim kontam nav administratora tiesību. Ja tas ir tavs lietotnes konts — pārbaudi, vai pieslēdzies ar pareizo e-pastu.</p>
+  <section id="admDenied" class="card adm-login" hidden>
+    <span class="adm-login-ic bad" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M5.6 5.6l12.8 12.8" /></svg>
+    </span>
+    <h1>Nav piekļuves</h1>
+    <p class="fine">Šim kontam nav administratora tiesību. Ja tas ir tavs lietotnes konts — pārbaudi, vai pieslēdzies ar pareizo e-pastu.</p>
   </section>
 
   <!-- Panelis -->
   <section id="admPanel" hidden>
-    <nav class="adm-tabs" role="tablist">
-      <button class="adm-tab" role="tab" data-tab="stats" aria-selected="true" type="button">Statistika</button>
-      <button class="adm-tab" role="tab" data-tab="reports" aria-selected="false" type="button">Ziņojumi par lietotājiem <span id="admNewCount" class="adm-badge" hidden></span></button>
-    </nav>
-    <div id="admStats" class="card" role="tabpanel"></div>
-    <div id="admReports" class="card" role="tabpanel" hidden></div>
+    <div class="adm-toolbar">
+      <nav class="adm-tabs" role="tablist">
+        <button class="adm-tab" role="tab" data-tab="stats" aria-selected="true" type="button">Statistika</button>
+        <button class="adm-tab" role="tab" data-tab="reports" aria-selected="false" type="button">Ziņojumi<span class="adm-wide"> par lietotājiem</span> <span id="admNewCount" class="adm-badge" hidden></span></button>
+      </nav>
+      <span id="admUpdated" class="adm-updated"></span>
+    </div>
+    <div id="admStats" role="tabpanel"></div>
+    <div id="admReports" role="tabpanel" hidden></div>
     <p class="fine adm-foot">Dati: Supabase (lietotāji, braucieni, ziņojumi) un Stripe (komisijas). Laiks — Rīgas. Detalizēti dati — Supabase un Stripe paneļos.</p>
   </section>
 </main>
@@ -56,6 +78,6 @@
 <script src="auth.js?v=95"></script>
 <script src="alerts.js?v=95"></script>
 <script src="rides.js?v=110"></script>
-<script src="admin.js?v=111"></script>
+<script src="admin.js?v=112"></script>
 </body>
 </html>
