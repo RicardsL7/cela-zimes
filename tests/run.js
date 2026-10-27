@@ -1590,6 +1590,18 @@ test('F3: Photon ar lang=default; Latvijā valsti nerāda, ārzemēs — latvisk
   eq(F({ street: 'Elijas iela', housenumber: '17', city: 'Rīga', countrycode: 'LV' }).name, 'Elijas iela 17');
 });
 
+// ---------- F5: pēc „Atcelt” meklēšanas lauks tukšs ----------
+test('F5: cancelPreview notīra lauku, paslēpj ×, aizver ieteikumus, nesāk jaunu meklēšanu', () => {
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const i = app.indexOf('function cancelPreview('), fn = app.slice(i, app.indexOf('\n}\n', i));
+  ok(/\$\('searchInput'\)\.value = ''; \$\('clearSearch'\)\.hidden = true; \$\('results'\)\.hidden = true;/.test(fn), 'lauks, ×, saraksts');
+  ok(/clearTimeout\(searchTimer\); searchSeq\+\+; lastResults = \[\];/.test(fn), 'gaidošā / nepabeigtā meklēšana atcelta');
+  ok(/state\.nav\.dest = null/.test(fn), 'galamērķis notīrīts');
+  ok(!/runSearch|searchPhoton|dispatchEvent/.test(fn), 'jauns pieprasījums netiek sūtīts');
+  eq((app.match(/cancelPreview\(\)/g) || []).length, 2, 'izsauc tikai × un „Atcelt” (navigācijas sākšana to neizsauc)');
+  ok(/\$\('cancelRoute'\)\.addEventListener\('click', cancelPreview\)/.test(app));
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
