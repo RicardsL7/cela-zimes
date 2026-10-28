@@ -1799,6 +1799,24 @@ test('F19: ride-pay „sync” — tikai īpašniekam, pa daļām; admin.html po
   ok(!/admSay\(/.test(f) && /msg\.textContent = adm\.syncMsg\.text/.test(f), 'kļūda pie pogas, ne kopējā ziņā');
 });
 
+// ---------- F20: „Ziņot” — pareizs iemesls, kāpēc nav atrašanās vietas ----------
+test('F20: getLocationState un „Ziņot” logs — liegts / meklē / nav pieejams, pogas pelēkas', () => {
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const rep = fs.readFileSync(path.join(__dirname, '..', 'reports.js'), 'utf8');
+  ok(/function getLocationState\(\)/.test(app) && /return 'denied'/.test(app) && /return 'unavailable'/.test(app) && /return 'searching'/.test(app), 'viens stāvoklis visai lietotnei');
+  ok(/state\.me && \(state\.testMode \|\| gpsState !== 'denied'\)\) return 'ok'/.test(app), 'testa režīmā ar klikšķi — var ziņot');
+  ok(/gpsTimeouts >= 2/.test(app) && /gpsTimeouts = kind === 'timeout' \? gpsTimeouts \+ 1 : 0/.test(app), 'atkārtots TIMEOUT → nav pieejams');
+  ok(app.includes("'Atrašanās vieta nav atļauta — ieslēdz to, lai varētu ziņot.', 'Kā ieslēgt?'") && app.includes("'Meklē tavu atrašanās vietu…'") &&
+     app.includes("'Mēģināt vēlreiz'"), 'teksti un pogas');
+  ok(/b\.disabled = !ok/.test(app), 'tipu pogas pelēkas, kamēr vietas nav');
+  ok(/reportSheet'\)\.hidden\) reportGpsRefresh\(\)/.test(app.slice(app.indexOf('function onFix'), app.indexOf('function onFix') + 2500)), 'vieta pienāk — logs atjaunojas');
+  ok(/id="reportGps"/.test(html) && /id="reportGpsBtn"/.test(html), 'ziņa logā, ne statusa joslā');
+  ok(!/pagaidi, kamēr GPS/.test(app + rep + html), 'maldinošais teksts izņemts');
+  const fn = app.slice(app.indexOf('function reportGpsRefresh'), app.indexOf('function reportPlace'));
+  ok(!/setStatus/.test(fn), 'bez setStatus');
+});
+
 // ---------- F16: administrēšanas lapa ----------
 test('F16: admin.html — atsevišķa sesija, servera pārbaude, nav e-pasta', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'admin.html'), 'utf8');
