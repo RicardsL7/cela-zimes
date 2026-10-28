@@ -112,6 +112,10 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .adm-meter { display: block; height: 5px; border-radius: 3px; background: var(--line); margin-top: 5px; overflow: hidden; }
 .adm-meter i { display: block; height: 100%; border-radius: 3px; background: var(--tone, var(--accent)); }
 .adm-empty { color: var(--muted); margin: 8px 0; }
+.adm-sync { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 6px; justify-items: start; }
+.adm-sync .fine { margin: 0; }
+.adm-sync-msg { margin: 0; font-weight: 600; color: var(--go); }
+.adm-sync-msg.bad { color: var(--danger); }
 .adm-notes { margin-top: 16px; display: grid; gap: 4px; }
 .adm-notes .fine { margin: 0; }
 .adm-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--bg); color: var(--muted); font-size: 13px; font-weight: 600; margin: 2px 4px 2px 0; }

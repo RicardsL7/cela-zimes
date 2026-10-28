@@ -11,7 +11,7 @@ const admStorage = {
   setItem(k, v) { try { localStorage.setItem('cz.admin.' + k, v); } catch { /* */ } },
   removeItem(k) { try { localStorage.removeItem('cz.admin.' + k); } catch { /* */ } },
 };
-const adm = { auth: null, stats: null, fees: null, reports: null, tab: 'stats', filter: 'all', busy: false, at: null };
+const adm = { auth: null, stats: null, fees: null, reports: null, tab: 'stats', filter: 'all', busy: false, at: null, syncing: false, syncMsg: null };
 const $a = id => document.getElementById(id);
 
 function admEl(tag, attrs = {}, ...kids) {
@@ -44,6 +44,48 @@ async function admRpc(name, body = {}) {
   const t = await r.text();
   if (!r.ok) throw Object.assign(new Error(/forbidden/.test(t) ? 'forbidden' : 'db ' + r.status), { status: r.status });
   return t ? JSON.parse(t) : null;
+}
+// F19: „Sinhronizēt ar Stripe” — ride-pay 'sync' (tikai īpašniekam, pārbaude serverī). Pa daļām, līdz viss pārbaudīts.
+async function admPay(body) {
+  const token = await adm.auth.token();
+  const r = await fetch(RIDES_CONFIG.url.replace(/\/$/, '') + '/functions/v1/ride-pay', {
+    method: 'POST', headers: { apikey: RIDES_CONFIG.anonKey, Authorization: 'Bearer ' + token, 'content-type': 'application/json' },
+    body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.error || 'HTTP ' + r.status), { status: r.status });
+  return j;
+}
+function admSyncBlock() {
+  const msg = admEl('p', { class: 'adm-sync-msg', role: 'status', hidden: !adm.syncMsg, text: adm.syncMsg ? adm.syncMsg.text : '' });
+  if (adm.syncMsg && adm.syncMsg.bad) msg.classList.add('bad');
+  const btn = admEl('button', { class: 'adm-act', type: 'button', disabled: adm.syncing || null, onclick: () => admSync(btn, msg) },
+    admIcon('undo'), adm.syncing ? 'Sinhronizē…' : 'Sinhronizēt ar Stripe');
+  return admEl('div', { class: 'adm-sync' }, btn, msg,
+    admEl('p', { class: 'fine', text: 'Salīdzina datubāzē visus vēl neatmaksātos maksājumus ar Stripe un salabo statusu (samaksāts / atmaksāts).' }));
+}
+async function admSync(btn, msg) {
+  if (adm.syncing) return;
+  adm.syncing = true; btn.disabled = true; btn.lastChild.textContent = 'Sinhronizē…';
+  msg.hidden = false; msg.className = 'adm-sync-msg'; msg.textContent = 'Pārbauda Stripe…';
+  let checked = 0, updated = 0, failed = 0, offset = 0;
+  try {
+    for (let i = 0; i < 50; i++) {
+      const j = await admPay({ action: 'sync', offset });
+      checked += j.checked || 0; updated += j.updated || 0; failed += j.failed || 0;
+      if (!j.more) break;
+      offset = j.next;
+    }
+    adm.syncMsg = { text: `✓ Pārbaudīti ${checked}, atjaunoti ${updated}` + (failed ? ` (${failed} neizdevās — mēģini vēlreiz)` : '') + '.', bad: false };
+    adm.syncing = false;
+    await admLoad();                                  // pārlādē statistiku (pārzīmē arī šo bloku ar ziņu)
+  } catch (e) {
+    adm.syncing = false;
+    adm.syncMsg = { text: e.status === 403 ? 'Nav piekļuves — sinhronizēt var tikai īpašnieks.'
+      : /Nezināma darbība/.test(e.message) ? 'Serverī vēl nav jaunās ride-pay versijas — tā jāizvieto.'
+      : 'Sinhronizācija neizdevās: ' + e.message, bad: true };
+    msg.className = 'adm-sync-msg bad'; msg.textContent = adm.syncMsg.text;
+    btn.disabled = false; btn.lastChild.textContent = 'Sinhronizēt ar Stripe';
+  }
 }
 async function admFees() {
   try {
@@ -196,7 +238,7 @@ function admRenderStats() {
       admRow('Pieprasījumi', a.requests), admRow('Pabeigti braucieni', a.done), admRow('Atcelti pieprasījumi', a.cancelled, admNum, { hot: false })]),
     admSection('Kartes maksājumi', 'card', 't-violet', [
       admRow('Apmaksāti braucieni', a.paid), admRow('Apgrozījums', a.turnover, admEur), feeRow,
-      admRow('Atmaksāts', a.refunds, admEur, { hot: false })]),
+      admRow('Atmaksāts', a.refunds, admEur, { hot: false })], admSyncBlock()),
     admSection('Ceļa ziņojumi', 'warn', 't-amber', [
       ...types.map(t => admRow(admType(t), a.reports[t], admNum, { max: maxRep })),
       types.length ? null : admEl('tr', {}, admEl('td', { colspan: 4, class: 'zero', text: 'Vēl nav datu.' })),
