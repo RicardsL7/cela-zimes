@@ -1180,6 +1180,7 @@ function onFix(lat, lng, speedKmh, gpsHeading, dur = 900, accuracy = null) {
   else updateNextSign();
   followCamera(dur);
   if (typeof trafficOnFix === 'function') trafficOnFix(lat, lng, speedKmh, state.heading, accuracy);   // sastrēgumu karte (traffic-gl.js)
+  if ($('reportSheet') && !$('reportSheet').hidden) reportGpsRefresh();   // F20: vieta ir — pogas aktīvas
 }
 
 // ---------- GPS ----------
@@ -1194,6 +1195,16 @@ const GPS_TEXT = {
   unsupported: 'Šis pārlūks neatbalsta atrašanās vietas noteikšanu.',
 };
 function gpsKind(err) { return err.code === 1 ? 'denied' : err.code === 3 ? 'timeout' : 'unavailable'; }
+let gpsTimeouts = 0;              // F20: pēc kārtas TIMEOUT kļūdas (otrā — „nav pieejama”)
+// F20: kāpēc atrašanās vietas nav — viena vieta visai lietotnei (ziņošana, maršruts, stāvēšana).
+// 'ok' — vieta ir (arī testa režīmā ar klikšķi kartē); 'denied' — atļauja liegta (kļūda code 1 / Permissions API);
+// 'unavailable' — code 2, atkārtots TIMEOUT vai pārlūks neatbalsta; 'searching' — atļauja ir / nav jautāta, vieta vēl nav pienākusi.
+function getLocationState() {
+  if (state.me && (state.testMode || gpsState !== 'denied')) return 'ok';
+  if (gpsState === 'denied') return 'denied';
+  if (gpsState === 'unavailable' || gpsState === 'unsupported' || (gpsState === 'timeout' && gpsTimeouts >= 2)) return 'unavailable';
+  return 'searching';
+}
 function gpsErrorText(err) { return GPS_TEXT[gpsKind(err)]; }
 // Ziņa statusa joslā (+ poga „Kā ieslēgt?”, ja liegts). Liegts / neatbalsta — citi setStatus to nepārraksta.
 function gpsShow(kind) {
@@ -1202,6 +1213,7 @@ function gpsShow(kind) {
   $('gpsHelpBtn').hidden = kind !== 'denied';
   $('statusBox').classList.toggle('gps-off', statusLock);
   if (kind) setStatus(gpsProblem, true);
+  if ($('reportSheet') && !$('reportSheet').hidden) reportGpsRefresh();
 }
 function gpsClear() {
   if (!gpsState) return;
@@ -1212,6 +1224,7 @@ function onPosition(pos) {
   if (state.testMode) return;
   const sp = pos.coords.speed;
   const first = !state.me, wasOff = !!gpsState;
+  gpsTimeouts = 0;
   gpsClear();                                                  // F2: vieta ir — ziņa un poga pazūd
   onFix(pos.coords.latitude, pos.coords.longitude, sp == null || sp < 0 ? null : sp * 3.6, pos.coords.heading, first ? 0 : 900, pos.coords.accuracy);
   if (first && state.nav.dest && !state.nav.active) previewRoute(); // maršruts no manas īstās vietas
@@ -1221,6 +1234,7 @@ function onPosition(pos) {
 }
 function onGpsError(err) {
   const kind = gpsKind(err);
+  gpsTimeouts = kind === 'timeout' ? gpsTimeouts + 1 : 0;
   if (kind === 'denied') return gpsShow('denied');             // liegts — rāda vienmēr (arī ja vieta bija)
   gpsProblem = GPS_TEXT[kind];
   if (state.me) return;
@@ -1675,7 +1689,9 @@ async function previewRoute() {
     state.follow = false;
     $('routeDest').textContent = dest.name;
     $('routeSub').textContent = state.me ? (dest.sub || '')
-      : 'Tava atrašanās vieta vēl nav zināma — maršruts no kartes centra. Atļauj atrašanās vietu.';
+      : ({ denied: 'Atrašanās vieta nav atļauta — maršruts no kartes centra. Ieslēdz atrašanās vietu pārlūkā.',
+           unavailable: 'Neizdodas noteikt atrašanās vietu — maršruts no kartes centra.' })[getLocationState()]
+        || 'Meklē tavu atrašanās vietu — pagaidām maršruts no kartes centra.';
     fillRouteCard(route);
     $('routeCard').hidden = false;
     $('bottombar').hidden = true;
@@ -2405,7 +2421,11 @@ function wireAlerts() {
     b.addEventListener('click', () => reportAlert(type));
     grid.appendChild(b);
   }
-  $('reportBtn').addEventListener('click', () => { reportSheetMsg(''); $('reportSheet').hidden = false; });
+  $('reportBtn').addEventListener('click', () => { reportSheetMsg(''); $('reportSheet').hidden = false; reportGpsRefresh(); });
+  $('reportGpsBtn').addEventListener('click', () => {
+    if (getLocationState() === 'denied') { openGpsHelp(); return; }
+    gpsTimeouts = 0; gpsClear(); startGps(); reportGpsRefresh();             // „Mēģināt vēlreiz”
+  });
   $('closeReport').addEventListener('click', () => { $('reportSheet').hidden = true; });
   setInterval(() => loadWeather(false), 60000);
 }
@@ -2455,13 +2475,30 @@ async function loadReports(force) {
 }
 
 // Mana vieta ziņojumam: uz ceļa, kur esmu (kartes piesaiste), citādi GPS vieta
+// F20: ziņošanas logā — kāpēc nevar ziņot (pēc īstā iemesla) un pogas pelēkas, kamēr vietas nav
+const REPORT_GPS = {
+  denied: ['Atrašanās vieta nav atļauta — ieslēdz to, lai varētu ziņot.', 'Kā ieslēgt?'],
+  searching: ['Meklē tavu atrašanās vietu…', ''],
+  unavailable: ['Neizdodas noteikt atrašanās vietu. Pārbaudi, vai telefonā ir ieslēgta atrašanās vieta (GPS), un mēģini vēlreiz.', 'Mēģināt vēlreiz'],
+};
+function reportGpsRefresh() {
+  const box = $('reportGps');
+  if (!box) return;
+  const st = getLocationState(), ok = st === 'ok' && !!reportPlace();
+  const [text, btn] = ok ? ['', ''] : REPORT_GPS[st] || REPORT_GPS.searching;
+  box.hidden = ok;
+  box.className = 'rep-gps ' + (st === 'searching' ? 'info' : 'err');
+  $('reportGpsText').textContent = text;
+  $('reportGpsBtn').textContent = btn; $('reportGpsBtn').hidden = !btn;
+  if (!reportsState.sending) for (const b of document.querySelectorAll('#reportGrid button')) b.disabled = !ok;
+}
 function reportPlace() {
   return signs.pos && !signs.pos.uncertain ? { lat: signs.pos.P[1], lng: signs.pos.P[0] } : state.me;
 }
 async function reportAlert(type) {
   if (reportsState.sending) return;
   const p = reportPlace();
-  if (!p) { reportSheetMsg(reportErrorText('no_location')); return; }
+  if (!p || getLocationState() !== 'ok') { reportGpsRefresh(); return; }                 // F20: iemesls un poga — loga augšā
   reportsState.sending = true;
   const btns = [...document.querySelectorAll('#reportGrid button')];
   btns.forEach(x => { x.disabled = true; });
@@ -2479,6 +2516,7 @@ async function reportAlert(type) {
   } finally {
     reportsState.sending = false;
     btns.forEach(x => { x.disabled = false; });
+    reportGpsRefresh();
   }
 }
 

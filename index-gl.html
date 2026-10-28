@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=111">
+  <link rel="stylesheet" href="style-gl.css?v=116">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -190,6 +190,7 @@
       <button id="closeReport" class="link-btn">Aizvērt</button>
     </div>
     <p id="reportMsg" class="rep-msg" role="status" hidden></p>
+    <div id="reportGps" class="rep-gps" role="status" hidden><p id="reportGpsText"></p><button id="reportGpsBtn" type="button" class="btn small ghost" hidden></button></div>
     <div id="reportGrid" class="report-grid"></div>
     <p class="fine">Ziņojums tiek pievienots tavā vietā uz ceļa, to redz visi lietotāji tuvumā, un tas pazūd pats
       (piem. policija pēc 1 h) vai tad, kad divi citi lietotāji atzīmē „vairs nav”. Kas ziņoja, citi neredz.</p>
@@ -346,7 +347,7 @@
   <script src="times.js?v=93"></script>
   <script src="parking.js?v=93"></script>
   <script src="alerts.js?v=95"></script>
-  <script src="reports.js?v=96"></script>
+  <script src="reports.js?v=116"></script>
   <script src="places.js?v=106"></script>
   <script src="model.js?v=93"></script>
   <script src="rides-config.js?v=93"></script>
@@ -355,8 +356,8 @@
   <script src="traffic.js?v=93"></script>
   <script src="rides.js?v=110"></script>
   <script src="rides-ui.js?v=111"></script>
-  <script src="app-gl.js?v=108"></script>
-  <script src="park-gl.js?v=93"></script>
+  <script src="app-gl.js?v=116"></script>
+  <script src="park-gl.js?v=116"></script>
   <script src="park-dest-gl.js?v=93"></script>
   <script src="traffic-gl.js?v=98"></script>
 </body>

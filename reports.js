@@ -20,7 +20,7 @@ function reportErrorText(code) {
     case 'own_report':     return 'Par savu ziņojumu balsot nevar.';
     case 'not_found':      return 'Šis ziņojums vairs nav aktīvs.';
     case 'bad_type':       return 'Šādu notikumu nevar ziņot.';
-    case 'no_location':    return 'Atrašanās vieta vēl nav zināma — pagaidi, kamēr GPS atrod tevi.';
+    case 'no_location':    return 'Atrašanās vieta nav zināma — ziņojumu nevar pievienot.';
     case 'consent':        return 'Vispirms jāpiekrīt lietošanas noteikumiem.';
     case 'network':        return 'Nav savienojuma — ziņojums netika nosūtīts. Mēģini vēlreiz.';
     case 'no_server':      return 'Serveris nav pieejams.';

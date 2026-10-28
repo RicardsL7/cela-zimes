@@ -765,6 +765,13 @@ html.navigating .alt-bubble { display: none; }
 .rep-msg { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; font-weight: 600; font-size: 14.5px; line-height: 1.35; }
 .rep-msg.err { background: color-mix(in srgb, var(--danger) 14%, var(--panel)); color: var(--danger); }
 .rep-msg.info { background: var(--bg); color: var(--muted); }
+/* F20: kāpēc nevar ziņot + „Kā ieslēgt?” / „Mēģināt vēlreiz”; pogas pelēkas, kamēr vietas nav */
+.rep-gps { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.rep-gps p { margin: 0; flex: 1 1 220px; font-weight: 600; font-size: 14.5px; line-height: 1.35; }
+.rep-gps.err { background: color-mix(in srgb, var(--danger) 14%, var(--panel)); color: var(--danger); }
+.rep-gps.info { background: var(--bg); color: var(--muted); }
+.rep-gps .btn { flex: none; background: var(--panel); }
+#reportGrid button:disabled { opacity: .45; filter: grayscale(1); cursor: not-allowed; }
 .report-btn:disabled { opacity: .55; }
 .popup-actions { display: flex; gap: 8px; margin-top: 8px; }
 .popup-actions .popup-btn { margin-top: 0; flex: 1; padding: 9px 10px; font-size: 14px; }
@@ -852,6 +859,7 @@ html.navigating .alt-bubble { display: none; }
 .status.gps-off .status-text { color: var(--fg); font-weight: 600; }
 .gps-lead { margin: 4px 0 12px; color: var(--muted); font-size: 15px; }
 .gps-help { display: grid; gap: 8px; }
+.sheet.gps-sheet { z-index: 40; }            /* F20: „Kā ieslēgt?” arī virs atvērta „Ziņot” loga */
 .gps-help details { border: 1.5px solid var(--line); border-radius: 14px; background: var(--bg); }
 .gps-help details[open] { border-color: var(--accent); }
 .gps-help summary { cursor: pointer; padding: 12px 14px; font-weight: 700; font-size: 16px; list-style-position: inside; }

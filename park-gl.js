@@ -757,7 +757,9 @@ function parkToast(text, loud) {
 function wirePark() {
   $('parkBtn').addEventListener('click', () => {
     if (state.me) parkCheck(state.me.lat, state.me.lng, { own: true });
-    else { const c = map.getCenter(); parkCheck(c.lat, c.lng, { own: false }); parkToast('GPS vēl nav — pārbaudu kartes centru. Pieskaries kartei, lai izvēlētos vietu.'); }
+    else { const c = map.getCenter(); parkCheck(c.lat, c.lng, { own: false }); parkToast((typeof getLocationState === 'function' && getLocationState() === 'denied' ? 'Atrašanās vieta nav atļauta'
+      : typeof getLocationState === 'function' && getLocationState() === 'unavailable' ? 'Neizdodas noteikt atrašanās vietu' : 'Atrašanās vieta vēl tiek meklēta')
+      + ' — pārbaudu kartes centru. Pieskaries kartei, lai izvēlētos vietu.'); }
   });
   $('closePark').addEventListener('click', closeParkSheet);
   map.on('click', e => {
