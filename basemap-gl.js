@@ -22,9 +22,31 @@ const CLASSIC_STYLE = {
   layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
 };
 
-// Pielāgo stilu: bez 3D māju slāņa (ātrāk) un ar mūsu krāsām.
+// F18: kartes nosaukumi latviski. OpenFreeMap stili ņem name_en („Riga”, „Old Riga”, „City Canal”);
+// OSM pamatnosaukums (name) Latvijā ir latviski. name:lv — ja flīzē ir; pārējie tikai rezervei (teksts nepaliek tukšs).
+const LABEL_LV = ['coalesce', ['get', 'name:lv'], ['get', 'name'], ['get', 'name:latin'], ['get', 'name_en']];
+// Vai text-field ir nosaukums (atsauce uz name / name_en / name:en / name:latin / name_int)? Ceļu numuri (ref)
+// un māju numuri (housenumber) uz šiem laukiem neatsaucas — tie paliek neskarti.
+function isNameLabel(tf) {
+  const s = typeof tf === 'string' ? tf : JSON.stringify(tf);
+  if (/housenumber|"ref"|\{ref\}/.test(s) && !/name/.test(s)) return false;
+  return /\{name(:latin|:en|_en|_int)?\}|"name(:latin|:en|_en|_int|:nonlatin)?"/.test(s);
+}
+function localizeLabels(style) {
+  const changed = [];
+  for (const l of style.layers || []) {
+    if (l.type !== 'symbol' || !l.layout || l.layout['text-field'] == null) continue;
+    if (!isNameLabel(l.layout['text-field'])) continue;
+    l.layout['text-field'] = LABEL_LV;
+    changed.push(l.id);
+  }
+  return changed;
+}
+
+// Pielāgo stilu: bez 3D māju slāņa (ātrāk), nosaukumi latviski (visiem stiliem) un ar mūsu krāsām.
 function tuneStyle(style, theme) {
   style.layers = style.layers.filter(l => l.type !== 'fill-extrusion');
+  localizeLabels(style);
   // Plakanās mājas rāda arī pietuvinot (agrāk to darīja 3D slānis).
   for (const l of style.layers) {
     if (l['source-layer'] === 'building' && l.type === 'fill') delete l.maxzoom;
@@ -71,3 +93,5 @@ async function loadBasemapStyle(choice) {
     return { theme: 'classic', style: CLASSIC_STYLE, vector: false };
   }
 }
+
+if (typeof module !== 'undefined') module.exports = { tuneStyle, localizeLabels, isNameLabel, LABEL_LV };
