@@ -2010,20 +2010,20 @@ function refreshAlertDots() {
   src.setData({ type: 'FeatureCollection', features: show ? signDots.concat(own) : [] });
 }
 
-// ----- Pāreja punkts ↔ ikona (2 varianti: "pop" — Elegant Pop, "morph" — dzīvīgāka pārveidošanās) -----
+// ----- Pāreja punkts ↔ ikona (2 varianti: "pop" — „Uzlēciens”, "morph" — „Pārveidošanās”; vērtības nemainīt — saglabātas lietotāju ierīcēs) -----
 // pos: 0 — punkti, 1 — ikonas. Animē laika gaitā uz mērķi; kadra vērtības nosaka varianta līknes.
 const markerMorph = { pos: 1, target: 1, raf: 0, last: 0, pending: 0, kind: store.get('markerAnim', 'pop') };
 const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
 const smooth = x => { x = clamp01(x); return x * x * (3 - 2 * x); };
 const backOut = (x, c) => { x = clamp01(x); const u = x - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
 const MARKER_VARIANTS = {
-  // Elegant Pop: punkts nedaudz palielinās → ikona parādās ar fade + scale un nelielu atsitienu
+  // Uzlēciens (pop): punkts nedaudz palielinās → ikona parādās ar fade + scale un nelielu atsitienu
   pop: { ms: 340, frame: t => ({
     dotR: 1 + 0.35 * smooth(t / 0.35), dotOp: 1 - smooth((t - 0.28) / 0.32),
     glow: 1 + 0.7 * smooth(t / 0.3) * (1 - smooth((t - 0.35) / 0.35)),
     iconOp: smooth((t - 0.2) / 0.32), iconS: 0.55 + 0.45 * backOut((t - 0.2) / 0.8, 1.6),
   }) },
-  // Morph: punkts "ieelpo", paplašinās ar mirdzumu, no tā izaug ikona ar mazu atlēcienu
+  // Pārveidošanās (morph): punkts "ieelpo", paplašinās ar mirdzumu, no tā izaug ikona ar mazu atlēcienu
   morph: { ms: 560, frame: t => {
     const inhale = 1 - 0.24 * Math.sin(Math.PI * clamp01(t / 0.36));
     const grow = 1 + 0.95 * smooth((t - 0.16) / 0.32);
