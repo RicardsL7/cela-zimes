@@ -7,7 +7,7 @@
 --   • Atmaksu veic servera funkcija ride-pay (darbība "refund") — Stripe Refund ar reverse_transfer
 --     (nauda tiek atgūta no šofera konta) un refund_application_fee (atgriež arī lietotnes komisiju).
 --   • Patiesība par maksājumu vienmēr ir Stripe; šīs kolonnas ir pieraksts lietotnei un īpašniekam.
---   • Statusu maina TIKAI ar funkciju ride_payment_mark (brauciena dalībnieks, tikai uz priekšu:
+--   • Statusu maina TIKAI ar funkciju ride_payment_mark (kopš v113 — tikai servera funkcija ride-pay, rides-11-paymark.sql; tikai uz priekšu:
 --     created → paid → refunded). Atmaksu pašu var veikt tikai servera funkcija ar Stripe atslēgu.
 
 alter table public.ride_payments add column if not exists status text not null default 'created'
@@ -55,35 +55,10 @@ drop trigger if exists ride_payment_guard_ins on public.ride_payments;
 create trigger ride_payment_guard_ins before insert on public.ride_payments
   for each row execute function public.ride_payment_guard_ins();
 
--- Statusa pieraksts (izsauc servera funkcija ride-pay brauciena dalībnieka vārdā, pēc tam kad Stripe to apstiprinājis)
-create or replace function public.ride_payment_mark(oid uuid, p_status text, p_refund_id text default null,
-                                                    p_reason text default null, p_cents int default null) returns boolean
-  language plpgsql security definer set search_path = public as
-$$
-declare cur text;
-begin
-  if auth.uid() is null then raise exception 'Nav pieteicies'; end if;
-  if not exists (select 1 from ride_offers o join ride_requests r on r.id = o.request_id
-                 where o.id = oid and (o.driver_id = auth.uid() or r.user_id = auth.uid())) then
-    raise exception 'Brauciens nav atrasts';
-  end if;
-  select status into cur from ride_payments where offer_id = oid;
-  if cur is null then return false; end if;
-  if p_status not in ('paid', 'refunded') then raise exception 'Nederīgs statuss'; end if;
-  -- tikai uz priekšu; atmaksas datus servera funkcija pēc Stripe pārbaudes drīkst pārrakstīt
-  if (cur = 'refunded' and p_status <> 'refunded') or (cur = 'paid' and p_status = 'paid') then return false; end if;
-  if p_status = 'refunded' and (p_refund_id is null or p_cents is null) then raise exception 'Trūkst atmaksas datu'; end if;
-  perform set_config('cz.pay_mark', 'on', true);
-  update ride_payments set status = p_status,
-      refund_id = case when p_status = 'refunded' then p_refund_id else refund_id end,
-      refunded_at = case when p_status = 'refunded' then now() else refunded_at end,
-      refund_reason = case when p_status = 'refunded' then p_reason else refund_reason end,
-      refund_cents = case when p_status = 'refunded' then p_cents else refund_cents end
-    where offer_id = oid;
-  perform set_config('cz.pay_mark', 'off', true);
-  return true;
-end
-$$;
+-- Statusa pieraksts: funkcija ride_payment_mark tagad ir failā rides-11-paymark.sql (F17, v113) —
+-- izsaucama TIKAI ar service_role no servera funkcijas ride-pay (lietotāja ID parametrā p_user_id).
+-- Agrākā versija (izsaucama ar authenticated) šeit vairs netiek veidota, lai šo failu atkārtoti palaižot
+-- caurums neatgrieztos.
 
 -- Braucieni, kuriem varētu būt jāveic automātiskā atmaksa: ir maksājuma sesija, bet brauciens atcelts
 -- PIRMS iekāpšanas (šoferis atcēla, pasažieris atsauca vai lietotne atcēla novecojušu braucienu).
@@ -119,9 +94,7 @@ $$
   limit 20
 $$;
 
-revoke all on function public.ride_payment_mark(uuid, text, text, text, int) from public, anon;
 revoke all on function public.ride_refund_candidates() from public, anon;
 revoke all on function public.ride_refunds_recent() from public, anon;
-grant execute on function public.ride_payment_mark(uuid, text, text, text, int) to authenticated;
 grant execute on function public.ride_refund_candidates() to authenticated;
 grant execute on function public.ride_refunds_recent() to authenticated;
