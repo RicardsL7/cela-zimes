@@ -1730,10 +1730,11 @@ test('F17: ride_payment_mark — tikai service_role, lietotājs no JWT, pārlūk
   ok(/revoke all on function public\.ride_payment_mark\(uuid, uuid, text, text, text, int\) from public, anon, authenticated;/.test(sql) &&
      /grant execute on function public\.ride_payment_mark\(uuid, uuid, text, text, text, int\) to service_role;/.test(sql), 'tikai service_role');
   ok(/old\.status = 'paid' and new\.session_id is distinct from old\.session_id/.test(sql), 'samaksātai rindai sesiju nemaina');
-  const m = fn.slice(fn.indexOf('const mark = async'), fn.indexOf('// ---------- Atmaksa (F14)'));
-  ok(/apikey: SRK/.test(m) && /p_user_id: uid/.test(m), 'mark — servisa atslēga + uid no JWT');
+  const m = fn.slice(fn.indexOf('const mark = '), fn.indexOf('// ---------- Atmaksa (F14)'));
+  const mp = fn.slice(fn.indexOf('async function markPay'), fn.indexOf('const SYNC_MAX'));
+  ok(/markPay\(uid, oid,/.test(m) && /sdb\('rpc\/ride_payment_mark'/.test(mp) && /p_user_id: userId/.test(mp) && /apikey: SRK/.test(fn.slice(fn.indexOf('async function sdb'))), 'mark — servisa atslēga + uid no JWT');
   ok(/const uid: string = \(await ur\.json\(\)\)\.id;/.test(fn) && /'\/auth\/v1\/user'/.test(fn), 'uid no /auth/v1/user');
-  ok(!/db\('rpc\/ride_payment_mark'/.test(fn), 'ar lietotāja JWT nesauc');
+  ok(!/[^s]db\('rpc\/ride_payment_mark'/.test(fn), 'ar lietotāja JWT nesauc');
   ok(!/json\([^)]*SRK/.test(fn) && (fn.match(/SRK/g) || []).length <= 6, 'atslēga atbildē nenonāk');
   ok(/if \(i\.paid && r\.status === 'created'\) await mark\(r\.offer_id, 'paid'\)/.test(fn), 'paid tikai pēc Stripe');
   ok(/if \(r\.status === 'failed' \|\| r\.status === 'canceled'\)[\s\S]{0,250}\}\s*await mark\(oid, 'refunded', r\.id/.test(fn), 'refunded tikai pēc veiksmīgas atmaksas');
@@ -1766,6 +1767,36 @@ test('F18: kartes stila nosaukumi — name:lv / name, ceļu un māju numuri nesk
   ok(JSON.stringify(b.LABEL_LV) === JSON.stringify(['coalesce', ['get', 'name:lv'], ['get', 'name'], ['get', 'name:latin'], ['get', 'name_en']]), 'secība name:lv → name → latin → en');
   const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
   ok((app.match(/await loadBasemapStyle\(/g) || []).length >= 2 && /map\.setStyle\(bm\.style/.test(app), 'katra stila maiņa iet caur loadBasemapStyle → tuneStyle');
+});
+
+// ---------- F19: Stripe webhook + „Sinhronizēt ar Stripe” ----------
+test('F19: stripe-webhook — paraksts, notikumi, idempotence, tikai uz priekšu', () => {
+  const wh = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'stripe-webhook', 'index.ts'), 'utf8');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'rides-12-webhook.sql'), 'utf8');
+  ok(/const body = await req\.text\(\);/.test(wh) && !/req\.json\(\)/.test(wh), 'ķermenis kā teksts');
+  ok(/webhooks\.constructEventAsync\(body, sig, WHSEC, undefined, cryptoProvider\)/.test(wh) && /Stripe\.createSubtleCryptoProvider\(\)/.test(wh), 'Stripe paraksta pārbaude');
+  ok(/catch \{\s*return json\(\{ error: 'Nederīgs paraksts' \}, 400\);/.test(wh), 'nederīgs paraksts → 400');
+  ok(wh.indexOf('constructEventAsync') < wh.indexOf("sdb(`stripe_events?id=eq."), 'nekas netiek lasīts/rakstīts pirms paraksta');
+  for (const e of ['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'checkout.session.async_payment_failed', 'checkout.session.expired', 'charge.refunded'])
+    ok(wh.includes(`'${e}'`), e);
+  ok(/obj\.payment_status === 'paid' \? await syncOffer/.test(wh), 'paid tikai, ja payment_status = paid');
+  ok(/amount_refunded\) < Number\(obj\.amount\)/.test(wh), 'daļēja atmaksa netiek atzīmēta');
+  ok(/rpc\/ride_payment_mark/.test(wh) && /p_user_id: passenger/.test(wh), 'raksta caur ride_payment_mark (service_role)');
+  ok(/seen\?\.length\) return json\(\{ received: true, duplicate: true \}\)/.test(wh), 'atkārtots notikums neko nedara');
+  ok(!/json\([^)]*(SRK|WHSEC|SK)\b/.test(wh), 'atslēgas atbildē nenonāk');
+  ok(/create table if not exists public\.stripe_events \(\s*id text primary key/.test(sql) && /enable row level security/.test(sql) &&
+     /revoke all on table public\.stripe_events from public, anon, authenticated;/.test(sql), 'stripe_events tikai serverim');
+});
+test('F19: ride-pay „sync” — tikai īpašniekam, pa daļām; admin.html poga ar ziņu pie pogas', () => {
+  const rp = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'ride-pay', 'index.ts'), 'utf8');
+  const c = rp.slice(rp.indexOf("case 'sync'"), rp.indexOf("case 'refund_sync'"));
+  ok(c.indexOf("rpc/is_app_admin") > 0 && c.indexOf("rpc/is_app_admin") < c.indexOf('sdb('), 'īpašnieka pārbaude pirms datiem');
+  ok(/status=in\.\(created,paid\)/.test(c) && /offset=\$\{offset\}/.test(c), 'negalīgie, pa daļām');
+  ok(/client_reference_id: oid/.test(rp) && /metadata: \{ offer_id: oid \}/.test(rp) && /transfer_data: \{ destination: acct \}/.test(rp), 'sesijā brauciena ID; destination charges');
+  const js = fs.readFileSync(path.join(__dirname, '..', 'admin.js'), 'utf8');
+  ok(/action: 'sync', offset/.test(js) && /Pārbaudīti \$\{checked\}, atjaunoti \$\{updated\}/.test(js) && /await admLoad\(\)/.test(js), 'poga, rezultāts, pārlāde');
+  const f = js.slice(js.indexOf('async function admSync'), js.indexOf('async function admFees'));
+  ok(!/admSay\(/.test(f) && /msg\.textContent = adm\.syncMsg\.text/.test(f), 'kļūda pie pogas, ne kopējā ziņā');
 });
 
 // ---------- F16: administrēšanas lapa ----------
