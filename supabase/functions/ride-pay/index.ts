@@ -119,6 +119,25 @@ async function payInfo(sessionId: string, oid: string): Promise<PayInfo | null> 
 }
 const REASONS = ['cancelled_before_pickup', 'driver_refund', 'stripe_dashboard'];
 
+// F17/F19: datubāze ar servisa atslēgu — TIKAI maksājuma statusa pierakstam un īpašnieka sinhronizācijai.
+// deno-lint-ignore no-explicit-any
+async function sdb(path: string, init: RequestInit = {}): Promise<any> {
+  const h: Record<string, string> = { apikey: SRK, 'content-type': 'application/json', ...((init.headers as Record<string, string>) ?? {}) };
+  if (SRK.startsWith('eyJ')) h.Authorization = 'Bearer ' + SRK;   // vecā tipa (JWT) atslēga; jaunā sb_secret_ — tikai apikey
+  const r = await fetch(SB + '/rest/v1/' + path, { ...init, headers: h });
+  const t = await r.text();
+  if (!r.ok) throw new Error('DB ' + path.split('?')[0] + ' ' + r.status + ' ' + t.slice(0, 200));
+  return t ? JSON.parse(t) : null;
+}
+// Statusa pieraksts (rpc/ride_payment_mark — tikai service_role, tikai uz priekšu). userId — pārbaudīts brauciena dalībnieks.
+async function markPay(userId: string, oid: string, status: 'paid' | 'refunded', refundId: string | null = null, reason: string | null = null, cents: number | null = null) {
+  if (!SRK) { console.error('mark: nav SUPABASE_SERVICE_ROLE_KEY'); return false; }
+  return await sdb('rpc/ride_payment_mark', { method: 'POST',
+    body: JSON.stringify({ p_user_id: userId, oid, p_status: status, p_refund_id: refundId,
+      p_reason: reason && REASONS.includes(reason) ? reason : (status === 'refunded' ? 'stripe_dashboard' : null), p_cents: cents }) }) === true;
+}
+const SYNC_MAX = 40;
+
 // F16: Rīgas dienas / mēneša sākums (sekundes, UTC) — Stripe `created` salīdzināšanai
 function rigaStart(unit: 'day' | 'month', now = Date.now()): number {
   const parts = (t: number) => Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Riga', hourCycle: 'h23',
@@ -175,19 +194,8 @@ Deno.serve(async (req) => {
     // F17: izsauc ar servisa atslēgu; lietotāja ID — pārbaudītais uid no pieprasījuma JWT (nevis no pārlūka datiem).
     // Šeit nonāk tikai pēc Stripe pārbaudes: 'paid' — Checkout Session payment_status = 'paid';
     // 'refunded' — pēc veiksmīga Stripe Refund vai ja Stripe rāda atmaksu (charge refunds).
-    const mark = async (oid: string, status: 'paid' | 'refunded', refundId: string | null = null, reason: string | null = null, cents: number | null = null) => {
-      if (!SRK) { console.error('mark: nav SUPABASE_SERVICE_ROLE_KEY'); return; }
-      const h: Record<string, string> = { apikey: SRK, 'content-type': 'application/json' };
-      if (SRK.startsWith('eyJ')) h.Authorization = 'Bearer ' + SRK;   // vecā tipa (JWT) atslēga; jaunā sb_secret_ — tikai apikey
-      try {
-        const r = await fetch(SB + '/rest/v1/rpc/ride_payment_mark', {
-          method: 'POST', headers: h,
-          body: JSON.stringify({ p_user_id: uid, oid, p_status: status, p_refund_id: refundId,
-            p_reason: reason && REASONS.includes(reason) ? reason : (status === 'refunded' ? 'stripe_dashboard' : null), p_cents: cents }),
-        });
-        if (!r.ok) console.error('mark', oid, r.status, (await r.text()).slice(0, 200));
-      } catch (e) { console.error('mark', oid, e); }
-    };
+    const mark = (oid: string, status: 'paid' | 'refunded', refundId: string | null = null, reason: string | null = null, cents: number | null = null) =>
+      markPay(uid, oid, status, refundId, reason, cents).catch((e: unknown) => console.error('mark', oid, e));
 
     // ---------- Atmaksa (F14) ----------
     // mode 'driver' — šoferis nospieda „Atmaksāt” (tikai šī brauciena šoferis);
@@ -402,6 +410,33 @@ Deno.serve(async (req) => {
           pages++;
         }
         return json({ fees: { today, month, total }, count: n, total_partial: more, fee_pct: FEE_PCT, test });
+      }
+
+      // F19: „Sinhronizēt ar Stripe” — TIKAI īpašniekam (is_app_admin pēc pieslēgtā konta, servera pusē). Visus maksājumus, kas
+      // nav galīgi (created; paid — vai nav atmaksāts), pārbauda Stripe un pieraksta tāpat kā webhook. Pa daļām (offset).
+      case 'sync': {
+        const isAdmin = await db('rpc/is_app_admin', { method: 'POST', body: '{}' }).catch(() => false);
+        if (isAdmin !== true) throw new Fail('Nav piekļuves', 403);
+        if (!SRK) throw new Fail('Serverim nav servisa atslēgas', 500);
+        const offset = Math.max(0, Math.min(100000, Number(body.offset) || 0));
+        const rows = await sdb(`ride_payments?status=in.(created,paid)&select=offer_id,session_id,status,offer:ride_offers(request:ride_requests(user_id))` +
+          `&order=created_at.asc,offer_id.asc&limit=${SYNC_MAX}&offset=${offset}`);
+        let checked = 0, updated = 0, failed = 0;
+        for (const r of rows ?? []) {
+          const passenger = r.offer?.request?.user_id;
+          const i = await payInfo(r.session_id, r.offer_id);
+          if (!i || !passenger) { failed++; continue; }
+          checked++;
+          try {
+            if (i.refundedCents > 0) {
+              if (i.amount != null && i.refundedCents < i.amount) { console.log('sync: daļēja atmaksa', r.offer_id); continue; }
+              if (i.refundId && await markPay(passenger, r.offer_id, 'refunded', i.refundId, i.refundReason, i.refundedCents)) updated++;
+            } else if (i.paid && r.status === 'created') {
+              if (await markPay(passenger, r.offer_id, 'paid')) updated++;
+            }
+          } catch (e) { failed++; console.error('sync', r.offer_id, e); }
+        }
+        return json({ checked, updated, failed, more: (rows ?? []).length === SYNC_MAX, next: offset + SYNC_MAX });
       }
 
       // Atverot „Kopā”: automātiski atmaksā visus maniem braucieniem, kas atcelti pirms iekāpšanas, bet vēl nav atmaksāti
