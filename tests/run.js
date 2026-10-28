@@ -1817,6 +1817,18 @@ test('F20: getLocationState un „Ziņot” logs — liegts / meklē / nav pieej
   ok(!/setStatus/.test(fn), 'bez setStatus');
 });
 
+// ---------- F21: iestatījumi latviski ----------
+test('F21: „Marķieru animācija” — nosaukumi latviski, vērtības nemainītas', () => {
+  for (const f of ['index.html', 'index-gl.html']) {
+    const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    ok(h.includes('<option value="pop">Uzlēciens</option>') && h.includes('<option value="morph">Pārveidošanās</option>'), f + ': latviski, vērtības pop / morph');
+    const set = h.slice(h.indexOf('id="settings"'), h.indexOf('id="devBox"'));
+    ok(!/Elegant|Morph</.test(set), f + ': nav angļu nosaukumu');
+  }
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  ok(/store\.get\('markerAnim', 'pop'\)/.test(app) && /\bpop: \{ ms:/.test(app) && /\bmorph: \{ ms:/.test(app), 'saglabātās vērtības der kā līdz šim');
+});
+
 // ---------- F16: administrēšanas lapa ----------
 test('F16: admin.html — atsevišķa sesija, servera pārbaude, nav e-pasta', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'admin.html'), 'utf8');
