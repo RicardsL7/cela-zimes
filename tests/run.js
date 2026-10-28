@@ -1743,6 +1743,31 @@ test('F17: ride_payment_mark — tikai service_role, lietotājs no JWT, pārlūk
   }
 });
 
+// ---------- F18: kartes nosaukumi latviski ----------
+test('F18: kartes stila nosaukumi — name:lv / name, ceļu un māju numuri neskarti', () => {
+  const b = require(path.join(__dirname, '..', 'basemap-gl.js'));
+  const omt = ['case', ['has', 'name:nonlatin'], ['concat', ['get', 'name:latin'], '\n', ['get', 'name:nonlatin']], ['coalesce', ['get', 'name_en'], ['get', 'name']]];
+  const mk = () => ({ layers: [
+    { id: 'label_city', type: 'symbol', layout: { 'text-field': JSON.parse(JSON.stringify(omt)) } },
+    { id: 'water', type: 'symbol', layout: { 'text-field': '{name_en}' } },
+    { id: 'shield', type: 'symbol', layout: { 'text-field': ['to-string', ['get', 'ref']] } },
+    { id: 'housenum', type: 'symbol', layout: { 'text-field': '{housenumber}' } },
+    { id: 'house3d', type: 'fill-extrusion', layout: {} },
+    { id: 'bg', type: 'background' },
+  ] });
+  for (const theme of ['colorful', 'dark', 'light']) {
+    const st = b.tuneStyle(mk(), theme), L = id => st.layers.find(l => l.id === id);
+    eq(JSON.stringify(L('label_city').layout['text-field']), JSON.stringify(b.LABEL_LV), theme + ': pilsēta latviski');
+    eq(JSON.stringify(L('water').layout['text-field']), JSON.stringify(b.LABEL_LV), theme + ': ūdens latviski');
+    eq(JSON.stringify(L('shield').layout['text-field']), JSON.stringify(['to-string', ['get', 'ref']]), theme + ': ceļa numurs neskarts');
+    eq(L('housenum').layout['text-field'], '{housenumber}', theme + ': mājas numurs neskarts');
+    ok(!L('house3d'), theme + ': bez 3D');
+  }
+  ok(JSON.stringify(b.LABEL_LV) === JSON.stringify(['coalesce', ['get', 'name:lv'], ['get', 'name'], ['get', 'name:latin'], ['get', 'name_en']]), 'secība name:lv → name → latin → en');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  ok((app.match(/await loadBasemapStyle\(/g) || []).length >= 2 && /map\.setStyle\(bm\.style/.test(app), 'katra stila maiņa iet caur loadBasemapStyle → tuneStyle');
+});
+
 // ---------- F16: administrēšanas lapa ----------
 test('F16: admin.html — atsevišķa sesija, servera pārbaude, nav e-pasta', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'admin.html'), 'utf8');
