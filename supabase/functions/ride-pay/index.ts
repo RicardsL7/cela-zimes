@@ -12,12 +12,17 @@
 // reverse_transfer (nauda atgūta no šofera konta) un refund_application_fee (atgriež arī komisiju), Idempotency-Key
 // "refund-<brauciena ID>" — divreiz neatmaksā. Vai samaksāts / atmaksāts — vienmēr jautā Stripe.
 //
-// Datubāzei funkcija piekļūst AR LIETOTĀJA PAŠA pieteikšanos (RLS noteikumi supabase/rides-3-pay.sql),
-// nevis ar servisa atslēgu. Vai brauciens samaksāts, funkcija vienmēr jautā Stripe.
+// Datubāzei funkcija piekļūst AR LIETOTĀJA PAŠA pieteikšanos (RLS noteikumi supabase/rides-3-pay.sql).
+// Vienīgais izņēmums (F17, v113): maksājuma statusa pieraksts rpc/ride_payment_mark — ar Supabase iebūvēto servisa
+// atslēgu (SUPABASE_SERVICE_ROLE_KEY), jo pārlūks šo funkciju izsaukt nedrīkst (supabase/rides-11-paymark.sql).
+// Vai brauciens samaksāts, funkcija vienmēr jautā Stripe.
 
 const SK = (Deno.env.get('STRIPE_SECRET_KEY') ?? '').trim();
 const LIVE_OK = Deno.env.get('PAY_LIVE') === 'yes';
 const SB = (Deno.env.get('SUPABASE_URL') ?? '').replace(/\/$/, '');
+// F17: Supabase iebūvētā servisa atslēga (Edge Function vidē jau ir). Lieto TIKAI maksājuma statusa pierakstam
+// (rpc/ride_payment_mark, ko pārlūks izsaukt nevar). Nekad netiek atdota atbildē un nenonāk pārlūkā.
+const SRK = (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '').trim();
 const FEE_PCT = Math.min(30, Math.max(0, Number(Deno.env.get('PAY_FEE_PERCENT') ?? '10') || 0));
 const APP_URLS = ['https://ricardsl7.github.io/cela-zimes/', 'http://localhost:', 'http://127.0.0.1:'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -166,11 +171,23 @@ Deno.serve(async (req) => {
       return false;
     };
 
-    // Maksājuma statusa pieraksts datubāzē (tikai uz priekšu; kļūda nav kritiska — patiesība ir Stripe)
-    const mark = (oid: string, status: 'paid' | 'refunded', refundId: string | null = null, reason: string | null = null, cents: number | null = null) =>
-      db('rpc/ride_payment_mark', { method: 'POST', body: JSON.stringify({ oid, p_status: status, p_refund_id: refundId,
-        p_reason: reason && REASONS.includes(reason) ? reason : (status === 'refunded' ? 'stripe_dashboard' : null), p_cents: cents }) })
-        .catch((e: unknown) => console.error('mark', oid, e));
+    // Maksājuma statusa pieraksts datubāzē (tikai uz priekšu; kļūda nav kritiska — patiesība ir Stripe).
+    // F17: izsauc ar servisa atslēgu; lietotāja ID — pārbaudītais uid no pieprasījuma JWT (nevis no pārlūka datiem).
+    // Šeit nonāk tikai pēc Stripe pārbaudes: 'paid' — Checkout Session payment_status = 'paid';
+    // 'refunded' — pēc veiksmīga Stripe Refund vai ja Stripe rāda atmaksu (charge refunds).
+    const mark = async (oid: string, status: 'paid' | 'refunded', refundId: string | null = null, reason: string | null = null, cents: number | null = null) => {
+      if (!SRK) { console.error('mark: nav SUPABASE_SERVICE_ROLE_KEY'); return; }
+      const h: Record<string, string> = { apikey: SRK, 'content-type': 'application/json' };
+      if (SRK.startsWith('eyJ')) h.Authorization = 'Bearer ' + SRK;   // vecā tipa (JWT) atslēga; jaunā sb_secret_ — tikai apikey
+      try {
+        const r = await fetch(SB + '/rest/v1/rpc/ride_payment_mark', {
+          method: 'POST', headers: h,
+          body: JSON.stringify({ p_user_id: uid, oid, p_status: status, p_refund_id: refundId,
+            p_reason: reason && REASONS.includes(reason) ? reason : (status === 'refunded' ? 'stripe_dashboard' : null), p_cents: cents }),
+        });
+        if (!r.ok) console.error('mark', oid, r.status, (await r.text()).slice(0, 200));
+      } catch (e) { console.error('mark', oid, e); }
+    };
 
     // ---------- Atmaksa (F14) ----------
     // mode 'driver' — šoferis nospieda „Atmaksāt” (tikai šī brauciena šoferis);
@@ -396,7 +413,7 @@ Deno.serve(async (req) => {
           try { const r = await refund(oid, 'auto'); if (r && !r.already) done.push({ offer_id: oid, ...r }); }
           catch (e) { if (!(e instanceof Fail) || e.status >= 500) console.error('refund_sync', oid, e); }   // nav samaksāts u.tml. — izlaiž
         }
-        // Datubāzes ierakstam par atmaksu neuzticas (to var pierakstīt brauciena dalībnieks) — katru pārbauda Stripe
+        // Datubāzes ierakstam par atmaksu neuzticas — katru vēlreiz pārbauda Stripe
         const rec: { offer_id: string; refund_cents: number }[] = ((await db('rpc/ride_refunds_recent', { method: 'POST', body: '{}' })) ?? [])
           .filter((x: { offer_id: string }) => UUID.test(String(x.offer_id)));
         const recent: unknown[] = [];
