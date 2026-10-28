@@ -1130,7 +1130,7 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
     for (const c of ['status text', 'refund_id text', 'refunded_at timestamptz', 'refund_reason text', 'refund_cents int']) ok(sql.includes(c), c);
     ok(/'cancelled_before_pickup', 'driver_refund', 'stripe_dashboard'/.test(sql), 'iemesli');
     ok(/Maksājuma statusu mainīt nevar/.test(sql) && /create trigger ride_payment_guard before update/.test(sql), 'aizsardzība');
-    ok(/revoke all on function public\.ride_payment_mark\([^)]*\) from public, anon/.test(sql), 'anon nevar');
+    ok(!/create or replace function public\.ride_payment_mark/.test(sql), 'vecā (authenticated) funkcija vairs netiek veidota');
   });
   test('F14: saskarne — „Atmaksāt” tikai samaksātam un neatmaksātam, ar apstiprinājumu; ziņas kartītē / uznirstošas', () => {
     ok(/if \(!\(ok && p && p\.paid && !p\.refunded\)\) return line;/.test(ui), 'poga tikai samaksātam');
@@ -1716,6 +1716,31 @@ test('F16: UI, SQL un ride-pay — īpašnieks tikai pēc servera pārbaudes', (
   const c = rp.slice(rp.indexOf("case 'admin_stats'"), rp.indexOf("case 'refund_sync'"));
   ok(c.indexOf("rpc/is_app_admin") > 0 && c.indexOf("rpc/is_app_admin") < c.indexOf("stripe('application_fees"), 'ride-pay: is_app_admin pirms Stripe');
   ok(/if \(isAdmin !== true\) throw new Fail\('Nav piekļuves', 403\)/.test(c), '403');
+});
+
+// ---------- F17: maksājuma statusu raksta tikai ride-pay ----------
+test('F17: ride_payment_mark — tikai service_role, lietotājs no JWT, pārlūks nesauc', () => {
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'rides-11-paymark.sql'), 'utf8');
+  const fn = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'ride-pay', 'index.ts'), 'utf8');
+  ok(/drop function if exists public\.ride_payment_mark\(uuid, text, text, text, int\);/.test(sql), 'vecā funkcija dzēsta');
+  ok(/function public\.ride_payment_mark\(p_user_id uuid, oid uuid,/.test(sql), 'lietotāja ID parametrā');
+  ok(/security definer set search_path = public, pg_temp/.test(sql), 'search_path');
+  ok(!/auth\.uid\(\)/.test(sql.slice(sql.indexOf('create or replace function public.ride_payment_mark'), sql.indexOf('revoke all'))), 'neizmanto auth.uid()');
+  ok(/o\.driver_id = p_user_id or r\.user_id = p_user_id/.test(sql), 'pārbauda dalībnieku');
+  ok(/revoke all on function public\.ride_payment_mark\(uuid, uuid, text, text, text, int\) from public, anon, authenticated;/.test(sql) &&
+     /grant execute on function public\.ride_payment_mark\(uuid, uuid, text, text, text, int\) to service_role;/.test(sql), 'tikai service_role');
+  ok(/old\.status = 'paid' and new\.session_id is distinct from old\.session_id/.test(sql), 'samaksātai rindai sesiju nemaina');
+  const m = fn.slice(fn.indexOf('const mark = async'), fn.indexOf('// ---------- Atmaksa (F14)'));
+  ok(/apikey: SRK/.test(m) && /p_user_id: uid/.test(m), 'mark — servisa atslēga + uid no JWT');
+  ok(/const uid: string = \(await ur\.json\(\)\)\.id;/.test(fn) && /'\/auth\/v1\/user'/.test(fn), 'uid no /auth/v1/user');
+  ok(!/db\('rpc\/ride_payment_mark'/.test(fn), 'ar lietotāja JWT nesauc');
+  ok(!/json\([^)]*SRK/.test(fn) && (fn.match(/SRK/g) || []).length <= 6, 'atslēga atbildē nenonāk');
+  ok(/if \(i\.paid && r\.status === 'created'\) await mark\(r\.offer_id, 'paid'\)/.test(fn), 'paid tikai pēc Stripe');
+  ok(/if \(r\.status === 'failed' \|\| r\.status === 'canceled'\)[\s\S]{0,250}\}\s*await mark\(oid, 'refunded', r\.id/.test(fn), 'refunded tikai pēc veiksmīgas atmaksas');
+  for (const f of fs.readdirSync(path.join(__dirname, '..')).filter(f => /\.(js|html)$/.test(f))) {
+    const code = fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/^\s*\/\/.*$/gm, '');   // komentāri (piem. brīdinājums rides-config.js) neskaitās
+    ok(!/ride_payment_mark|service_role|SERVICE_ROLE/i.test(code), f + ': nesauc / nav atslēgas');
+  }
 });
 
 // ---------- F16: administrēšanas lapa ----------
