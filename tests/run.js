@@ -1838,6 +1838,34 @@ test('F22: „Elektroauto uzlāde” — nav „EV”, id un OSM vaicājums nema
     ok(!/\bEV\b/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': nav „EV”');
 });
 
+// ---------- F23: atceltie statistikā = atceltie „Mani braucieni” ----------
+test('F23: atcelti braucieni + atsaukti pieprasījumi = atceltie vēsturē (demo, SQL, UI)', async () => {
+  const S = G('LocalRideStore'), wd = G('rideHistWithdrawn');
+  const mem = { d: {}, getItem(k) { return this.d[k] ?? null; }, setItem(k, v) { this.d[k] = v; } };
+  const pas = new S(mem, 'k'); await pas.saveProfile({ name: 'Anna' });
+  const drv = new S(mem, 'k'); drv.id = 'drv'; await drv.saveProfile({ name: 'Jānis' });
+  const st0 = await pas.myStats(); eq(st0.passenger_withdrawn, 0, 'jauns konts — 0');
+  const req = { from_lat: 56.95, from_lng: 24.10, to_lat: 56.95, to_lng: 24.20, from_name: 'A', to_name: 'B', seats: 1, note: '', depart_at: new Date().toISOString() };
+  const r1 = await pas.createRequest(req); await drv.offer(r1.id, { eta_min: 3 });
+  const o1 = (await pas.offersFor(r1.id))[0]; await pas.respond(o1.id, 'accepted'); await drv.cancelOffer(o1.id);   // atcelts brauciens
+  for (let i = 0; i < 3; i++) { const r = await pas.createRequest(req); await pas.setRequestStatus(r.id, 'cancelled'); }           // 3 atsaukti
+  const st = await pas.myStats(), h = await pas.myHistory();
+  const canc = h.filter(x => x.status !== 'done');
+  eq(st.passenger_cancelled, 1, 'atcelti braucieni'); eq(st.passenger_withdrawn, 3, 'atsaukti pieprasījumi');
+  eq(st.passenger_cancelled + st.passenger_withdrawn, canc.length, 'kopā = atceltie vēsturē');
+  eq(canc.filter(wd).length, 3, 'vēsturē atšķirami');
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'rides-ui.js'), 'utf8');
+  ok(/'Kā pasažieris — atsaukti pieprasījumi'/.test(ui) && /RIDE_CANCELLED_NOTE = 'Braucieni, kuriem jau bija saskaņots šoferis'/.test(ui), 'statistikas rindas un paskaidrojums');
+  ok(/'atsaukts pieprasījums' : 'atcelts brauciens'/.test(ui) && /'Pieprasījums atsaukts' : 'Brauciens atcelts'/.test(ui), 'vēsturē „atsaukts” / „atcelts”');
+  const adm = fs.readFileSync(path.join(__dirname, '..', 'admin.js'), 'utf8');
+  ok(/admRow\('Atcelti braucieni', a\.cancelled_rides/.test(adm) && /admRow\('Atsaukti pieprasījumi', a\.withdrawn/.test(adm), 'admin lapa');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'stats-2-f23.sql'), 'utf8');
+  ok(/'passenger_withdrawn'/.test(sql) && /'cancelled_rides'/.test(sql) && /'withdrawn'/.test(sql), 'SQL lauki');
+  ok(/if not is_app_admin\(\) then raise exception 'forbidden'/.test(sql) && /me uuid := auth\.uid\(\)/.test(sql), 'tiesības tās pašas');
+  ok(/revoke all on function public\.my_stats\(\) from public, anon;/.test(sql) && /grant execute on function public\.my_stats\(\) to authenticated;/.test(sql), 'grants');
+  ok(!/\b(update|delete|insert)\b/i.test(sql.replace(/--.*$/gm, '')), 'dati netiek mainīti');
+});
+
 // ---------- F16: administrēšanas lapa ----------
 test('F16: admin.html — atsevišķa sesija, servera pārbaude, nav e-pasta', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'admin.html'), 'utf8');
