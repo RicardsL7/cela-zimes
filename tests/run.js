@@ -503,7 +503,7 @@ test('N. Vietas tuvumā: 13 kategorijas, pareizs Overpass vaicājums, tuvākās 
   ];
   const r = parse(els, 'fuel', 56.95, 24.1, now, pc);
   eq(r.length, 2, 'bez koordinātēm un dublikātiem');
-  eq(r[0].name, 'Circle K'); eq(r[0].addr, 'Brīvības iela 1'); eq(r[0].open, false, 'slēgts 13:00');
+  eq(r[0].name, 'Degviela · Circle K', 'bez name — kategorija · zīmols (F24)'); eq(r[0].addr, 'Brīvības iela 1'); eq(r[0].open, false, 'slēgts 13:00');
   eq(r[1].name, 'Tālā'); eq(r[1].open, true, '24/7 atvērts');
   ok(r[0].d < r[1].d, 'tuvākā pirmā');
 });
@@ -1835,7 +1835,7 @@ test('F22: „Elektroauto uzlāde” — nav „EV”, id un OSM vaicājums nema
   ok(/\{ id: 'ev', +label: 'Elektroauto uzlāde', +color: '#0c8599', q: \['nwr\["amenity"="charging_station"\]'\]/.test(pl), 'teksts mainīts, id ev un vaicājums tie paši');
   ok(/"ev": \["amenity:charging_station"\]/.test(pl), 'Photon birkas nemainītas');
   for (const f of ['places.js', 'app-gl.js', 'index.html', 'index-gl.html'])
-    ok(!/\bEV\b/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': nav „EV”');
+    ok(!/(label|title|textContent|aria-label)[^\n]*\bEV\b/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/\/\/.*$/gm, '')), f + ': nav „EV” redzamos tekstos');
 });
 
 // ---------- F23: atceltie statistikā = atceltie „Mani braucieni” ----------
@@ -1864,6 +1864,35 @@ test('F23: atcelti braucieni + atsaukti pieprasījumi = atceltie vēsturē (demo
   ok(/if not is_app_admin\(\) then raise exception 'forbidden'/.test(sql) && /me uuid := auth\.uid\(\)/.test(sql), 'tiesības tās pašas');
   ok(/revoke all on function public\.my_stats\(\) from public, anon;/.test(sql) && /grant execute on function public\.my_stats\(\) to authenticated;/.test(sql), 'grants');
   ok(!/\b(update|delete|insert)\b/i.test(sql.replace(/--.*$/gm, '')), 'dati netiek mainīti');
+});
+
+// ---------- F24: vietu nosaukumi — apraksti no OSM netiek rādīti kā nosaukums ----------
+test('F24: placeDisplayName / isGenericName — name:lv, īsti nosaukumi, kategorija · zīmols', () => {
+  const d = G('placeDisplayName'), gen = G('isGenericName'), ev = G('evInfo');
+  eq(d({ name: 'EV charging type 2', operator: 'Elektrum' }, 'ev'), 'Elektroauto uzlāde · Elektrum');
+  eq(d({ name: 'EV charging type 2' }, 'ev'), 'Elektroauto uzlāde');
+  eq(d({ name: 'Ignitis' }, 'ev'), 'Ignitis', 'zīmolu netulko');
+  eq(d({ name: 'EV charger', 'name:lv': 'Uzlāde pie Akropoles' }, 'ev'), 'Uzlāde pie Akropoles', 'name:lv');
+  eq(d({ name: 'Parking' }, 'parking'), 'Stāvvieta');
+  eq(d({}, 'ev'), 'Elektroauto uzlāde', 'bez name'); eq(d(undefined, 'fuel'), 'Degviela');
+  eq(d({ name: 'Uzlādes stacija', network: 'Elektrum' }, 'ev'), 'Elektroauto uzlāde · Elektrum', 'nerāda „· Uzlādes stacija”');
+  eq(d({ name: 'Charging point', operator: 'Charging point' }, 'ev'), 'Elektroauto uzlāde', 'arī operators vispārīgs');
+  ok(!gen('Elektrum EV charging', 'ev') && !gen('Tesla Supercharger', 'ev') && !gen('Station Cafe', 'coffee'), 'ar īstu vārdu — nav vispārīgs');
+  ok(gen('  EV-Charging  (Type 2, 22kW) ', 'ev') && gen('CHAdeMO / CCS 50 kW', 'ev') && gen('Car Park', 'parking') && gen('WC', 'parking'), 'apraksti, pieturzīmes, kW');
+  eq(ev({ 'socket:type2': '2', 'socket:type2_combo': '1', 'socket:type2_combo:output': '50 kW', capacity: '3' }).join(' · '), 'Type 2, CCS · līdz 50 kW · 3 vietas');
+  eq(ev({}).length, 0, 'bez datiem — otrās rindas nav');
+  const P = G('parsePlaces');
+  const r = P([{ type: 'node', id: 1, lat: 56.95, lon: 24.1, tags: { amenity: 'charging_station', name: 'EV charging type 2', operator: 'Elektrum', 'socket:type2': '2', 'socket:type2:output': '22 kW' } },
+    { type: 'node', id: 2, lat: 56.9501, lon: 24.1001, tags: { amenity: 'charging_station', name: 'EV charging' } },
+    { type: 'node', id: 3, lat: 56.9502, lon: 24.1002, tags: { amenity: 'charging_station', name: 'EV charger' } }], 'ev', 56.95, 24.1);
+  eq(r.map(x => x.name).join(' | '), 'Elektroauto uzlāde · Elektrum | Elektroauto uzlāde | Elektroauto uzlāde', 'divas dažādas stacijas ar vienādu rādāmo nosaukumu paliek');
+  eq(r[0].osmName, 'EV charging type 2', 'oriģinālais nosaukums saglabāts'); eq(r[0].extra.join(' · '), 'Type 2 · līdz 22 kW');
+  const ph = G('parsePhotonPlaces')([{ properties: { osm_type: 'N', osm_id: 5, name: 'Parking' }, geometry: { coordinates: [24.1, 56.95] } }], 'parking', 56.95, 24.1);
+  eq(ph[0].name, 'Stāvvieta', 'Photon'); eq(G('parseTilePlaces')([{ properties: { subclass: 'charging_station', name: 'EV charging' }, geometry: { type: 'Point', coordinates: [24.1, 56.95] } }], 'ev', 56.95, 24.1)[0]?.name ?? 'Elektroauto uzlāde', 'Elektroauto uzlāde', 'kartes flīzes');
+  const m = G('mergePlaceDetails')([{ id: 'node5', cat: 'parking', name: 'Stāvvieta', osmName: 'Parking', extra: [] }], [{ type: 'node', id: 5, tags: { name: 'Parking', operator: 'Rīgas satiksme' } }]);
+  eq(m[0].name, 'Stāvvieta · Rīgas satiksme', 'papildinājums fonā — tā pati funkcija');
+  const pl = fs.readFileSync(path.join(__dirname, '..', 'places.js'), 'utf8');
+  ok(!/t\.name \|\| t\.brand|p\.name \|\| c\.label/.test(pl), 'vecā nosaukumu izvēle izņemta');
 });
 
 // ---------- F16: administrēšanas lapa ----------
