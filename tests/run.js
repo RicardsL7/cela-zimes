@@ -548,7 +548,7 @@ test('Q. Vietas uzreiz no kartes flīzēm (bez interneta): kategorija, attālums
     F('restaurant', 'Lido', 24.1, 56.9505), F('charging_station', null, 24.1, 56.9502)];
   const r = tp(feats, 'fuel', 56.95, 24.1);
   eq(r.map(p => p.name).join(), 'Circle K,Neste', 'tikai degviela, tuvākā pirmā, dublikāts izmests');
-  eq(tp(feats, 'ev', 56.95, 24.1)[0].name, 'EV uzlāde', 'bez nosaukuma — kategorijas nosaukums');
+  eq(tp(feats, 'ev', 56.95, 24.1)[0].name, 'Elektroauto uzlāde', 'bez nosaukuma — kategorijas nosaukums');
   eq(rs(r, 56.97, 24.1)[0].name, 'Neste', 'pārkārtots pēc jaunās vietas');
   const cw = tp([F('car_wash', null, 24.1, 56.9503)], 'carwash', 56.95, 24.1);
   eq(cw.length === 1 && cw[0].name, 'Auto mazgātavas', 'auto mazgātava no kartes flīzēm');
@@ -1827,6 +1827,15 @@ test('F21: „Marķieru animācija” — nosaukumi latviski, vērtības nemain�
   }
   const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
   ok(/store\.get\('markerAnim', 'pop'\)/.test(app) && /\bpop: \{ ms:/.test(app) && /\bmorph: \{ ms:/.test(app), 'saglabātās vērtības der kā līdz šim');
+});
+
+// ---------- F22: vietu kategorija latviski ----------
+test('F22: „Elektroauto uzlāde” — nav „EV”, id un OSM vaicājums nemainīti', () => {
+  const pl = fs.readFileSync(path.join(__dirname, '..', 'places.js'), 'utf8');
+  ok(/\{ id: 'ev', +label: 'Elektroauto uzlāde', +color: '#0c8599', q: \['nwr\["amenity"="charging_station"\]'\]/.test(pl), 'teksts mainīts, id ev un vaicājums tie paši');
+  ok(/"ev": \["amenity:charging_station"\]/.test(pl), 'Photon birkas nemainītas');
+  for (const f of ['places.js', 'app-gl.js', 'index.html', 'index-gl.html'])
+    ok(!/\bEV\b/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': nav „EV”');
 });
 
 // ---------- F16: administrēšanas lapa ----------
