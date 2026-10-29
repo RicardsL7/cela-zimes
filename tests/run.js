@@ -551,7 +551,7 @@ test('Q. Vietas uzreiz no kartes flīzēm (bez interneta): kategorija, attālums
   eq(tp(feats, 'ev', 56.95, 24.1)[0].name, 'Elektroauto uzlāde', 'bez nosaukuma — kategorijas nosaukums');
   eq(rs(r, 56.97, 24.1)[0].name, 'Neste', 'pārkārtots pēc jaunās vietas');
   const cw = tp([F('car_wash', null, 24.1, 56.9503)], 'carwash', 56.95, 24.1);
-  eq(cw.length === 1 && cw[0].name, 'Auto mazgātavas', 'auto mazgātava no kartes flīzēm');
+  eq(cw.length === 1 && cw[0].name, 'Auto mazgātava', 'auto mazgātava no kartes flīzēm (F24 — vienskaitlī)');
   eq(G('carWashInfo')({ self_service: 'yes', automated: 'yes' }).join(), 'pašapkalpošanās,automātiskā');
   eq(G('buildPlacesQuery')('carwash', 56.95, 24.1, 1500).includes('"amenity"="car_wash"'), true, 'Overpass vaicājums');
 });
@@ -1874,6 +1874,8 @@ test('F24: placeDisplayName / isGenericName — name:lv, īsti nosaukumi, katego
   eq(d({ name: 'Ignitis' }, 'ev'), 'Ignitis', 'zīmolu netulko');
   eq(d({ name: 'EV charger', 'name:lv': 'Uzlāde pie Akropoles' }, 'ev'), 'Uzlāde pie Akropoles', 'name:lv');
   eq(d({ name: 'Parking' }, 'parking'), 'Stāvvieta');
+  eq(d({ name: 'Car wash' }, 'carwash'), 'Auto mazgātava', 'vienskaitlī'); eq(d({ name: 'Automazgātava' }, 'carwash'), 'Auto mazgātava');
+  eq(d({ name: 'Pharmacy', brand: 'Benu' }, 'pharmacy'), 'Aptieka · Benu');
   eq(d({}, 'ev'), 'Elektroauto uzlāde', 'bez name'); eq(d(undefined, 'fuel'), 'Degviela');
   eq(d({ name: 'Uzlādes stacija', network: 'Elektrum' }, 'ev'), 'Elektroauto uzlāde · Elektrum', 'nerāda „· Uzlādes stacija”');
   eq(d({ name: 'Charging point', operator: 'Charging point' }, 'ev'), 'Elektroauto uzlāde', 'arī operators vispārīgs');
@@ -1894,7 +1896,7 @@ test('F24: placeDisplayName / isGenericName — name:lv, īsti nosaukumi, katego
   const pl = fs.readFileSync(path.join(__dirname, '..', 'places.js'), 'utf8');
   ok(!/t\.name \|\| t\.brand|p\.name \|\| c\.label/.test(pl), 'vecā nosaukumu izvēle izņemta');
   const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
-  ok(/p\.osmName === undefined && isGenericName\(p\.name, p\.cat\) \? \{ name: PLACE_BY_ID\[p\.cat\]\.label \}/.test(app), 'vecā kešatmiņa — rādot, ne mainot');
+  ok(/p\.osmName === undefined && isGenericName\(p\.name, p\.cat\) \? \{ name: placeLabelOne\(p\.cat\) \}/.test(app), 'vecā kešatmiņa — rādot, ne mainot');
 });
 
 // ---------- F16: administrēšanas lapa ----------
