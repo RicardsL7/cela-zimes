@@ -2889,7 +2889,7 @@ function freshPlaces(list, c) {        // attālumi no tagadējās vietas, "atv�
   const now = new Date();
   return resortPlaces(list, c.lat, c.lng).map(p => Object.assign(p, { open: placeOpenNow(p.oh, now, parseCondition) },
     // F24: kešatmiņā (≤ 24 h) vēl var būt saraksts no v119 — apraksta nosaukumu („EV charging type 2”) rāda kā kategoriju
-    p.osmName === undefined && isGenericName(p.name, p.cat) ? { name: PLACE_BY_ID[p.cat].label } : {}));
+    p.osmName === undefined && isGenericName(p.name, p.cat) ? { name: placeLabelOne(p.cat) } : {}));
 }
 async function fetchPhotonPlaces(catId, c) {
   let places = [];
@@ -3086,7 +3086,7 @@ async function showPlaces(catId) {
 }
 function goToPlace(p) {
   closePlaces();
-  const label = PLACE_CATEGORIES.find(c => c.id === p.cat).label;
+  const label = placeLabelOne(p.cat);
   // F24: ja nosaukums jau ir kategorija („Elektroauto uzlāde · Elektrum”), to otrreiz nerāda
   selectDestination({ name: p.name, sub: [p.addr, p.name.startsWith(label) ? '' : label].filter(Boolean).join(', '), lat: p.lat, lng: p.lng, ct: p.ct || null });
 }

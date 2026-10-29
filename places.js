@@ -167,19 +167,23 @@ const PLACE_GENERIC_WORDS = {
   hotel: ['hotel', 'motel', 'hostel', 'guest', 'house', 'viesnīca', 'viesu', 'nams'],
   medical: ['clinic', 'hospital', 'doctor', 'doctors', 'klīnika', 'slimnīca', 'poliklīnika'],
 };
+// Vienai vietai — vienskaitlī (kategoriju sarakstā paliek daudzskaitlis): „Auto mazgātava”, nevis „Auto mazgātavas”
+const PLACE_ONE = { grocery: 'Pārtikas veikals', carwash: 'Auto mazgātava', pharmacy: 'Aptieka', hotel: 'Viesnīca', park: 'Parks' };
+function placeLabelOne(catId) { return PLACE_ONE[catId] || (PLACE_BY_ID[catId] ? PLACE_BY_ID[catId].label : 'Vieta'); }
 const placeNorm = s => String(s == null ? '' : s).toLowerCase().normalize('NFC').replace(/[^\p{L}\p{N}+]+/gu, ' ').trim();
 function isGenericName(name, catId) {
   const n = placeNorm(name);
   if (!n) return true;
   const c = PLACE_BY_ID[catId];
-  if (c && n === placeNorm(c.label)) return true;
-  const words = new Set([...(PLACE_GENERIC_WORDS._all), ...(PLACE_GENERIC_WORDS[catId] || []), ...(c ? placeNorm(c.label).split(' ') : [])]);
+  if (c && (n === placeNorm(c.label) || n === placeNorm(placeLabelOne(catId)))) return true;
+  const words = new Set([...(PLACE_GENERIC_WORDS._all), ...(PLACE_GENERIC_WORDS[catId] || []),
+    ...(c ? placeNorm(c.label + ' ' + placeLabelOne(catId)).split(' ') : [])]);
   return n.split(' ').every(w => words.has(w) || /^\d+([.,]\d+)?(kw)?$/.test(w) || w === 'kw');
 }
 // Viena funkcija visiem avotiem (Overpass, Photon, kartes flīzes): name:lv → name (ja nav apraksts) →
 // kategorija · zīmols / operators / tīkls → kategorija. Zīmolus netulko.
 function placeDisplayName(tags, catId) {
-  const t = tags || {}, c = PLACE_BY_ID[catId], label = c ? c.label : 'Vieta';
+  const t = tags || {}, label = placeLabelOne(catId);
   const lv = String(t['name:lv'] || '').trim();
   if (lv && !isGenericName(lv, catId)) return lv;
   const nm = String(t.name || '').trim();
@@ -430,5 +434,5 @@ if (typeof module !== 'undefined') {
   module.exports = { PLACE_CATEGORIES, PLACE_PHOTON_TAGS, buildPlacesQuery, parsePlaces, placeOpenNow, placeIconSvg,
     buildPhotonPlacesUrl, parsePhotonPlaces, buildPlaceDetailsQuery, mergePlaceDetails, parseTilePlaces, resortPlaces, PLACE_TILE_SUBCLASS, placeStatus,
     placeContacts, placePhone, placeWebsite, placeBrand, PLACE_BRANDS, PHOTON_LANG, photonLv, photonSearchItem,
-    PLACE_GENERIC_WORDS, isGenericName, placeDisplayName, evInfo, placeDedupe };
+    PLACE_GENERIC_WORDS, isGenericName, placeDisplayName, placeLabelOne, evInfo, placeDedupe };
 }
