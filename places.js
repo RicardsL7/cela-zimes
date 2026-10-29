@@ -145,6 +145,85 @@ function placeStatus(oh, now, parse) {
   return { state: 'closed', text: 'slēgts · atveras ' + placeWhen(next, now) };
 }
 
+// ---------- F24: rādāmais nosaukums (OSM `name` bieži ir apraksts, piem. „EV charging type 2”) ----------
+// Vārdi, no kuriem sastāv TIKAI apraksts (ne īsts nosaukums). Papildināt šeit. Kategorijas nosaukuma vārdi — automātiski.
+// Nosaukums ir vispārīgs, ja VISI tā vārdi ir šajā sarakstā (cipari un „kW” tiek ignorēti); „Elektrum EV charging” — nav.
+const PLACE_GENERIC_WORDS = {
+  _all: ['wc', 'toilet', 'toilets', 'atm', 'bankomāts', 'public', 'publiska', 'publisks', 'service', 'serviss'],
+  ev: ['ev', 'e', 'charging', 'charge', 'charger', 'chargers', 'station', 'stations', 'point', 'points', 'electric', 'electrical',
+    'vehicle', 'vehicles', 'car', 'cars', 'type', 'type2', 'ccs', 'ccs2', 'chademo', 'dc', 'ac', 'fast', 'rapid', 'ultra', 'hpc',
+    'plug', 'socket', 'mennekes', 'uzlāde', 'uzlādes', 'stacija', 'stacijas', 'punkts', 'elektroauto', 'elektromobiļu', 'auto'],
+  parking: ['parking', 'car', 'park', 'lot', 'p', 'p+r', 'stāvvieta', 'stāvvietas', 'stāvlaukums', 'autostāvvieta', 'autostāvvietas',
+    'free', 'paid', 'underground', 'stavvieta', 'autostavvieta', 'stavlaukums'],
+  // Latviski aprakstoši vārdi ar jēgu („Klientu stāvvieta”, „Ilgtermiņa …”, „Pazemes …”) — paliek nosaukumā
+  fuel: ['fuel', 'gas', 'petrol', 'filling', 'station', 'degviela', 'degvielas', 'uzpildes', 'stacija', 'dus', 'ads',
+    'lpg', 'cng', 'autogāze', 'gāze', 'gāzes', 'marine'],
+  carwash: ['car', 'wash', 'carwash', 'self', 'auto', 'mazgātava', 'mazgātavas', 'mazgāšana', 'pašapkalpošanās', 'automazgātava', 'automazgātavas'],
+  pharmacy: ['pharmacy', 'aptieka'],
+  coffee: ['cafe', 'café', 'coffee', 'kafejnīca', 'kafija'],
+  food: ['restaurant', 'restorāns', 'cafe', 'café', 'kafejnīca', 'fast', 'food', 'ēdnīca'],
+  grocery: ['shop', 'store', 'market', 'supermarket', 'minimarket', 'veikals', 'pārtika'],
+  shopping: ['shop', 'store', 'mall', 'veikals', 'tirdzniecības', 'centrs'],
+  hotel: ['hotel', 'motel', 'hostel', 'guest', 'house', 'viesnīca', 'viesu', 'nams'],
+  medical: ['clinic', 'hospital', 'doctor', 'doctors', 'klīnika', 'slimnīca', 'poliklīnika'],
+};
+const placeNorm = s => String(s == null ? '' : s).toLowerCase().normalize('NFC').replace(/[^\p{L}\p{N}+]+/gu, ' ').trim();
+function isGenericName(name, catId) {
+  const n = placeNorm(name);
+  if (!n) return true;
+  const c = PLACE_BY_ID[catId];
+  if (c && n === placeNorm(c.label)) return true;
+  const words = new Set([...(PLACE_GENERIC_WORDS._all), ...(PLACE_GENERIC_WORDS[catId] || []), ...(c ? placeNorm(c.label).split(' ') : [])]);
+  return n.split(' ').every(w => words.has(w) || /^\d+([.,]\d+)?(kw)?$/.test(w) || w === 'kw');
+}
+// Viena funkcija visiem avotiem (Overpass, Photon, kartes flīzes): name:lv → name (ja nav apraksts) →
+// kategorija · zīmols / operators / tīkls → kategorija. Zīmolus netulko.
+function placeDisplayName(tags, catId) {
+  const t = tags || {}, c = PLACE_BY_ID[catId], label = c ? c.label : 'Vieta';
+  const lv = String(t['name:lv'] || '').trim();
+  if (lv && !isGenericName(lv, catId)) return lv;
+  const nm = String(t.name || '').trim();
+  if (nm && !isGenericName(nm, catId)) return nm;
+  const who = [t.brand, t.operator, t.network].map(x => String(x || '').trim()).find(x => x && !isGenericName(x, catId));
+  return who ? label + ' · ' + who : label;
+}
+// Uzlādes stacijas papildinformācija latviski: kontaktu tipi, jauda, vietas (otrajā rindā, ne nosaukumā)
+const PLACE_SOCKETS = { type2: 'Type 2', type2_cable: 'Type 2', type2_combo: 'CCS', chademo: 'CHAdeMO', type1: 'Type 1',
+  type1_combo: 'CCS1', tesla_supercharger: 'Tesla', tesla_standard: 'Tesla', schuko: 'Schuko', nacs: 'NACS' };
+function placeKw(v) {
+  let max = 0;
+  for (const m of String(v || '').matchAll(/(\d+(?:[.,]\d+)?)\s*(kw|w)?/gi)) {
+    let n = parseFloat(m[1].replace(',', '.'));
+    if (m[2] && m[2].toLowerCase() === 'w') n /= 1000;
+    if (n > max && n < 2000) max = n;
+  }
+  return max;
+}
+function evInfo(t) {
+  t = t || {};
+  const types = [], out = [];
+  let kw = placeKw(t['charging_station:output']);
+  for (const [k, v] of Object.entries(t)) {
+    const m = /^socket:([a-z0-9_]+)(:output)?$/.exec(k);
+    if (!m) continue;
+    if (m[2]) { kw = Math.max(kw, placeKw(v)); continue; }
+    if (v === 'no' || v === '0') continue;
+    const name = PLACE_SOCKETS[m[1]];
+    if (name && !types.includes(name)) types.push(name);
+  }
+  if (types.length) out.push(types.join(', '));
+  if (kw) out.push('līdz ' + String(Math.round(kw * 10) / 10).replace('.', ',') + ' kW');
+  if (t.capacity && /^\d{1,3}$/.test(t.capacity)) out.push(t.capacity + (t.capacity === '1' ? ' vieta' : ' vietas'));
+  return out;
+}
+// Dublikāti (tā pati vieta no blakus flīzēm / mezgls + laukums): vienāds rādāmais UN oriģinālais nosaukums, < 60 m
+function placeDedupe(out) {
+  out.sort((a, b) => a.d - b.d);
+  const kept = [];
+  for (const p of out) if (!kept.some(k => k.name === p.name && (k.osmName || '') === (p.osmName || '') && placeDistM(k.lat, k.lng, p.lat, p.lng) < 60)) kept.push(p);
+  return kept;
+}
+
 // Overpass elementi → vietu saraksts (pēc attāluma, bez dublikātiem).
 function parsePlaces(elements, catId, lat, lng, now = new Date(), parse = null) {
   const c = PLACE_BY_ID[catId];
@@ -154,27 +233,24 @@ function parsePlaces(elements, catId, lat, lng, now = new Date(), parse = null) 
     const plat = el.lat != null ? el.lat : el.center && el.center.lat;
     const plng = el.lon != null ? el.lon : el.center && el.center.lon;
     if (plat == null || plng == null) continue;
-    const name = t.name || t.brand || t.operator || c.label;
+    const name = placeDisplayName(t, catId);
     const addr = [t['addr:street'], t['addr:housenumber']].filter(Boolean).join(' ');
     const extra = [];
     if (catId === 'parking') {
       if (t.fee === 'no') extra.push('bez maksas'); else if (t.fee === 'yes') extra.push('maksas');
       if (t.capacity) extra.push(t.capacity + ' vietas');
     }
-    if (catId === 'ev' && t.capacity) extra.push(t.capacity + ' uzlādes vietas');
+    if (catId === 'ev') extra.push(...evInfo(t));
     if (catId === 'carwash') extra.push(...carWashInfo(t));
     if (catId === 'fuel' && t.brand && !name.toLowerCase().includes(t.brand.toLowerCase())) extra.push(t.brand);
     out.push({
-      id: el.type + el.id, cat: catId, name, lat: plat, lng: plng,
+      id: el.type + el.id, cat: catId, name, osmName: t.name || '', lat: plat, lng: plng,
       d: placeDistM(lat, lng, plat, plng),
       addr, extra, oh: t.opening_hours || '', open: placeOpenNow(t.opening_hours, now, parse),
       ct: placeContacts(t, name),
     });
   }
-  out.sort((a, b) => a.d - b.d);
-  const kept = [];
-  for (const p of out) if (!kept.some(k => k.name === p.name && placeDistM(k.lat, k.lng, p.lat, p.lng) < 60)) kept.push(p);
-  return kept;
+  return placeDedupe(out);
 }
 
 // ---------- Kontakti: Zvanīt / Mājaslapa / Lietotne ----------
@@ -260,14 +336,11 @@ function parseTilePlaces(features, catId, lat, lng) {
     if (catId === 'park' && !p.name) continue;
     const g = f.geometry && f.geometry.type === 'Point' && f.geometry.coordinates;
     if (!g) continue;
-    out.push({ id: 'tile' + out.length, osmType: null, osmId: null, cat: catId, name: p.name || c.label,
-      lat: g[1], lng: g[0], d: placeDistM(lat, lng, g[1], g[0]), addr: '', extra: [], oh: '', open: null,
+    out.push({ id: 'tile' + out.length, osmType: null, osmId: null, cat: catId, name: placeDisplayName({ name: p.name, 'name:lv': p['name:lv'] }, catId),
+      osmName: p.name || '', lat: g[1], lng: g[0], d: placeDistM(lat, lng, g[1], g[0]), addr: '', extra: [], oh: '', open: null,
       ct: placeContacts({}, p.name) });
   }
-  out.sort((a, b) => a.d - b.d);
-  const kept = [];
-  for (const p of out) if (!kept.some(k => k.name === p.name && placeDistM(k.lat, k.lng, p.lat, p.lng) < 60)) kept.push(p);
-  return kept;
+  return placeDedupe(out);
 }
 // Saglabātam sarakstam pārrēķina attālumus no jaunās vietas un sakārto.
 function resortPlaces(places, lat, lng) {
@@ -312,15 +385,12 @@ function parsePhotonPlaces(features, catId, lat, lng) {
     const type = PHOTON_OSM_TYPE[p.osm_type];
     out.push({
       id: type ? type + p.osm_id : 'ph' + out.length, osmType: type || null, osmId: p.osm_id || null,
-      cat: catId, name: p.name || c.label, lat: g[1], lng: g[0], d: placeDistM(lat, lng, g[1], g[0]),
+      cat: catId, name: placeDisplayName({ name: p.name }, catId), osmName: p.name || '', lat: g[1], lng: g[0], d: placeDistM(lat, lng, g[1], g[0]),
       addr: [p.street, p.housenumber].filter(Boolean).join(' '), extra: [], oh: '', open: null,
       ct: placeContacts({}, p.name),
     });
   }
-  out.sort((a, b) => a.d - b.d);
-  const kept = [];
-  for (const p of out) if (!kept.some(k => k.name === p.name && placeDistM(k.lat, k.lng, p.lat, p.lng) < 60)) kept.push(p);
-  return kept;
+  return placeDedupe(out);
 }
 
 // ---------- Papildinājums fonā: darba laiks u.c. pēc OSM id (ātrs Overpass vaicājums bez telpiskas meklēšanas) ----------
@@ -339,14 +409,13 @@ function mergePlaceDetails(places, elements, now = new Date(), parse = null) {
     if (!t) { out.push(p); continue; }
     if (p.cat === 'parking' && /^(private|no|customers)$/.test(t.access || '')) continue;
     const q = Object.assign({}, p, { extra: [] });
-    if (t.name && q.name === PLACE_BY_ID[p.cat].label) q.name = t.name;
-    else if (!t.name && (t.brand || t.operator) && q.name === PLACE_BY_ID[p.cat].label) q.name = t.brand || t.operator;
+    q.name = placeDisplayName(t, p.cat); q.osmName = t.name || p.osmName || '';    // F24: pilnie OSM dati — tas pats nosaukums visur
     if (!q.addr) q.addr = [t['addr:street'], t['addr:housenumber']].filter(Boolean).join(' ');
     if (p.cat === 'parking') {
       if (t.fee === 'no') q.extra.push('bez maksas'); else if (t.fee === 'yes') q.extra.push('maksas');
       if (t.capacity) q.extra.push(t.capacity + ' vietas');
     }
-    if (p.cat === 'ev' && t.capacity) q.extra.push(t.capacity + ' uzlādes vietas');
+    if (p.cat === 'ev') q.extra.push(...evInfo(t));
     if (p.cat === 'carwash') q.extra.push(...carWashInfo(t));
     if (p.cat === 'fuel' && t.brand && !q.name.toLowerCase().includes(t.brand.toLowerCase())) q.extra.push(t.brand);
     q.oh = t.opening_hours || '';
@@ -360,5 +429,6 @@ function mergePlaceDetails(places, elements, now = new Date(), parse = null) {
 if (typeof module !== 'undefined') {
   module.exports = { PLACE_CATEGORIES, PLACE_PHOTON_TAGS, buildPlacesQuery, parsePlaces, placeOpenNow, placeIconSvg,
     buildPhotonPlacesUrl, parsePhotonPlaces, buildPlaceDetailsQuery, mergePlaceDetails, parseTilePlaces, resortPlaces, PLACE_TILE_SUBCLASS, placeStatus,
-    placeContacts, placePhone, placeWebsite, placeBrand, PLACE_BRANDS, PHOTON_LANG, photonLv, photonSearchItem };
+    placeContacts, placePhone, placeWebsite, placeBrand, PLACE_BRANDS, PHOTON_LANG, photonLv, photonSearchItem,
+    PLACE_GENERIC_WORDS, isGenericName, placeDisplayName, evInfo, placeDedupe };
 }

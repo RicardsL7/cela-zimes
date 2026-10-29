@@ -3084,7 +3084,9 @@ async function showPlaces(catId) {
 }
 function goToPlace(p) {
   closePlaces();
-  selectDestination({ name: p.name, sub: [p.addr, PLACE_CATEGORIES.find(c => c.id === p.cat).label].filter(Boolean).join(', '), lat: p.lat, lng: p.lng, ct: p.ct || null });
+  const label = PLACE_CATEGORIES.find(c => c.id === p.cat).label;
+  // F24: ja nosaukums jau ir kategorija („Elektroauto uzlāde · Elektrum”), to otrreiz nerāda
+  selectDestination({ name: p.name, sub: [p.addr, p.name.startsWith(label) ? '' : label].filter(Boolean).join(', '), lat: p.lat, lng: p.lng, ct: p.ct || null });
 }
 function wirePlaces() {
   const icons = $('placesBtnIcons');
