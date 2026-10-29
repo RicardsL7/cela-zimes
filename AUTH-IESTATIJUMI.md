@@ -2,8 +2,9 @@
 
 ## Kas jau ir izdarīts (23.10.2026.)
 - Supabase → Authentication → URL Configuration:
-  - **Site URL:** `https://ricardsl7.github.io/cela-zimes/`
-  - **Redirect URLs:** `https://ricardsl7.github.io/cela-zimes/**`, `http://localhost:*/**`
+  - **Site URL:** `https://growlab.cc/` (no 29.10.2026.; iepriekš `https://ricardsl7.github.io/cela-zimes/`)
+  - **Redirect URLs:** `https://growlab.cc/**`, `https://www.growlab.cc/**`, `http://localhost:*/**`
+    (vecā `https://ricardsl7.github.io/cela-zimes/**` var palikt — GitHub to pāradresē uz growlab.cc)
 - Supabase → Authentication → Sign In / Providers: **Allow manual linking — ieslēgts** (anonīmam kontam var piesaistīt Google), **Allow anonymous sign-ins — ieslēgts** (kā līdz šim).
 - SQL `supabase/rides-7-account.sql` — palaists (piekrišanas, datu pārcelšana, konta dzēšana).
 - Servera funkcija `ride-pay` — izvietota ar jaunajām darbībām `close` (Stripe konta slēgšana, dzēšot kontu) un `adopt` (Stripe konta piesaiste pēc kontu apvienošanas).
@@ -27,7 +28,7 @@ Neobligāti: Authentication → Emails → veidnes „Magic Link” un „Change
 Poga „Turpināt ar Google” lietotnē parādās **automātiski**, tiklīdz Google ir ieslēgts Supabase.
 1. https://console.cloud.google.com → izveido projektu → APIs & Services → **OAuth consent screen**: External, lietotnes nosaukums „Ceļa Zīmes”, atbalsta e-pasts, saites uz `…/privacy.html` un `…/terms.html`.
 2. APIs & Services → **Credentials** → Create credentials → OAuth client ID → Web application.
-   - Authorized JavaScript origins: `https://ricardsl7.github.io`
+   - Authorized JavaScript origins: `https://growlab.cc` (un `https://www.growlab.cc`)
    - Authorized redirect URIs: `https://pkqusuoicxmwcgwsrdqy.supabase.co/auth/v1/callback`
 3. Nokopē **Client ID** un **Client secret** → Supabase → Authentication → Sign In / Providers → **Google** → Enable → ielīmē abus (to dara īpašnieks pats) → Save.
 
