@@ -24,7 +24,7 @@ const SB = (Deno.env.get('SUPABASE_URL') ?? '').replace(/\/$/, '');
 // (rpc/ride_payment_mark, ko pārlūks izsaukt nevar). Nekad netiek atdota atbildē un nenonāk pārlūkā.
 const SRK = (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '').trim();
 const FEE_PCT = Math.min(30, Math.max(0, Number(Deno.env.get('PAY_FEE_PERCENT') ?? '10') || 0));
-const APP_URLS = ['https://ricardsl7.github.io/cela-zimes/', 'http://localhost:', 'http://127.0.0.1:'];
+const APP_URLS = ['https://growlab.cc/', 'https://www.growlab.cc/', 'https://ricardsl7.github.io/cela-zimes/', 'http://localhost:', 'http://127.0.0.1:'];   // growlab.cc — galvenā adrese (29.10.)
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const cors = {
