@@ -1899,6 +1899,14 @@ test('F24: placeDisplayName / isGenericName — name:lv, īsti nosaukumi, katego
   ok(/isGenericName\(p\.name, p\.cat\) \? \{ name: placeLabelOne\(p\.cat\) \}/.test(app), 'vecā kešatmiņa — rādot, ne mainot');
 });
 
+// ---------- Domēns growlab.cc ----------
+test('Domēns: CNAME = growlab.cc, ride-pay atļauj atgriešanos uz growlab.cc', () => {
+  eq(fs.readFileSync(path.join(__dirname, '..', 'CNAME'), 'utf8').trim(), 'growlab.cc');
+  const rp = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'ride-pay', 'index.ts'), 'utf8');
+  ok(/APP_URLS = \['https:\/\/growlab\.cc\/', 'https:\/\/www\.growlab\.cc\/'/.test(rp), 'ride-pay atgriešanās adreses');
+  ok(!/APP_URLS[^\n]*'https?:\/\/[^']*\*/.test(rp), 'bez aizstājējzīmēm');
+});
+
 // ---------- F16: administrēšanas lapa ----------
 test('F16: admin.html — atsevišķa sesija, servera pārbaude, nav e-pasta', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'admin.html'), 'utf8');
