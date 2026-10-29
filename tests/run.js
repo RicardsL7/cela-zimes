@@ -1893,6 +1893,8 @@ test('F24: placeDisplayName / isGenericName — name:lv, īsti nosaukumi, katego
   eq(m[0].name, 'Stāvvieta · Rīgas satiksme', 'papildinājums fonā — tā pati funkcija');
   const pl = fs.readFileSync(path.join(__dirname, '..', 'places.js'), 'utf8');
   ok(!/t\.name \|\| t\.brand|p\.name \|\| c\.label/.test(pl), 'vecā nosaukumu izvēle izņemta');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  ok(/p\.osmName === undefined && isGenericName\(p\.name, p\.cat\) \? \{ name: PLACE_BY_ID\[p\.cat\]\.label \}/.test(app), 'vecā kešatmiņa — rādot, ne mainot');
 });
 
 // ---------- F16: administrēšanas lapa ----------
