@@ -182,7 +182,9 @@ function rideUuid() {
 }
 
 // F16: vai lietotājam vēl nav neviena brauciena
-function rideStatsEmpty(st) { return !st || !(st.driver_done || st.driver_cancelled || st.passenger_done || st.passenger_cancelled); }
+function rideStatsEmpty(st) { return !st || !(st.driver_done || st.driver_cancelled || st.passenger_done || st.passenger_cancelled || st.passenger_withdrawn); }
+// F23: vēstures ieraksts bez piedāvājuma — atsaukts / beidzies pieprasījums (neviens šoferis nebija pieņēmis)
+function rideHistWithdrawn(h) { return !!h && h.status !== 'done' && !h.offer_id; }
 // ---------- Vērtējumi, ziņošana un vēsture (F13) ----------
 const RIDE_REPORT_REASONS = [['dangerous_driving', 'Bīstama braukšana'], ['behaviour', 'Neatbilstoša uzvedība'],
   ['no_show', 'Neieradās'], ['payment', 'Problēma ar maksājumu'], ['other', 'Cits']];
@@ -574,7 +576,7 @@ SupabaseRideStore.prototype.adminStats = function () { return this._rest('rpc/ad
 LocalRideStore.prototype.isAdmin = async function () { return false; };
 LocalRideStore.prototype.myStats = async function () {
   const d = this._load(), me = this.id;
-  const st = { driver_done: 0, driver_cancelled: 0, passenger_done: 0, passenger_cancelled: 0, carried: 0, km_approx: 0,
+  const st = { driver_done: 0, driver_cancelled: 0, passenger_done: 0, passenger_cancelled: 0, passenger_withdrawn: 0, carried: 0, km_approx: 0,
     earned_card_cents: 0, paid_card_cents: 0, reports: 0, confirms: 0, confirmed: 0, traffic: 0, radars: 0, rating: null, since: null };
   let m = 0;
   for (const o of d.offers) {
@@ -586,6 +588,8 @@ LocalRideStore.prototype.myStats = async function () {
     st[role + (done ? '_done' : '_cancelled')]++;
     if (done) { m += rideDist(r.from_lat, r.from_lng, r.to_lat, r.to_lng); if (role === 'driver') st.carried += r.seats || 1; }
   }
+  st.passenger_withdrawn = d.requests.filter(r => r.user_id === me && r.status === 'cancelled'
+    && !d.offers.some(o => o.request_id === r.id && (o.was_accepted || o.status === 'accepted'))).length;   // F23
   st.km_approx = Math.round(m * 1.3 / 1000);
   st.rating = (await this.ratingSummary([me]))[me] || null;
   return st;
@@ -598,5 +602,5 @@ function createRideStore(cfg) {
 
 if (typeof module !== 'undefined') {
   module.exports = { rideFareCapCents, rideParsePrice, rideMoney, rideSplit, RIDE_FEE_PCT, rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
-    rideTimeText, rideDistText, rideStage, rideFresh, rideEtaMinutes, ridePassengerStatus, rideDriverStatus, rideUnread, rideMsgTime, rideStatsEmpty, RIDE_DECLINED_SHOW_MS, rideDeclinedAt, rideDeclinedRecent, rideDeclinedText, RIDE_REPORT_REASONS, rideCountText, rideRatingText, rideStarsText, rideAvg, rideDateText, ridePayText, rideSummaryPending, rideHistoryFromOffer, rideRateErr, LocalRideStore, SupabaseRideStore, createRideStore, RIDE_OFFER_STATUS };
+    rideTimeText, rideDistText, rideStage, rideFresh, rideEtaMinutes, ridePassengerStatus, rideDriverStatus, rideUnread, rideMsgTime, rideStatsEmpty, rideHistWithdrawn, RIDE_DECLINED_SHOW_MS, rideDeclinedAt, rideDeclinedRecent, rideDeclinedText, RIDE_REPORT_REASONS, rideCountText, rideRatingText, rideStarsText, rideAvg, rideDateText, ridePayText, rideSummaryPending, rideHistoryFromOffer, rideRateErr, LocalRideStore, SupabaseRideStore, createRideStore, RIDE_OFFER_STATUS };
 }

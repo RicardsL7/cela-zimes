@@ -1284,7 +1284,7 @@ function ridesSummaryCard(h, inHistory = false) {
   const other = { name: h.other_name || (h.offer_id ? 'Lietotājs' : ''), car: h.other_car };
   const card = rEl('div', { class: 'r-card r-summary' + (done ? ' r-ok' : '') },
     rEl('div', { class: 'r-card-top' },
-      rEl('span', { class: 'r-badge', text: done ? '✓ Brauciens pabeigts' : 'Brauciens atcelts' }),
+      rEl('span', { class: 'r-badge', text: done ? '✓ Brauciens pabeigts' : rideHistWithdrawn(h) ? 'Pieprasījums atsaukts' : 'Brauciens atcelts' }),
       rEl('span', { class: 'r-when', text: rideDateText(h.depart_at) }),
       inHistory ? null : rEl('button', { class: 'r-x', type: 'button', 'aria-label': 'Aizvērt kopsavilkumu', text: '×',
         onclick: () => { ridesSummarySeen(id); ridesRender(true); } })),
@@ -1403,7 +1403,8 @@ function ridesHistoryView() {
   for (const h of rides.history) {
     const key = h.offer_id || h.request_id, open = rides.historyOpen === key;
     const pay = ridePayText(h, rides.pay[h.offer_id]);
-    const meta = [h.role === 'driver' ? 'Šoferis' : 'Pasažieris', h.status === 'done' ? 'pabeigts' : 'atcelts',
+    // F23: „atsaukts” — pieprasījums, kuru neviens šoferis nebija pieņēmis (nav piedāvājuma); „atcelts” — brauciens ar saskaņotu šoferi
+    const meta = [h.role === 'driver' ? 'Šoferis' : 'Pasažieris', h.status === 'done' ? 'pabeigts' : rideHistWithdrawn(h) ? 'atsaukts pieprasījums' : 'atcelts brauciens',
       h.price_cents ? rideMoney(h.price_cents) + (pay ? ' · ' + pay : '') : '',
       h.status === 'done' ? (h.my_stars ? rideStarsText(h.my_stars) : 'nav novērtēts') : ''].filter(Boolean).join(' · ');
     const row = rEl('button', { class: 'r-hist-item' + (open ? ' open' : '') + (h.status === 'done' ? '' : ' cancelled'), type: 'button', 'aria-expanded': open ? 'true' : 'false',
@@ -1419,6 +1420,8 @@ function ridesHistoryView() {
 
 // ---------- F16: „Mana statistika” un īpašnieka statistika ----------
 function ridesDateLv(ymd) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd || ''); return m ? `${m[3]}.${m[2]}.${m[1]}` : ''; }
+const RIDE_CANCELLED_NOTE = 'Braucieni, kuriem jau bija saskaņots šoferis';
+const RIDE_WITHDRAWN_NOTE = 'Atsaukti vai beigušies, pirms kāds šoferis pieņēma';
 function ridesStatRow(label, value, note) {
   return rEl('div', { class: 'r-stat' }, rEl('span', {}, label, note ? rEl('small', { text: note }) : null), rEl('b', { text: String(value) }));
 }
@@ -1447,8 +1450,12 @@ function ridesMyStatsView() {
   const rides1 = rEl('div', { class: 'r-card r-stat-card' }, rEl('b', { class: 'r-stat-t', text: '🚗 Braucieni' }));
   if (rideStatsEmpty(st)) rides1.append(rEl('p', { class: 'fine r-stat-empty', text: 'Vēl nav braucienu.' }));
   rides1.append(
-    ridesStatRow('Kā šoferis — pabeigti', n('driver_done')), ridesStatRow('Kā šoferis — atcelti', n('driver_cancelled')),
-    ridesStatRow('Kā pasažieris — pabeigti', n('passenger_done')), ridesStatRow('Kā pasažieris — atcelti', n('passenger_cancelled')),
+    ridesStatRow('Kā šoferis — pabeigti', n('driver_done')),
+    ridesStatRow('Kā šoferis — atcelti braucieni', n('driver_cancelled'), RIDE_CANCELLED_NOTE),
+    ridesStatRow('Kā pasažieris — pabeigti', n('passenger_done')),
+    ridesStatRow('Kā pasažieris — atcelti braucieni', n('passenger_cancelled'), RIDE_CANCELLED_NOTE),
+    // F23: atsauktie pieprasījumi (neviens šoferis nebija pieņēmis) — kopā ar atceltajiem = atceltie „Mani braucieni”
+    st.passenger_withdrawn == null ? null : ridesStatRow('Kā pasažieris — atsaukti pieprasījumi', n('passenger_withdrawn'), RIDE_WITHDRAWN_NOTE),
     ridesStatRow('Pārvesti pasažieri', n('carried')),
     ridesStatRow('Nobrauktais', '≈ ' + n('km_approx') + ' km', 'aptuveni: taisne no sākuma līdz galamērķim × 1,3'));
   const money = rEl('div', { class: 'r-card r-stat-card' }, rEl('b', { class: 'r-stat-t', text: '💳 Kartes maksājumi' }),
@@ -1500,7 +1507,9 @@ function ridesAdminView() {
   sec('Lietotāji');
   row('Jauni konti', u.new); row('Aktīvi (pieslēdzās)', u.active); row('Saglabāti konti', u.saved); row('Anonīmie', u.anon); row('Ar „Kopā” profilu', a.profiles);
   sec('Braucieni');
-  row('Pieprasījumi', a.requests); row('Pabeigti', a.done); row('Atcelti', a.cancelled);
+  row('Pieprasījumi', a.requests); row('Pabeigti', a.done);
+  if (a.cancelled_rides) { row('Atcelti braucieni (ar saskaņotu šoferi)', a.cancelled_rides); row('Atsaukti pieprasījumi', a.withdrawn); }   // F23
+  else row('Atcelti', a.cancelled);
   sec('Kartes maksājumi');
   row('Apmaksāti', a.paid); row('Apgrozījums', a.turnover, eur); row('Atmaksāts', a.refunds, eur);
   const f = rides.adminFees;

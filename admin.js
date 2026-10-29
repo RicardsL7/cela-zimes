@@ -235,7 +235,10 @@ function admRenderStats() {
       admRow('Saglabāti konti', u.saved, admNum, { sub: 'e-pasts / Google' }), admRow('Anonīmie', u.anon),
       admRow('Ar „Kopā” profilu', a.profiles)]),
     admSection('Kopbraucieni', 'car', 't-green', [
-      admRow('Pieprasījumi', a.requests), admRow('Pabeigti braucieni', a.done), admRow('Atcelti pieprasījumi', a.cancelled, admNum, { hot: false })]),
+      admRow('Pieprasījumi', a.requests), admRow('Pabeigti braucieni', a.done), ...(a.cancelled_rides ? [   // F23: tāpat kā „Mana statistika” / „Mani braucieni”
+        admRow('Atcelti braucieni', a.cancelled_rides, admNum, { hot: false, sub: 'ar saskaņotu šoferi' }),
+        admRow('Atsaukti pieprasījumi', a.withdrawn, admNum, { hot: false, sub: 'neviens nebija pieņēmis' })]
+        : [admRow('Atcelti pieprasījumi', a.cancelled, admNum, { hot: false })])]),
     admSection('Kartes maksājumi', 'card', 't-violet', [
       admRow('Apmaksāti braucieni', a.paid), admRow('Apgrozījums', a.turnover, admEur), feeRow,
       admRow('Atmaksāts', a.refunds, admEur, { hot: false })], admSyncBlock()),
