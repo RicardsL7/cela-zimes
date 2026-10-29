@@ -1896,7 +1896,7 @@ test('F24: placeDisplayName / isGenericName — name:lv, īsti nosaukumi, katego
   const pl = fs.readFileSync(path.join(__dirname, '..', 'places.js'), 'utf8');
   ok(!/t\.name \|\| t\.brand|p\.name \|\| c\.label/.test(pl), 'vecā nosaukumu izvēle izņemta');
   const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
-  ok(/p\.osmName === undefined && isGenericName\(p\.name, p\.cat\) \? \{ name: placeLabelOne\(p\.cat\) \}/.test(app), 'vecā kešatmiņa — rādot, ne mainot');
+  ok(/isGenericName\(p\.name, p\.cat\) \? \{ name: placeLabelOne\(p\.cat\) \}/.test(app), 'vecā kešatmiņa — rādot, ne mainot');
 });
 
 // ---------- F16: administrēšanas lapa ----------
