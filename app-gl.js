@@ -2888,8 +2888,8 @@ function placesKey(catId, c) { return 'c2:' + catId + ':' + Math.round(c.lat / 0
 function freshPlaces(list, c) {        // attālumi no tagadējās vietas, "atvērts" pēc tagadējā laika
   const now = new Date();
   return resortPlaces(list, c.lat, c.lng).map(p => Object.assign(p, { open: placeOpenNow(p.oh, now, parseCondition) },
-    // F24: kešatmiņā (≤ 24 h) vēl var būt saraksts no v119 — apraksta nosaukumu („EV charging type 2”) rāda kā kategoriju
-    p.osmName === undefined && isGenericName(p.name, p.cat) ? { name: placeLabelOne(p.cat) } : {}));
+    // F24: kešatmiņā (≤ 24 h) var būt saraksts no vecākas versijas — apraksta nosaukumu („EV charging type 2”) rāda kā kategoriju
+    isGenericName(p.name, p.cat) ? { name: placeLabelOne(p.cat) } : {}));
 }
 async function fetchPhotonPlaces(catId, c) {
   let places = [];
