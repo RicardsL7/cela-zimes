@@ -10,7 +10,7 @@
 <main class="legal">
   <p class="back"><a href="./">← Atpakaļ uz lietotni</a></p>
   <h1>Privātuma politika</h1>
-  <p class="ver">Versija 2026-10-23.2 · Ceļa Zīmes</p>
+  <p class="ver">Versija 2026-11-01 · Ceļa Zīmes</p>
   <p class="todo">Šī politika vēl jāpapildina: laukus <b>[AIZPILDĪT]</b> lietotnes īpašnieks aizpilda pirms publiskošanas.</p>
 
   <h2>1. Kas apstrādā datus</h2>
@@ -45,9 +45,11 @@
 
   <h2>5. Ziņojumi par notikumiem uz ceļa</h2>
   <p>Kad ziņo par notikumu (policija, negadījums, bedre u.c.), serverī tiek saglabāts notikuma veids, vieta uz ceļa, braukšanas virziens, laiks un tava konta ID. Citi lietotāji redz notikumu kartē, bet <b>neredz, kas ziņoja</b>. Ja atzīmē „vēl ir” / „vairs nav”, tiek saglabāta atzīme ar tava konta ID (lai katrs varētu atzīmēt tikai vienreiz). Konta ID vajadzīgs, lai ierobežotu viltotus ziņojumus (līdz 10 stundā) un lai tu varētu izdzēst savu ziņojumu. Nolūks: brīdināt citus vadītājus (leģitīmās intereses — ceļu satiksmes drošība).</p>
+  <p><b>Apstiprinājumi un monētas.</b> Kad braucot atbildi „JĀ” / „NĒ” uz jautājumu, vai notikums vēl ir, kopā ar atbildi tiek nosūtīta tava tā brīža vieta, ātrums, braukšanas virziens un GPS precizitāte. Serveris tos izmanto tikai, lai pārbaudītu, ka tiešām brauc garām (pret krāpšanos ar viltotu atrašanās vietu), un glabā kopā ar atbildi līdz ziņojuma dzēšanai. Pie konta tiek glabāts monētu atlikums, šodien nopelnītais, nopirktie un izvēlētais Garāžas tēls, monētu kustību saraksts, uzticamības rādītājs (cik bieži tavas atbildes sakrīt ar citu atbildēm) un pēdējā pārbaudītā vieta ar laiku (lai atpazītu neiespējamus „lēcienus”). Uzticamības rādītājs ietekmē tikai monētas un to, cik apstiprinājumu vajag taviem ziņojumiem; citi to neredz. Nolūks: godīga atlīdzība par palīdzību citiem (līgums — lietotnes lietošanas noteikumi).</p>
 
   <h2>6. Ātruma dalīšana sastrēgumu kartei (brīvprātīga)</h2>
   <p>Tikai ja to ieslēdz: tiek sūtīts braukšanas ātrums pa ielu posmiem (~posma šūna, virziens, ceļa klase, laiks). Mērījumos <b>nav</b> tava konta ID, vārda vai maršruta; pirmie un pēdējie 400 m netiek sūtīti. Mērījumi glabājas 28 dienas. Lai ierobežotu ļaunprātīgu izmantošanu, pie konta 1 dienu glabājas nosūtīto mērījumu skaits un pēdējās nosūtīšanas laiks (no tā lietotnē rāda tikai kopējo skaitu — „Šobrīd palīdz: N braucēji”). Atsaukt var jebkurā brīdī iestatījumos.</p>
+  <p><b>Tava vieta citu kartē.</b> Kamēr ātruma dalīšana ir ieslēgta un tu brauc (no 15 km/h), serverī reizi ~20 sekundēs tiek atjaunota tava aptuvenā vieta (noapaļota līdz ~20 m), braukšanas virziens un izvēlētais Garāžas tēls. Citi lietotāji kartē redz šo punktu ar tēlu vai bultiņu, bet <b>neredz tavu vārdu vai konta ID</b>. Apstājoties vai izslēdzot dalīšanos, punkts tiek dzēsts uzreiz, citādi tas pazūd pēc 2 minūtēm un tiek dzēsts pēc 10 minūtēm. Vēsture netiek glabāta.</p>
 
   <h2>7. Kur dati glabājas un kas tos apstrādā</h2>
   <ul>
@@ -61,8 +63,10 @@
   <h2>8. Cik ilgi</h2>
   <ul>
     <li>Konta, profila, braucienu, čata un piekrišanu dati — līdz konta dzēšanai.</li>
-    <li>Ziņojumi par notikumiem un atzīmes — līdz derīguma beigām (policija 1 h, bedre 3 dienas u.c.) un vēl 2 dienas, tad tiek dzēsti; dzēšot kontu — uzreiz.</li>
+    <li>Ziņojumi par notikumiem un atzīmes — līdz derīguma beigām (policija 45 min, bedre 3 dienas u.c.) un vēl 2 dienas, tad tiek dzēsti; dzēšot kontu — uzreiz.</li>
     <li>Ātruma mērījumi — 28 dienas; mērījumu skaita ieraksts — 1 diena.</li>
+    <li>Tava vieta citu kartē — līdz apstājies vai 10 minūtes pēc pēdējā atjauninājuma.</li>
+    <li>Monētas, tēli, monētu kustības un uzticamības rādītājs — līdz konta dzēšanai. Apstiprinājumu pārbaudes dati (vieta, ātrums, virziens) — kopā ar ziņojumu (līdz derīguma beigām un vēl 2 dienas).</li>
     <li>Darbību skaits („Mana statistika”) — līdz konta dzēšanai; dzēšot kontu, tiek dzēsts kopā ar to.</li>
     <li>Stripe maksājumu ieraksti — saskaņā ar Stripe un grāmatvedības prasībām (pēc konta dzēšanas tie paliek Stripe).</li>
   </ul>

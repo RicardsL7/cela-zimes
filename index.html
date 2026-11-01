@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=123">
+  <link rel="stylesheet" href="style-gl.css?v=124">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -75,6 +75,11 @@
     <button id="reportBtn" class="fab report-fab" title="Ziņot par notikumu uz ceļa">
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 3 21.5 19.5h-19Z" fill="currentColor"/><path d="M12 9v5" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16.8" r="1.2" fill="#fff"/></svg>
       <span class="fab-label">Ziņot</span>
+    </button>
+    <button id="garageBtn" class="fab garage-fab" title="Garāža — tavas monētas un tēli" aria-controls="garageSheet">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M2.5 10.2 12 4l9.5 6.2V20h-3v-7.5h-13V20h-3Z" fill="currentColor"/><rect x="7.5" y="14.5" width="9" height="2" rx="1" fill="currentColor"/><rect x="7.5" y="18" width="9" height="2" rx="1" fill="currentColor"/></svg>
+      <span class="fab-label">Garāža</span>
+      <span class="garage-bal" aria-label="Monētas"><span class="coin" aria-hidden="true"></span><b id="garageBal">0</b></span>
     </button>
     <button id="parkBtn" class="fab park-fab" title="Vai drīkstu šeit stāvēt?" aria-controls="parkSheet">
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5" fill="currentColor"/><path d="M9.6 17V7.4h3.3a3 3 0 0 1 0 6H9.6" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -204,8 +209,27 @@
     <p id="reportMsg" class="rep-msg" role="status" hidden></p>
     <div id="reportGps" class="rep-gps" role="status" hidden><p id="reportGpsText"></p><button id="reportGpsBtn" type="button" class="btn small ghost" hidden></button></div>
     <div id="reportGrid" class="report-grid"></div>
-    <p class="fine">Ziņojums tiek pievienots tavā vietā uz ceļa, to redz visi lietotāji tuvumā, un tas pazūd pats
-      (piem. policija pēc 1 h) vai tad, kad divi citi lietotāji atzīmē „vairs nav”. Kas ziņoja, citi neredz.</p>
+    <p class="fine">Viens pieskāriens — un ziņojums nosūtīts no tavas vietas uz ceļa. To redz braucēji tajā pašā virzienā;
+      tuvojoties viņiem jautā, vai notikums vēl ir. „JĀ” to pagarina, vairāki „NĒ” pēc kārtas — noņem. Pats pazūd
+      (policija pēc 45 min, sastrēgums pēc 20 min). Kas ziņoja, citi neredz; par katru „JĀ” tu saņem +5 monētas.</p>
+  </section>
+
+  <!-- v124: Garāža — monētas un tēli -->
+  <section id="garageSheet" class="sheet garage-sheet" hidden aria-labelledby="garageTitle">
+    <div class="sheet-head">
+      <h2 id="garageTitle">Garāža</h2>
+      <button id="closeGarage" class="link-btn">Aizvērt</button>
+    </div>
+    <div class="gr-top">
+      <div class="gr-balance"><span class="coin big" aria-hidden="true"></span><b id="garageBalance">0</b><span>monētas</span></div>
+      <div id="garageToday" class="gr-today"></div>
+    </div>
+    <p id="garageNote" class="gr-note" hidden></p>
+    <p id="garageMsg" class="rep-msg" role="status" hidden></p>
+    <div id="garageGrid" class="gr-grid"></div>
+    <p class="fine">Tavs tēls redzams <b>citiem</b> braucējiem kartē, kad brauc un ir ieslēgts „Palīdzēt citiem”. Pats tu vienmēr redzi zaļo bultiņu.
+      Monētas: +10 par atbildi uz jautājumu braucot, +5 par katru „JĀ” tavam ziņojumam, līdz 100 dienā.</p>
+    <div id="garageDlg" class="gr-dlg" role="dialog" aria-modal="true" hidden></div>
   </section>
 
   <!-- Vietas tuvumā -->
@@ -260,7 +284,7 @@
     <div id="trafficRows" class="tr-card">
       <div class="tr-card-t">🚦 Sastrēgumu karte</div>
       <label class="row">
-        <span><b>Palīdzēt citiem — anonīmi dalīties ar braukšanas ātrumu</b><br><small class="fine">Braucot tiek sūtīts tikai ātrums, aptuvenā vieta uz ceļa (~50 m) un virziens — bez vārda, e-pasta un maršruta, ne brauciena pirmie un pēdējie 400 m. Glabājas 28 dienas.</small></span>
+        <span><b>Palīdzēt citiem — anonīmi dalīties ar braukšanas ātrumu</b><br><small class="fine">Braucot tiek sūtīts tikai ātrums, aptuvenā vieta uz ceļa (~50 m) un virziens — bez vārda, e-pasta un maršruta, ne brauciena pirmie un pēdējie 400 m. Glabājas 28 dienas. Kamēr brauc, citi kartē redz tavu aptuveno vietu ar Garāžas tēlu (bez vārda).</small></span>
         <input type="checkbox" id="trafficShare" class="switch">
       </label>
       <label class="row">
@@ -358,19 +382,22 @@
   <script src="nav.js?v=122"></script>
   <script src="times.js?v=93"></script>
   <script src="parking.js?v=93"></script>
-  <script src="alerts.js?v=121b"></script>
-  <script src="reports.js?v=116"></script>
+  <script src="alerts.js?v=124"></script>
+  <script src="reports.js?v=124"></script>
+  <script src="skins.js?v=124"></script>
   <script src="places.js?v=120c"></script>
   <script src="model.js?v=93"></script>
   <script src="rides-config.js?v=93"></script>
-  <script src="auth.js?v=95"></script>
+  <script src="auth.js?v=124"></script>
   <script src="mly-config.js?v=93"></script>
   <script src="traffic.js?v=93"></script>
   <script src="rides.js?v=119"></script>
   <script src="rides-ui.js?v=123"></script>
-  <script src="app-gl.js?v=123"></script>
+  <script src="garage.js?v=124"></script>
+  <script src="presence.js?v=124"></script>
+  <script src="app-gl.js?v=124"></script>
   <script src="park-gl.js?v=116"></script>
   <script src="park-dest-gl.js?v=93"></script>
-  <script src="traffic-gl.js?v=98"></script>
+  <script src="traffic-gl.js?v=124"></script>
 </body>
 </html>

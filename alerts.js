@@ -17,12 +17,12 @@ const ALERT_GROUP_COLORS = {
 
 // ttl — cik minūtes lietotāja ziņojums ir spēkā; report — var ziņot pats; source — no kurienes nāk.
 const ALERT_TYPES = {
-  'police':         { label: 'Policija',                    group: 'police',   ttl: 60,  report: true },
+  'police':         { label: 'Policija',                    group: 'police',   ttl: 45,  report: true },
   'police-hidden':  { label: 'Slēptā policija',             group: 'police',   ttl: 60,  report: true },
   'camera-fixed':   { label: 'Ātruma kamera',               group: 'camera',   ttl: 43200, report: true },   // 30 dienas
-  'camera-mobile':  { label: 'Mobilais fotoradars',         group: 'camera',   ttl: 120, report: true },
-  'accident':       { label: 'Ceļu satiksmes negadījums',   group: 'accident', ttl: 120,  report: true },
-  'jam':            { label: 'Sastrēgums / lēna satiksme',  group: 'jam',      ttl: 30,  report: true },
+  'camera-mobile':  { label: 'Radars',                      group: 'camera',   ttl: 60,  report: true },
+  'accident':       { label: 'Avārija',                     group: 'accident', ttl: 60,   report: true },
+  'jam':            { label: 'Sastrēgums',                  group: 'jam',      ttl: 20,  report: true },
   'roadworks':      { label: 'Ceļa remontdarbi',            group: 'works',    ttl: 1440, report: true },
   'closure':        { label: 'Ceļš slēgts',                 group: 'closure',  ttl: 360, report: true },
   'lane-closed':    { label: 'Slēgta josla',                group: 'closure',  ttl: 240, report: true },
@@ -41,8 +41,26 @@ const ALERT_TYPES = {
   'traffic-light':  { label: 'Luksofors',                   group: 'infra',    ttl: null },
   'school':         { label: 'Skolas zona / bērni',         group: 'infra',    ttl: null },
   'restriction':    { label: 'Satiksmes ierobežojums',      group: 'restriction', ttl: null },
-  'obstacle':       { label: 'Šķērslis uz ceļa',            group: 'hazard',   ttl: 120, report: true },
+  'obstacle':       { label: 'Šķērslis',                    group: 'hazard',   ttl: 30,  report: true },
 };
+
+// Community report types (v124). Mirror of public.report_types (supabase/coins-1.sql) — the server
+// is the source of truth for lifetimes, rewards and validation; this copy drives the UI only.
+// Adding a type later (e.g. pothole, roadworks) = one row in report_types + one entry here; no new logic.
+//   ttl         default lifetime, minutes (YES answers extend it, at most 2× in total)
+//   question    confirmation question shown ~askDistance m before the point
+//   ask         whether drivers are asked to confirm it
+//   reward      coins for answering (server: coin_reward); askOnce — each user is asked once per report
+//   askDistance metres before the point when the question appears (jam: on entering the jam area)
+const REPORT_TYPE_CONFIG = {
+  'police':        { label: 'Policija',   ttl: 45, question: 'Vai policija vēl ir šeit?',    ask: true, reward: 10, askOnce: true, askDistance: 300 },
+  'camera-mobile': { label: 'Radars',     ttl: 60, question: 'Vai radars vēl ir šeit?',      ask: true, reward: 10, askOnce: true, askDistance: 300 },
+  'jam':           { label: 'Sastrēgums', ttl: 20, question: 'Vai sastrēgums vēl ir?',       ask: true, reward: 10, askOnce: true, askDistance: 150 },
+  'accident':      { label: 'Avārija',    ttl: 60, question: 'Vai avārija vēl ir šeit?',     ask: true, reward: 10, askOnce: true, askDistance: 300 },
+  'obstacle':      { label: 'Šķērslis',   ttl: 30, question: 'Vai šķērslis vēl ir uz ceļa?', ask: true, reward: 10, askOnce: true, askDistance: 300 },
+};
+// The "Ziņot" picker: these types only, in this order (big buttons, one tap to send).
+const REPORT_PICKER = Object.keys(REPORT_TYPE_CONFIG);
 
 // Ziņošanas grupas (kartes pogas): satiksmes notikumi un bīstamības / laikapstākļi.
 const REPORT_GROUPS = {
@@ -339,5 +357,5 @@ function alertInfo(it, now = Date.now()) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { ALERT_TYPES, REPORT_GROUPS, alertSvg, alertDataUrl, setAlertTheme, ALERT_SPECIAL, ALERT_ICON_ANCHOR, ALERT_ICON_OFFSET, ALERT_STANDALONE, alertDotColor, alertCode, alertCodeColorExpr, ALERT_ORDER, alertTypeForSign, signNeedsDirection, alertTypeForOsm, weatherAlerts, AlertStore, makeReport, alertInfo };
+  module.exports = { ALERT_TYPES, REPORT_TYPE_CONFIG, REPORT_PICKER, REPORT_GROUPS, alertSvg, alertDataUrl, setAlertTheme, ALERT_SPECIAL, ALERT_ICON_ANCHOR, ALERT_ICON_OFFSET, ALERT_STANDALONE, alertDotColor, alertCode, alertCodeColorExpr, ALERT_ORDER, alertTypeForSign, signNeedsDirection, alertTypeForOsm, weatherAlerts, AlertStore, makeReport, alertInfo };
 }

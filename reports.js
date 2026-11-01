@@ -24,6 +24,20 @@ function reportErrorText(code) {
     case 'consent':        return 'Vispirms jāpiekrīt lietošanas noteikumiem.';
     case 'network':        return 'Nav savienojuma — ziņojums netika nosūtīts. Mēģini vēlreiz.';
     case 'no_server':      return 'Serveris nav pieejams.';
+    // v124: confirmations, coins and the Garage (supabase/coins-1.sql)
+    case 'already_answered': return 'Uz šo jautājumu tu jau atbildēji.';
+    case 'not_nearby':     return 'Atbildēt var tikai, braucot garām šai vietai.';
+    case 'not_driving':    return 'Atbildēt var tikai braucot.';
+    case 'wrong_direction': return 'Tu brauc citā virzienā — atbilde netika ieskaitīta.';
+    case 'poor_gps':       return 'Pārāk neprecīzs GPS — atbilde netika ieskaitīta.';
+    case 'gps_suspect':    return 'Atrašanās vieta izskatās nepareiza — atbilde netika ieskaitīta.';
+    case 'not_askable':    return 'Par šo notikumu nejautā.';
+    case 'need_account':   return 'Lai pirktu, vajag kontu ar apstiprinātu e-pastu.';
+    case 'not_enough':     return 'Nepietiek monētu.';
+    case 'already_owned':  return 'Šis tēls tev jau ir.';
+    case 'bad_skin':       return 'Šāda tēla nav.';
+    case 'not_owned':      return 'Vispirms šo tēlu jānopērk.';
+    case 'no_auth':        return 'Vajag pieslēgties.';
     default:               return 'Neizdevās — mēģini vēlreiz.';
   }
 }
@@ -36,6 +50,9 @@ function reportFromRow(row) {
     heading: row.heading == null ? null : +row.heading, source: 'shared',
     title: t ? t.label : row.type, mine: !!row.mine, myVote: row.my_vote || null, still: +row.still_count || 0,
     createdAt: Date.parse(row.created_at), expiresAt: Date.parse(row.expires_at),
+    // v124: confidence 0…1; pending — a low-trust author's report waiting for YES answers (hidden on the map,
+    // but drivers passing by are still asked about it)
+    confidence: row.confidence == null ? null : +row.confidence, pending: !!row.pending,
   };
 }
 
@@ -113,8 +130,67 @@ class ReportsApi {
   async list(bbox) { return ((await this._rpc('report_list', bbox)) || []).map(reportFromRow); }
   vote(rid, vote) { return this._rpc('report_vote', { p_id: rid, p_vote: vote }, { account: true }); }
   remove(rid) { return this._rpc('report_delete', { p_id: rid }, { account: true }); }
+
+  // v124: answer the confirmation prompt. ev — evidence the server checks before paying coins:
+  // { lat, lng, heading, speedKmh, accuracy, mock }. If the server does not have report_confirm yet
+  // (coins SQL not installed → 404), falls back to the legacy vote without coins.
+  async confirm(rid, answer, ev = {}) {
+    const num = v => (v == null || !isFinite(v) ? null : +v);
+    try {
+      const r = await this._rpc('report_confirm', {
+        p_id: rid, p_answer: answer === 'yes' ? 'yes' : 'no', p_lat: num(ev.lat), p_lng: num(ev.lng),
+        p_heading: num(ev.heading) == null ? null : Math.round(ev.heading), p_speed_kmh: num(ev.speedKmh),
+        p_accuracy: num(ev.accuracy), p_mock: !!ev.mock }, { account: true });
+      if (r && r.error) throw Object.assign(new Error(r.error), { code: r.error });   // e.g. gps_suspect (returned, not raised)
+      return r;
+    } catch (e) {
+      if (e.status !== 404) throw e;
+      const r = await this.vote(rid, answer === 'yes' ? 'still' : 'gone');
+      return Object.assign({ coins: 0, legacy: true }, r);
+    }
+  }
+
+  // ---- Coins and the Garage ----
+  // Wallet: { balance, earned_today, daily_cap, equipped, can_spend, owned: [...] }.
+  // Without a session returns null (no account is created just to look).
+  async wallet({ create = false } = {}) {
+    if (!create && this.auth && !this.auth.hasSession()) return null;
+    return this._rpc('wallet_get', {}, { account: true });
+  }
+  async skins() { return (await this._rpc('skins_list', {})) || []; }
+  buy(skin) { return this._rpc('skin_buy', { p_skin: skin }, { account: true }); }
+  equip(skin) { return this._rpc('skin_equip', { p_skin: skin || null }, { account: true }); }
+
+  // ---- Other drivers on the map (supabase/coins-2-presence.sql) ----
+  presenceUpdate(lat, lng, heading, speedKmh) {
+    return this._rpc('presence_update', { p_lat: lat, p_lng: lng,
+      p_heading: heading == null || !isFinite(heading) ? null : Math.round(heading), p_speed_kmh: speedKmh }, { account: true });
+  }
+  presenceClear() { return this._rpc('presence_clear', {}, { account: true }); }
+  async presenceNearby(bbox) { return (await this._rpc('presence_nearby', bbox)) || []; }
+}
+
+// v124: the confirmation prompt — is this report worth asking about right now?
+//   a   — { it, dist } from nextAlertAhead() (dist = metres ahead along my road)
+//   ctx — { asked:Set, odo, lastAskOdo, toTurn, speedKmh, busy }
+// Returns '' when the prompt should be shown, otherwise the reason it is not (for tests / debugging).
+const REPORT_ASK_MIN_GAP_M = 1000;      // at most one prompt per ~1 km driven
+const REPORT_ASK_TURN_M = 250;          // never right before a turn / intersection on the route
+function reportAskBlock(a, ctx) {
+  if (!a || !a.it || a.it.source !== 'shared') return 'none';
+  const it = a.it, cfg = typeof REPORT_TYPE_CONFIG !== 'undefined' ? REPORT_TYPE_CONFIG[it.type] : null;
+  if (!cfg || !cfg.ask) return 'type';
+  if (it.mine) return 'mine';
+  if (it.myVote) return 'voted';
+  if (ctx.asked && ctx.asked.has(it.id)) return 'asked';
+  if (ctx.busy) return 'busy';
+  if (a.dist > cfg.askDistance || a.dist < 40) return 'distance';
+  if (!(ctx.speedKmh >= 5)) return 'speed';
+  if (ctx.toTurn != null && ctx.toTurn < REPORT_ASK_TURN_M) return 'turn';
+  if (ctx.lastAskOdo != null && ctx.odo - ctx.lastAskOdo < REPORT_ASK_MIN_GAP_M) return 'gap';
+  return '';
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { ReportsApi, reportErrorText, reportFromRow, reportInfo, reportBBox, reportsToMigrate, reportAgo, reportDur };
+  module.exports = { ReportsApi, reportAskBlock, REPORT_ASK_MIN_GAP_M, REPORT_ASK_TURN_M, reportErrorText, reportFromRow, reportInfo, reportBBox, reportsToMigrate, reportAgo, reportDur };
 }

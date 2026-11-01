@@ -11,7 +11,7 @@
 // cz.traffic.session tiek pārņemtas, nevis izmestas).
 
 const CZ_TERMS_VERSION = '2026-10-23';
-const CZ_PRIVACY_VERSION = '2026-10-23.2';     // .2 — kopīgi ziņojumi uz ceļa (F10)
+const CZ_PRIVACY_VERSION = '2026-11-01';       // v124: monētas, Garāža, tava vieta citu kartē (iepr. .2 — ziņojumi F10)
 const CZ_AUTH_KEY = 'cz.auth.session';
 const CZ_CONSENT_KEY = 'cz.consent';
 const CZ_TRANSFER_KEY = 'cz.auth.transfer';

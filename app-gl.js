@@ -1156,6 +1156,11 @@ function followCamera(dur = 900) {
 // Viens jauns atrašanās vietas mērījums (no GPS, testa klikšķa vai simulācijas).
 function onFix(lat, lng, speedKmh, gpsHeading, dur = 900, accuracy = null) {
   const first0 = !state.me;
+  // v124: distance driven (for "max one confirmation prompt per ~1 km"); GPS jumps > 500 m are not counted
+  if (state.me && (accuracy == null || accuracy < 60)) {
+    const step = distM(state.me.lat, state.me.lng, lat, lng);
+    if (step < 500) reportsState.odo += step;
+  }
   state.me = { lat, lng, speedKmh, accuracy };
   state.gpsQuality = gpsFixQuality(accuracy);
   // Navigācijā bulta brauc pa maršruta līniju, nobrauktā daļa aiz tās pazūd.
@@ -1184,6 +1189,7 @@ function onFix(lat, lng, speedKmh, gpsHeading, dur = 900, accuracy = null) {
   else updateNextSign();
   followCamera(dur);
   if (typeof trafficOnFix === 'function') trafficOnFix(lat, lng, speedKmh, state.heading, accuracy);   // sastrēgumu karte (traffic-gl.js)
+  if (typeof presenceOnFix === 'function') presenceOnFix(lat, lng, speedKmh, state.heading, accuracy);   // v124: tavs tēls citiem (presence.js)
   if ($('reportSheet') && !$('reportSheet').hidden) reportGpsRefresh();   // F20: vieta ir — pogas aktīvas
 }
 
@@ -1842,6 +1848,7 @@ function updateNav() {
   }
   $('navIcon').innerHTML = maneuverIcon(p.next);
   $('navDist').textContent = navDist(p.toNext);
+  state.nav.toNext = p.toNext;                     // v124: no confirmation prompt right before a turn
   $('navInstr').textContent = maneuverText(p.next);
   $('etaTime').textContent = clockIn(p.timeLeft);
   $('etaMeta').textContent = `${navTime(p.timeLeft)} · ${navDist(p.remaining)}`;
@@ -2450,10 +2457,11 @@ function showAlertPopup(id, coords, offset = 18) {
 }
 
 // Nākamais notikums priekšā uz maršruta vai mana ceļa: { it, dist } vai null.
-function nextAlertAhead() {
+// list — which items to consider (default: everything on the map).
+function nextAlertAhead(list) {
   if (!alerts) return null;
   let best = null;
-  for (const it of alerts.list()) {
+  for (const it of list || alerts.list()) {
     let dist = null, bearing = null;
     if (state.nav.active && state.nav.route && state.nav.along != null) {
       const r = signs._matchRoute(it.lat, it.lng);
@@ -2540,13 +2548,14 @@ function renderWeather() {
 
 // ---------- Ziņot (lietotāja ziņojumi) ----------
 function wireAlerts() {
+  // v124: big buttons for the 5 community report types only (tap "Ziņot" → tap a type = sent).
   const grid = $('reportGrid');
-  for (const [type, t] of Object.entries(ALERT_TYPES)) {
-    if (!t.report) continue;
+  grid.classList.add('report-grid-big');
+  for (const type of REPORT_PICKER) {
     const b = document.createElement('button');
-    b.type = 'button'; b.className = 'report-btn';
-    b.innerHTML = `<img src="${alertDataUrl(type)}" alt="" width="40" height="40"><span></span>`;
-    b.querySelector('span').textContent = t.label;
+    b.type = 'button'; b.className = 'report-btn report-btn-big'; b.dataset.type = type;
+    b.innerHTML = `<img src="${alertDataUrl(type)}" alt="" width="64" height="64"><span></span>`;
+    b.querySelector('span').textContent = REPORT_TYPE_CONFIG[type].label;
     b.addEventListener('click', () => reportAlert(type));
     grid.appendChild(b);
   }
@@ -2561,7 +2570,10 @@ function wireAlerts() {
 
 // ---------- Kopīgi ziņojumi (F10, reports.js + supabase/reports.sql) ----------
 let reportsApi = null;
-const reportsState = { timer: null, seq: 0, sending: false, watch: null, asked: new Set(), warned: new Set() };
+const reportsState = { timer: null, seq: 0, sending: false, watch: null, asked: new Set(), warned: new Set(),
+  pending: new Map(),          // v124: low-trust reports waiting for YES — not drawn, but drivers are asked
+  odo: 0, lastAskOdo: null,    // v124: metres driven; odometer value at the last prompt
+  prompt: null };              // v124: the prompt on screen { it, timer }
 
 // Uznirstošs paziņojums virs visa (nevis statusa joslā aiz loga)
 function czToast(text, loud) { if (typeof parkToast === 'function') parkToast(text, loud); else setStatus(text); }
@@ -2599,7 +2611,12 @@ async function loadReports(force) {
   try { list = await reportsApi.list(bbox); } catch (e) { reportsState.box = null; console.warn('Ziņojumi nav ielādēti', e); return; }
   if (seq !== reportsState.seq) return;              // pa to laiku pieprasīts jaunāks
   for (const [id, it] of alerts.items) if (it.source === 'shared') alerts.items.delete(id);
-  for (const it of list) if (ALERT_TYPES[it.type]) alerts.items.set(it.id, it);
+  reportsState.pending.clear();
+  for (const it of list) {
+    if (!ALERT_TYPES[it.type]) continue;
+    if (it.pending && !it.mine) reportsState.pending.set(it.id, it);   // v124: hidden until confirmed
+    else alerts.items.set(it.id, it);
+  }
   refreshAlerts();
 }
 
@@ -2636,9 +2653,10 @@ async function reportAlert(type) {
     const res = await reportsApi.create(type, p.lat, p.lng, state.heading);
     $('reportSheet').hidden = true;
     reportSheetMsg('');
-    const label = ALERT_TYPES[type].label;
+    const cfg = REPORT_TYPE_CONFIG[type] || ALERT_TYPES[type], label = cfg.label;
     if (res && res.merged) czToast(`Paldies! „${label}” šeit jau bija ziņots — tavs apstiprinājums pieskaitīts.`);
-    else czToast(`Paldies! „${label}” nosūtīts — to redz visi tuvumā ${reportDur(ALERT_TYPES[type].ttl)}.`);
+    else czToast(`Paldies! „${label}” nosūtīts — to redz braucēji tajā pašā virzienā ${reportDur(cfg.ttl)}. ` +
+      'Kad citi apstiprinās, saņemsi monētas.');
     await loadReports(true);
   } catch (e) {
     reportSheetMsg(reportErrorText(e.code));       // logs paliek atvērts — ziņa redzama pie pogām
@@ -2686,55 +2704,94 @@ function reportPopupActions(el, it, popup, infoEl) {
   el.append(row, msg);
 }
 
-// Braucot: citu ziņojums priekšā (≤ 500 m, tajā pašā virzienā) → brīdinājums; pēc garāmbraukšanas — „Vēl ir?”
-// a — nextAlertAhead() rezultāts; undefined — brīdinājumi izslēgti (neko nejautā).
+// Driving: another driver's report ahead (≤ 500 m, same direction) → warning hook, and the v124 confirmation prompt.
+// a — nextAlertAhead() result; undefined — alerts are off (nothing is asked).
 function reportWatchAhead(a) {
-  const w = reportsState.watch;
   if (a === undefined) { reportsState.watch = null; return; }
-  const isShared = a && a.it.source === 'shared' && !a.it.mine;
-  if (isShared) {
-    if (!reportsState.warned.has(a.it.id)) { reportsState.warned.add(a.it.id); reportAheadAlert(a.it, a.dist); }
-    if (!w || w.it.id !== a.it.id || a.dist < w.dist) reportsState.watch = { it: a.it, dist: a.dist };
-    if (w && w.it.id !== a.it.id) reportPassed(w);
-    return;
+  if (a && a.it.source === 'shared' && !a.it.mine && !reportsState.warned.has(a.it.id)) {
+    reportsState.warned.add(a.it.id); reportAheadAlert(a.it, a.dist);
   }
-  if (w) { reportsState.watch = null; reportPassed(w); }
+  reportPromptTick();
 }
-// Āķis brīdinājumam (F8: šeit pievienos balss paziņojumu). Kartīte „nākamais” to jau rāda vizuāli.
-function reportAheadAlert(it, dist) { /* piem. voiceSay(`Pēc ${Math.round(dist / 50) * 50} metriem — ${it.title}`) */ }
-function reportPassed(w) {
-  if (!w || w.dist > 80 || !state.me) return;                       // pagriezāmies citur — nejautā
-  if (distM(state.me.lat, state.me.lng, w.it.lat, w.it.lng) > 150) return;
-  if (w.it.myVote || reportsState.asked.has(w.it.id) || !alerts.items.has(w.it.id)) return;
-  reportsState.asked.add(w.it.id);
-  reportAskStill(w.it);
+// Hook for a spoken warning (F8). The "next" card already shows it visually.
+function reportAheadAlert(it, dist) { /* e.g. voiceSay(`Pēc ${Math.round(dist / 50) * 50} metriem — ${it.title}`) */ }
+
+// ---------- v124: confirmation prompt "Vai policija vēl ir šeit?" — JĀ / NĒ ----------
+// Shown ~300 m before the point (jam: when entering it) for reports of other drivers in my direction,
+// including pending ones that are not drawn yet. One at a time, max one per ~1 km, never right before
+// a turn, hides itself after 7 s, sits above the bottom bar and never covers the turn instructions.
+const REPORT_PROMPT_MS = 7000;
+function reportPromptTick() {
+  if (!alerts || !state.me) return;
+  const cands = [...alerts.list().filter(it => it.source === 'shared' && !it.mine), ...reportsState.pending.values()];
+  if (!cands.length) return;
+  const a = nextAlertAhead(cands);
+  const block = reportAskBlock(a, {
+    asked: reportsState.asked, busy: !!reportsState.prompt, odo: reportsState.odo, lastAskOdo: reportsState.lastAskOdo,
+    toTurn: state.nav.active ? state.nav.toNext : null, speedKmh: state.me.speedKmh,
+  });
+  if (block) return;
+  reportsState.asked.add(a.it.id);
+  reportsState.lastAskOdo = reportsState.odo;
+  reportPromptShow(a.it);
 }
-// Neuzbāzīgs jautājums, kas pazūd pats
-function reportAskStill(it) {
-  let box = $('repAsk');
-  if (!box) { box = document.createElement('div'); box.id = 'repAsk'; box.className = 'rep-ask'; box.setAttribute('role', 'status'); document.body.appendChild(box); }
+function reportPromptHide() {
+  const p = reportsState.prompt;
+  if (!p) return;
+  clearTimeout(p.timer); cancelAnimationFrame(p.raf);
+  p.box.classList.remove('show');
+  reportsState.prompt = null;
+}
+function reportPromptShow(it) {
+  const cfg = REPORT_TYPE_CONFIG[it.type];
+  let box = $('repPrompt');
+  if (!box) {
+    box = document.createElement('div'); box.id = 'repPrompt'; box.className = 'rep-prompt';
+    box.setAttribute('role', 'alertdialog'); box.setAttribute('aria-live', 'assertive');
+    document.body.appendChild(box);
+  }
   box.textContent = '';
-  const img = document.createElement('img'); img.src = alertDataUrl(it.type); img.alt = ''; img.width = 30; img.height = 30;
-  const t = document.createElement('span'); t.textContent = `${ALERT_TYPES[it.type].label} — vēl ir?`;
-  const hide = () => { box.classList.remove('show'); clearTimeout(reportAskStill._t); };
-  const btn = (text, cls, v) => {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'btn small ' + cls; b.textContent = text;
-    b.addEventListener('click', async () => {
-      hide();
-      try {
-        const r = await reportsApi.vote(it.rid, v);
-        if (r && r.hidden) { alerts.items.delete(it.id); refreshAlerts(); }
-        czToast('Paldies!');
-      } catch (e) { czToast(reportErrorText(e.code), true); }
-    });
-    return b;
+  const head = document.createElement('div'); head.className = 'rp-head';
+  const img = document.createElement('img'); img.src = alertDataUrl(it.type); img.alt = ''; img.width = 44; img.height = 44;
+  const q = document.createElement('div'); q.className = 'rp-q'; q.textContent = cfg.question;
+  const coin = document.createElement('div'); coin.className = 'rp-coin'; coin.textContent = '+' + cfg.reward;
+  coin.title = 'Monētas par atbildi';
+  head.append(img, q, coin);
+  const btns = document.createElement('div'); btns.className = 'rp-btns';
+  const mk = (text, cls, answer) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'rp-btn ' + cls; b.textContent = text;
+    b.addEventListener('click', () => { reportPromptHide(); reportAnswer(it, answer); });
+    btns.appendChild(b);
   };
-  const x = document.createElement('button'); x.type = 'button'; x.className = 'rep-ask-x'; x.textContent = '×'; x.setAttribute('aria-label', 'Aizvērt');
-  x.addEventListener('click', hide);
-  box.append(img, t, btn('Vēl ir', 'primary', 'still'), btn('Vairs nav', 'ghost', 'gone'), x);
+  mk('JĀ', 'yes', 'yes'); mk('NĒ', 'no', 'no');
+  const bar = document.createElement('div'); bar.className = 'rp-bar'; const fill = document.createElement('i'); bar.appendChild(fill);
+  box.append(head, btns, bar);
   box.classList.add('show');
-  clearTimeout(reportAskStill._t);
-  reportAskStill._t = setTimeout(hide, 15000);
+  const t0 = performance.now();
+  const p = { it, box, timer: setTimeout(reportPromptHide, REPORT_PROMPT_MS), raf: 0 };
+  const tick = () => {                                               // countdown bar
+    if (reportsState.prompt !== p) return;
+    fill.style.transform = `scaleX(${Math.max(0, 1 - (performance.now() - t0) / REPORT_PROMPT_MS)})`;
+    p.raf = requestAnimationFrame(tick);
+  };
+  reportsState.prompt = p; tick();
+}
+// Sends the answer with the evidence the server validates (position, speed, heading, GPS accuracy).
+async function reportAnswer(it, answer) {
+  const me = state.me || {};
+  try {
+    const r = await reportsApi.confirm(it.rid, answer, { lat: me.lat, lng: me.lng, heading: state.heading,
+      speedKmh: me.speedKmh, accuracy: me.accuracy, mock: !!state.testMode });
+    it.myVote = answer === 'yes' ? 'still' : 'gone';
+    if (r && r.hidden) { alerts.items.delete(it.id); reportsState.pending.delete(it.id); refreshAlerts(); }
+    else if (r && r.expires_at) it.expiresAt = Date.parse(r.expires_at);
+    const coins = r && +r.coins || 0;
+    if (coins > 0) czToast(`Paldies! +${coins} monētas`);
+    else if (r && r.legacy) czToast('Paldies!');
+    else if (state.testMode) czToast('Paldies! (testa režīmā monētas netiek dotas)');
+    else czToast(r && r.daily_left === 0 ? 'Paldies! Šodienas monētu limits (100) ir sasniegts.' : 'Paldies!');
+    if (r && r.balance != null && typeof garageSetBalance === 'function') garageSetBalance(+r.balance);
+  } catch (e) { czToast(reportErrorText(e.code), true); }
 }
 
 // Agrākie ierīcē saglabātie ziņojumi: aktīvos vienreiz augšupielādē serverī, tad atslēgu iztīra
@@ -3266,6 +3323,8 @@ async function init() {
   alerts = new AlertStore(null);
   setInterval(() => { if (alerts.prune()) refreshAlerts(); }, 30000);   // novecojušos ziņojumus noņem
   reportsInit();
+  if (typeof garageInit === 'function') garageInit();        // v124: Garāža (garage.js)
+  if (typeof presenceInit === 'function') presenceInit();    // v124: citi braucēji ar tēliem (presence.js)
   setInterval(() => { signs.refresh(); updateLimit(); }, 60000); // laika ierobežojumi mainās
 
   map.on('style.load', () => {

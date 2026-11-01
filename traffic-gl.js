@@ -11,10 +11,13 @@ let trLastFetch = 0, trFetchBox = null, trSending = false, trAsked = false;
 function trPref(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } }
 function trSetPref(k, v) { try { localStorage.setItem(k, v); } catch {} }
 const trShare = () => trPref('cz.traffic.share', '') === 'yes';
+// v124: "yes" given to the CURRENT text (which says that other drivers see your Garage skin). An older "yes"
+// keeps the speed sharing it was given for, but presence.js shows you to others only after the new "yes".
+const trShareCurrent = () => trShare() && trPref('cz.traffic.shareVer', '') >= TR_SHARE_VERSION;
 const trShow = () => trPref('cz.traffic.show', 'yes') === 'yes';
 
 // ---------- Pieteikšanās: kopīgā (auth.js) — tikai tad, kad lietotājs pats ieslēdz dalīšanos ----------
-const TR_SHARE_VERSION = '2026-10-23';
+const TR_SHARE_VERSION = '2026-11-01';      // v124: + other drivers see your position and Garage skin
 async function trAuth() {
   const a = czAuthGet();
   if (!a) throw new Error('auth');
@@ -24,6 +27,8 @@ async function trAuth() {
 // „Jā” — ja konta vēl nav, izveido anonīmo (F1), pirms tiek sūtīts pirmais mērījums. Ziņas — uznirstošas (F9).
 function trShareChoice(yes, say = true) {
   trSetPref('cz.traffic.share', yes ? 'yes' : 'no');
+  trSetPref('cz.traffic.shareVer', TR_SHARE_VERSION);
+  if (!yes && typeof presenceStop === 'function') presenceStop();
   trSyncSwitch();
   if (say) trToast(yes ? 'Paldies! Braucot tavs ātrums anonīmi palīdzēs sastrēgumu kartei. Izslēgt vari iestatījumos.'
     : 'Labi — ātrums netiek sūtīts. Ieslēgt vari jebkurā brīdī iestatījumos.');
@@ -47,10 +52,12 @@ async function trServerChoice() {
   try {
     const t = await a.token();
     if (!t) return null;
-    const r = await fetch(trafficCfg.url.replace(/\/$/, '') + '/rest/v1/user_consents?kind=eq.speed_share&select=accepted&order=created_at.desc&limit=1',
+    const r = await fetch(trafficCfg.url.replace(/\/$/, '') + '/rest/v1/user_consents?kind=eq.speed_share&select=accepted,version&order=created_at.desc&limit=1',
       { headers: { apikey: trafficCfg.anonKey, Authorization: 'Bearer ' + t } });
     const rows = r.ok ? await r.json() : [];
-    return rows && rows[0] ? !!rows[0].accepted : null;
+    if (!rows || !rows[0]) return null;
+    if (rows[0].accepted && String(rows[0].version || '') < TR_SHARE_VERSION) return null;   // older text — ask again
+    return !!rows[0].accepted;
   } catch { return null; }
 }
 async function trRpc(name, body, auth) {
@@ -68,6 +75,7 @@ function trafficOnFix(lat, lng, kmh, heading, acc) {
   if (!trafficCfg || state.testMode) return;
   if (!czConsentOk()) return;                 // bez piekrišanas noteikumiem neko nesūta un nejautā
   if (!trShare()) { if (!trAsked && kmh > 15 && trPref('cz.traffic.share', '') === '') trafficOffer(); return; }
+  if (!trShareCurrent() && !trAsked && kmh > 15) trafficOffer(true);    // v124: "yes" to the older text — ask once more
   if (!roadIndex.ready || !roadIndex.covers(lat, lng)) return;
   const now = Date.now(), L = trCollector.last;
   if (kmh == null && L && now - L.t < 15000) kmh = Math.hypot((lat - L.rawLat) * 111320, (lng - L.rawLng) * 111320 * Math.cos(lat * Math.PI / 180)) / ((now - L.t) / 1000) * 3.6;
@@ -91,13 +99,17 @@ async function trFlush(force) {
 
 // ---------- Piekrišana (F15) ----------
 // Jautā vienu reizi: pirmajā navigācijas sākšanā (app-gl.js startNav) vai — ja lietotājs nenavigē — pirmajā braucienā.
-const TR_ASK_TEXT = 'Braucot tiek sūtīts tikai ātrums, aptuvenā vieta uz ceļa (~50 m) un braukšanas virziens — bez tava vārda, e-pasta vai maršruta, un nekad ne brauciena pirmie un pēdējie 400 m. Dati glabājas 28 dienas. Dalīšanos vari jebkurā brīdī izslēgt iestatījumos.';
-async function trafficOffer() {
-  if (!trafficCfg || trAsked || trPref('cz.traffic.share', '') !== '') return;
+const TR_ASK_TEXT = 'Braucot tiek sūtīts tikai ātrums, aptuvenā vieta uz ceļa (~50 m) un braukšanas virziens — bez tava vārda, e-pasta vai maršruta, un nekad ne brauciena pirmie un pēdējie 400 m. Dati glabājas 28 dienas. ' +
+  'Kamēr brauc (no 15 km/h), citi braucēji kartē redz tavu aptuveno vietu (~20 m) ar tavu Garāžas tēlu vai bultiņu — bez vārda; apstājoties tā pazūd uzreiz, citādi pēc 2 minūtēm. ' +
+  'Dalīšanos vari jebkurā brīdī izslēgt iestatījumos.';
+async function trafficOffer(again = false) {
+  if (!trafficCfg || trAsked) return;
+  if (!again && trPref('cz.traffic.share', '') !== '') return;
+  if (again && trShareCurrent()) return;
   if (typeof czConsentOk === 'function' && !czConsentOk()) return;     // vispirms noteikumi
   trAsked = true;
   const prev = await trServerChoice();                                // atbildēja citā ierīcē — tikai atceras
-  if (prev != null) { trSetPref('cz.traffic.share', prev ? 'yes' : 'no'); trSyncSwitch(); return; }
+  if (prev != null) { trSetPref('cz.traffic.share', prev ? 'yes' : 'no'); trSetPref('cz.traffic.shareVer', TR_SHARE_VERSION); trSyncSwitch(); return; }
   trAskConsent();
 }
 function trAskConsent() {

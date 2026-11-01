@@ -928,3 +928,99 @@ html.navigating .alt-bubble { display: none; }
 .r-stat-table td:not(:first-child), .r-stat-table th:not(:first-child) { white-space: nowrap; }
 @media (max-width: 400px) { .r-stat-table { font-size: 13px; } .r-stat-table th, .r-stat-table td { padding: 6px 3px; } }
 .r-stat-full { align-self: flex-start; }
+
+/* ===================== v124: ziņošana, jautājums JĀ/NĒ, Garāža, citi braucēji ===================== */
+/* Ziņot — 5 lielas pogas (2 pieskārieni kopā) */
+.report-grid.report-grid-big { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.report-btn.report-btn-big { padding: 14px 4px 12px; gap: 8px; border-radius: 18px; font: 700 15px/1.15 var(--font-body); min-height: 112px; align-content: center; }
+.report-btn.report-btn-big img { width: 64px; height: 64px; }
+@media (max-width: 360px) { .report-grid.report-grid-big { grid-template-columns: repeat(2, 1fr); } }
+
+/* Jautājums braucot: virs apakšējās joslas, neaizsedz pagrieziena norādes augšā */
+.rep-prompt {
+  position: fixed; z-index: 58; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 104px);
+  width: min(420px, calc(100vw - 24px)); transform: translate(-50%, 24px); opacity: 0; pointer-events: none;
+  background: var(--panel); color: var(--fg); border-radius: 22px; box-shadow: var(--shadow);
+  padding: 12px 12px 0; overflow: hidden; transition: opacity .2s, transform .2s;
+}
+.rep-prompt.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.rp-head { display: flex; align-items: center; gap: 10px; }
+.rp-head img { flex: none; }
+.rp-q { flex: 1; min-width: 0; font: 700 19px/1.2 var(--font-body); }
+.rp-coin { flex: none; display: flex; align-items: center; gap: 4px; padding: 4px 9px; border-radius: 99px;
+  background: #fff4d6; color: #8a5a00; font: 800 14px var(--font-body); }
+.rp-coin::before { content: ''; width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #ffe27a, #f2b01e 60%, #c98a00); }
+.rp-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0 12px; }
+.rp-btn { border: 0; border-radius: 16px; min-height: 64px; font: 800 26px var(--font-body); letter-spacing: .04em; color: #fff; cursor: pointer; }
+.rp-btn.yes { background: var(--go); }
+.rp-btn.no { background: var(--danger); }
+.rp-btn:active { transform: scale(.97); }
+.rp-bar { height: 4px; margin: 0 -12px; background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.rp-bar i { display: block; height: 100%; background: var(--accent); transform-origin: left; }
+.navigating .rep-prompt { bottom: calc(env(safe-area-inset-bottom, 0px) + 112px); }
+
+/* Monēta */
+.coin { display: inline-block; width: 13px; height: 13px; border-radius: 50%; flex: none; vertical-align: -2px;
+  background: radial-gradient(circle at 35% 35%, #ffe27a, #f2b01e 60%, #c98a00); box-shadow: inset 0 0 0 1.5px #b07800; }
+.coin.big { width: 22px; height: 22px; }
+
+/* Garāžas poga ar atlikumu */
+.garage-fab { position: relative; color: #e08a00; }
+.garage-bal { position: absolute; top: -7px; right: -6px; display: flex; align-items: center; gap: 3px;
+  padding: 2px 6px 2px 3px; border-radius: 99px; background: var(--panel); box-shadow: 0 2px 8px rgba(0,0,0,.2);
+  font: 800 11px/1 var(--font-body); color: var(--fg); font-variant-numeric: tabular-nums; }
+.garage-bal .coin { width: 11px; height: 11px; }
+.garage-bal b.bump { animation: coin-bump .6s ease; }
+@keyframes coin-bump { 0%, 100% { transform: scale(1); } 40% { transform: scale(1.45); color: #e08a00; } }
+
+/* Garāža */
+.garage-sheet { max-height: 88vh; }
+.gr-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 4px 0 10px; }
+.gr-balance { display: flex; align-items: center; gap: 8px; font: 800 30px var(--font-sign); }
+.gr-balance span:last-child { font: 600 14px var(--font-body); color: var(--muted); }
+.gr-today { color: var(--muted); font-size: 13.5px; font-weight: 600; }
+.gr-note { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; background: #fff4d6; color: #7a5200; font-weight: 600; font-size: 14px; line-height: 1.35; }
+.gr-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+@media (min-width: 520px) { .gr-grid { grid-template-columns: repeat(3, 1fr); } }
+.gr-card { --rar: #9aa6b5; position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 10px 8px 10px; border-radius: 18px; background: var(--bg); border: 3px solid var(--rar); }
+.gr-card.rar-common { --rar: #9aa6b5; }
+.gr-card.rar-rare { --rar: #3b82f6; }
+.gr-card.rar-epic { --rar: #a855f7; background: color-mix(in srgb, #a855f7 8%, var(--bg)); }
+.gr-card.st-equipped { box-shadow: 0 0 0 3px color-mix(in srgb, var(--go) 55%, transparent); border-color: var(--go); }
+.gr-rar { align-self: flex-start; font: 800 10.5px var(--font-body); letter-spacing: .06em; text-transform: uppercase; color: var(--rar); }
+.gr-card.st-equipped .gr-rar { color: var(--go); }
+.gr-img { border: 0; background: none; padding: 0; cursor: pointer; }
+.gr-img img { display: block; width: 96px; height: 99px; }
+.gr-card.st-locked .gr-img img { filter: grayscale(.55) brightness(.95); opacity: .8; }
+.gr-name { font: 700 16px var(--font-body); }
+.gr-price { display: flex; align-items: center; gap: 5px; font: 800 14px var(--font-body); color: #8a5a00; }
+.gr-act { width: 100%; display: grid; gap: 4px; justify-items: stretch; margin-top: 4px; }
+.gr-act .btn.small { padding: 9px 8px; }
+.gr-look { justify-self: center; font-size: 13px; }
+.gr-check { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--go); color: #fff; font: 800 15px var(--font-body); }
+.gr-lock { text-align: center; }
+.gr-lock-t { font: 700 13px var(--font-body); color: var(--muted); }
+.gr-prog { height: 8px; border-radius: 99px; background: color-mix(in srgb, var(--fg) 12%, transparent); overflow: hidden; margin: 4px 2px 3px; }
+.gr-prog i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #f2b01e, #e08a00); }
+.gr-prog-t { font: 700 12.5px var(--font-body); color: var(--muted); font-variant-numeric: tabular-nums; }
+.gr-dlg { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 16px; background: rgba(10, 16, 26, .45); }
+.gr-dlg-box { width: min(340px, 100%); background: var(--panel); color: var(--fg); border-radius: 22px; box-shadow: var(--shadow);
+  padding: 18px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.gr-dlg-t { font: 700 21px var(--font-sign); }
+.gr-dlg-s { color: var(--muted); font-size: 14.5px; line-height: 1.35; }
+.gr-dlg-b { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; margin-top: 10px; }
+
+/* Citi braucēji kartē: lapsa stāv taisni, bultiņa zem tās griežas pēc virziena */
+.pr-mk { display: flex; flex-direction: column; align-items: center; pointer-events: auto; }
+.pr-fox { display: block; width: 48px; height: 50px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+.pr-arrow { width: 22px; height: 22px; margin-top: -4px; transition: transform .3s ease; }
+.pr-arrow svg { display: block; fill: #1e5bb8; filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
+.pr-plain .pr-arrow svg { fill: #7b8696; }
+.pr-preview .pr-fox { animation: pr-pop .5s ease; }
+@keyframes pr-pop { 0% { transform: scale(.4); } 70% { transform: scale(1.12); } 100% { transform: scale(1); } }
+.gr-prev-tag { margin-bottom: 6px; padding: 6px 10px; border-radius: 12px; background: var(--panel); color: var(--fg); box-shadow: var(--shadow);
+  font: 700 13px var(--font-body); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .pr-preview .pr-fox, .garage-bal b.bump { animation: none; } .rep-prompt, .pr-arrow { transition: none; } }
+.gr-card .btn.ghost { background: var(--panel); color: var(--fg); border: 1px solid var(--line); }
