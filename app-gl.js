@@ -2157,6 +2157,91 @@ function refreshRadar() {
   src.setData({ type: 'FeatureCollection', features: feats });
   radar.count = feats.length;
   radarAnimate();
+  refreshPulse(feats);
+}
+
+// ---------- v121b: kustīgi signāla gredzeni ap policiju un radariem ----------
+// Ap zīmes galvu periodiski izplešas un izgaist divi gredzeni (kā raidīts signāls), lai braucot to pamana laikus.
+// Zīme kartē ir attēls, tāpēc gredzeni ir atsevišķi apļu slāņi: centrs pārbīdīts uz augšu līdz galvas centram
+// (smaile = notikuma vieta; galvas centrs 36,5 vienības virs smailes = 18,25 px pie icon-size 1).
+// Ja ierīcē ieslēgts „samazināt kustību” — gredzeni stāv uz vietas.
+const PULSE_SRC = 'alert-pulse';
+const PULSE_PERIOD = 2.2;                 // s — viens gredzens no galvas līdz izgaišanai
+const PULSE_HEAD_PX = 18.25;              // galvas centrs virs smailes pie icon-size 1
+const PULSE_COLOR = { 'police': '#2F6BFF', 'police-hidden': '#2F6BFF', 'camera-fixed': '#3D7BF0', 'camera-mobile': '#8B5CF6' };
+// izmērs pēc tuvinājuma — tāds pats kā zīmei savā slānī (policija: alerts, radari: radar-icon)
+const PULSE_SIZES = { police: [[12, 0.62], [16, 1], [18.5, 1.22]], camera: [[13.5, 0.84], [16, 1.08], [18.5, 1.3]] };
+const pulse = { raf: 0, last: 0, count: 0, t0: performance.now() };
+const pulseStill = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+function refreshPulse(radarFeats) {
+  const src = map && map.getSource && map.getSource(PULSE_SRC);
+  if (!src) return;
+  const show = state.signsOn && state.mapMode === 'alerts';
+  const feats = [];
+  if (show) {
+    for (const f of radarFeats || []) {
+      if (f.properties.point_count) continue;
+      feats.push({ type: 'Feature', geometry: f.geometry, properties: { kind: 'camera', col: PULSE_COLOR[f.properties.type] || PULSE_COLOR['camera-fixed'], ph: f.properties.ph || 0 } });
+    }
+    if (alerts) for (const it of alerts.list()) if (it.type === 'police' || it.type === 'police-hidden') {
+      feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [it.lng, it.lat] }, properties: { kind: 'police', col: PULSE_COLOR[it.type], ph: radarPhase(it.lng, it.lat) } });
+    }
+  }
+  src.setData({ type: 'FeatureCollection', features: feats });
+  pulse.count = feats.length;
+  pulseAnimate();
+}
+// Gredzena rādiuss un caurspīdība laikā T; off — otrā gredzena nobīde (0 vai 0,5 perioda)
+function pulseU(T, off) { return ['%', ['+', T / PULSE_PERIOD + off, ['*', 0.35, ['coalesce', ['get', 'ph'], 0]]], 1]; }
+function pulseRadius(kind, T, off) {
+  const e = easeOutX(pulseU(T, off));
+  const stops = [];
+  for (const [z, k] of PULSE_SIZES[kind]) stops.push(z, ['*', k, ['+', 11, ['*', 16, e]]]);
+  return RZ(...stops);
+}
+function pulseOpacity(T, off) {
+  const u = pulseU(T, off);
+  return ['*', mapIsDark() ? 0.85 : 0.75, ['^', ['-', 1, u], 1.4]];
+}
+function installPulseLayer() {
+  if (map.getSource(PULSE_SRC)) return;
+  map.addSource(PULSE_SRC, { type: 'geojson', data: EMPTY_FC });
+  const order = map.getStyle().layers.map(l => l.id);
+  const before = ['alerts', 'radar-icon'].filter(id => order.includes(id)).sort((a, b) => order.indexOf(a) - order.indexOf(b))[0];
+  const T = pulseStill() ? 0.8 : (performance.now() - pulse.t0) / 1000;
+  for (const kind of ['police', 'camera']) {
+    const tr = RZ(...PULSE_SIZES[kind].flatMap(([z, k]) => [z, ['literal', [0, -PULSE_HEAD_PX * k]]]));
+    for (const off of [0, 0.5]) {
+      map.addLayer({ id: `pulse-${kind}-${off ? 'b' : 'a'}`, type: 'circle', source: PULSE_SRC,
+        minzoom: kind === 'police' ? MARKER_IN_ZOOM : RADAR_ICON_FULL, filter: ['==', ['get', 'kind'], kind],
+        paint: {
+          'circle-opacity': 0, 'circle-color': ['get', 'col'],
+          'circle-stroke-color': ['get', 'col'], 'circle-stroke-width': RZ(13, 1.6, 17, 2.4),
+          'circle-radius': pulseRadius(kind, T, off), 'circle-stroke-opacity': pulseOpacity(T, off),
+          'circle-translate': tr, 'circle-translate-anchor': 'viewport', 'circle-pitch-alignment': 'viewport',
+        } }, before);
+    }
+  }
+  refreshAlerts();
+}
+// ~30 kadri/s, tikai kad ir ko rādīt un karte pietuvināta; cilnē fonā — apstājas
+function pulseAnimate() {
+  if (pulse.raf || pulseStill() || !map || !map.getLayer('pulse-police-a')) return;
+  const step = now => {
+    pulse.raf = 0;
+    if (!map.getLayer('pulse-police-a') || !pulse.count || document.hidden || map.getZoom() < MARKER_IN_ZOOM) return;
+    if (now - pulse.last >= 33) {
+      pulse.last = now;
+      const T = Math.round((now - pulse.t0) / 10) / 100;
+      for (const kind of ['police', 'camera']) for (const off of [0, 0.5]) {
+        const id = `pulse-${kind}-${off ? 'b' : 'a'}`;
+        map.setPaintProperty(id, 'circle-radius', pulseRadius(kind, T, off));
+        map.setPaintProperty(id, 'circle-stroke-opacity', pulseOpacity(T, off));
+      }
+    }
+    pulse.raf = requestAnimationFrame(step);
+  };
+  pulse.raf = requestAnimationFrame(step);
 }
 
 // ----- Izteiksmes -----
@@ -2195,12 +2280,12 @@ function installRadarLayer() {
   const base = { source: RADAR_SRC, minzoom: SIGN_DOTS_MIN_ZOOM };
   const cluster = ['has', 'point_count'];
   // 1) maigs oreols (zem maršruta līnijas — nekonkurē ar maršrutu)
-  map.addLayer(Object.assign({ id: 'radar-halo', type: 'circle', paint: {
+  map.addLayer(Object.assign({ id: 'radar-halo', type: 'circle', maxzoom: RADAR_ICON_FULL, paint: {   // v121b: tuvāk — kustīgie gredzeni ap galvu
     'circle-color': P.halo, 'circle-blur': 1, 'circle-pitch-alignment': 'map',
     'circle-radius': RZ(9, ['case', cluster, 13, aheadCase(12, 10, 8)], 13, ['case', cluster, 18, aheadCase(20, 16, 13)], 16, aheadCase(30, 25, 21)),
     'circle-opacity': radarHaloOpacity(T) } }, base), below);
   // 2) impulsa gredzens
-  map.addLayer(Object.assign({ id: 'radar-ring', type: 'circle', paint: {
+  map.addLayer(Object.assign({ id: 'radar-ring', type: 'circle', maxzoom: RADAR_ICON_FULL, paint: {
     'circle-color': P.ring, 'circle-opacity': 0, 'circle-pitch-alignment': 'map',
     'circle-stroke-color': P.ring, 'circle-stroke-width': RZ(9, 1, 14, 1.5),
     'circle-radius': radarRingRadius(T), 'circle-stroke-opacity': radarRingOpacity(T) } }, base), below);
@@ -2253,8 +2338,9 @@ function radarAnimate() {
   radar.raf = requestAnimationFrame(step);
 }
 function wireRadar() {
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) radarAnimate(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { radarAnimate(); pulseAnimate(); } });
   map.on('zoomend', radarAnimate);
+  map.on('zoomend', pulseAnimate);
   // braucot — "radars priekšā" stāvoklis tiek pārrēķināts ik pēc ~2 s
   setInterval(() => { if (state.nav.active) refreshRadar(); }, 2000);
   const onTap = e => {
@@ -3139,6 +3225,7 @@ async function init() {
     signs.install();
     installAlertLayer();
     installRadarLayer();
+    installPulseLayer();
     roadIndex.ready = false; roadIndex.coverage = null;
     signs.setRoads(state.vector ? roadIndex : null);
     if (state.nav.route) drawRoute(state.nav.route);

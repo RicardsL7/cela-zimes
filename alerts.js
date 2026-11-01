@@ -157,7 +157,7 @@ const ALERT_GLYPH_FIT = {
 };
 // ---------- v121: marķieri — „sprauda” (apaļa galva + asa smaile) ----------
 // Divi stili pēc kartes: T1 tumšajai kartei (galvai tumša mala), G1 gaišajai (galvai balta mala ar ēnu).
-// Policija (vairogs) un radari (kvadrātveida ceļazīme) — atšķirīga forma + divi signāla gredzeni, lai izceltos.
+// Policija (vairogs) un radari (kvadrātveida ceļazīme) — atšķirīga forma; kustīgie signāla gredzeni — app-gl.js.
 // Visiem attēliem vienāds laukums viewBox "-4 -10 72 72": smailes gals (32, 61) — tieši notikuma vieta
 // (kartē: enkurs 'bottom', nobīde ALERT_ICON_OFFSET).
 const ALERT_BOX = '-4 -10 72 72';
@@ -205,8 +205,7 @@ function alertSvg(type, size = 64, theme = ALERT_THEME) {
     const f = ALERT_SPECIAL_COLOR[type], w = ALERT_SPECIAL_WAVE[type], CX = 32, CY = 24.5;
     const sc = k => `transform="translate(${CX} ${CY}) scale(${k}) translate(${-CX} ${-CY})"`;
     const needle = dark ? '#cfd8e8' : '#3c4658';
-    const rings = `<circle cx="${CX}" cy="${CY}" r="33" fill="${dark ? 'none' : w}" fill-opacity=".06" stroke="${w}" stroke-opacity="${dark ? .3 : .3}" stroke-width="1.5"/>` +
-      `<circle cx="${CX}" cy="${CY}" r="28.5" fill="none" stroke="${w}" stroke-opacity=".55" stroke-width="1.8"/>`;
+    const rings = '';   // v121b: gredzeni kustas — tos zīmē app-gl.js (pulse slāņi), nevis attēlā
     if (shape === 'shield') {
       return open + `</defs>${rings}<path d="M29.5 44L32 61 34.5 44z" fill="${needle}"/>` +
         `<path d="${ALERT_SHIELD}" ${rim}/><path d="${ALERT_SHIELD}" fill="${f}" ${sc(0.86)}/>` +
