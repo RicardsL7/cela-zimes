@@ -1790,8 +1790,18 @@ function endNav() {
 
 // v122: iela, pa kuru brauc (maršruta pašreizējais posms); bez nosaukuma — ceļa numurs vai „Ceļš bez nosaukuma”
 function navStreetName(st) {
-  const n = st && (st.name || st.ref) || '';
+  const n = st && (st.name || st.ref) || (typeof roadNameAt === 'function' ? roadNameAt() : '');
   return n ? String(n).split(';')[0].trim() : 'Ceļš bez nosaukuma';
+}
+// Maršruta posmam nav nosaukuma (pievedceļš) — iela no kartes zem manis (OpenMapTiles transportation_name)
+function roadNameAt() {
+  try {
+    if (!map || !state.me || !state.vector) return '';
+    const p = map.project([state.me.lng, state.me.lat]);
+    const fs = map.queryRenderedFeatures([[p.x - 16, p.y - 16], [p.x + 16, p.y + 16]])
+      .filter(f => f.sourceLayer === 'transportation_name' && f.properties && (f.properties['name:lv'] || f.properties.name));
+    return fs.length ? (fs[0].properties['name:lv'] || fs[0].properties.name) : '';
+  } catch { return ''; }
 }
 // v122: karte pabīdīta navigācijā → apakšā „Centrēt” + atlikušais laiks un attālums (kā Waze)
 function syncRecenter() {
