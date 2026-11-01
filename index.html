@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=122">
+  <link rel="stylesheet" href="style-gl.css?v=123">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -80,7 +80,7 @@
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5" fill="currentColor"/><path d="M9.6 17V7.4h3.3a3 3 0 0 1 0 6H9.6" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span class="fab-label">Stāvēt</span>
     </button>
-    <button id="centerBtn" class="fab" title="Sekot man">
+    <button id="centerBtn" class="fab" title="Sekot man" hidden>
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 3 19 20l-7-4-7 4Z" fill="currentColor"/></svg>
       <span class="fab-label">Es</span>
     </button>
@@ -152,6 +152,12 @@
     </div>
     <button id="endNav" class="btn danger small" type="button" hidden>Beigt</button>
   </footer>
+
+  <!-- v123: karte aizvilkta prom (bez navigācijas) — atgriezties pie sevis, kā Waze -->
+  <button id="recenterPill" class="recenter-pill" type="button" hidden>
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 7.5 15.5 16 12 14.2 8.5 16Z" fill="currentColor"/></svg>
+    <span>Centrēt</span>
+  </button>
 
   <!-- F2: kā atļaut atrašanās vietu -->
   <section id="gpsSheet" class="sheet gps-sheet" hidden aria-labelledby="gpsTitle">
@@ -361,8 +367,8 @@
   <script src="mly-config.js?v=93"></script>
   <script src="traffic.js?v=93"></script>
   <script src="rides.js?v=119"></script>
-  <script src="rides-ui.js?v=119"></script>
-  <script src="app-gl.js?v=122b"></script>
+  <script src="rides-ui.js?v=123"></script>
+  <script src="app-gl.js?v=123"></script>
   <script src="park-gl.js?v=116"></script>
   <script src="park-dest-gl.js?v=93"></script>
   <script src="traffic-gl.js?v=98"></script>

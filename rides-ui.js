@@ -220,7 +220,7 @@ function ridesNotify(first) {
   else if (moreUnread && lastMsg) msg = `Ziņa no ${lastMsg.name}: ${lastMsg.body.slice(0, 60)}`;
   if (!msg) return;
   if (rides.open) ridesToast(msg);                         // F9: logs atvērts — statusa josla aiz tā nav redzama
-  else { setStatus(msg); $('ridesBtn').classList.add('has-news'); }
+  else { czToast(msg); $('ridesBtn').classList.add('has-news'); }   // v123: statusa josla bez navigācijas paslēpta
   try { navigator.vibrate && navigator.vibrate([120, 80, 120]); } catch { /* */ }
 }
 function ridesBox() {

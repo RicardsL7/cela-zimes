@@ -1155,6 +1155,7 @@ function followCamera(dur = 900) {
 
 // Viens jauns atrašanās vietas mērījums (no GPS, testa klikšķa vai simulācijas).
 function onFix(lat, lng, speedKmh, gpsHeading, dur = 900, accuracy = null) {
+  const first0 = !state.me;
   state.me = { lat, lng, speedKmh, accuracy };
   state.gpsQuality = gpsFixQuality(accuracy);
   // Navigācijā bulta brauc pa maršruta līniju, nobrauktā daļa aiz tās pazūd.
@@ -1170,6 +1171,7 @@ function onFix(lat, lng, speedKmh, gpsHeading, dur = 900, accuracy = null) {
   state.nav.onRoute = onRoute;
   if (!onRoute) moveMeMarker(lng, lat, state.follow ? dur : 300);
   $('speedValue').textContent = speedKmh == null ? '–' : Math.round(speedKmh);   // v122: apaļajā rādītājā
+  if (first0) syncRecenter();
   // Vājš signāls: neatjauno braukšanas virzienu (tas lēkātu) un brīdina.
   setBusy('gps', state.gpsQuality === 'poor' ? `Vājš GPS signāls (±${Math.round(accuracy)} m) — zīmes var būt neprecīzas` : null);
   if (state.gpsQuality !== 'poor') updateHeading(lat, lng, gpsHeading, speedKmh);
@@ -1215,6 +1217,7 @@ function gpsShow(kind) {
   $('gpsHelpBtn').hidden = kind !== 'denied';
   $('statusBox').classList.toggle('gps-off', statusLock);
   if (kind) setStatus(gpsProblem, true);
+  syncBottombar();
   if ($('reportSheet') && !$('reportSheet').hidden) reportGpsRefresh();
 }
 function gpsClear() {
@@ -1232,7 +1235,7 @@ function onPosition(pos) {
   if (first && state.nav.dest && !state.nav.active) previewRoute(); // maršruts no manas īstās vietas
   else if (first) { map.jumpTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: Math.max(map.getZoom(), 15.5) }); loadAllForView(); }
   gpsProblem = null;
-  if (!state.nav.active && (first || wasOff || (CZ_DEV && !state.counts.mly && !state.counts.osm))) setStatus('GPS darbojas.');
+  syncBottombar();
 }
 function onGpsError(err) {
   const kind = gpsKind(err);
@@ -1698,6 +1701,7 @@ async function previewRoute() {
     $('routeCard').hidden = false;
     $('bottombar').hidden = true;
     document.documentElement.classList.add('previewing');
+    syncRecenter();
     drawAltRoutes();
     updateRouteSummary();
     if ($('routeTraffic')) $('routeTraffic').hidden = true;
@@ -1777,11 +1781,10 @@ function endNav() {
   document.documentElement.classList.remove('navigating');
   $('navBanner').hidden = true;
   $('routeCard').hidden = true;
-  $('bottombar').hidden = false;
   $('statusBox').hidden = false;
   $('etaBox').hidden = true;
   $('endNav').hidden = true;
-  syncRecenter();
+  syncBottombar();
   $('searchInput').value = '';
   $('clearSearch').hidden = true;
   showCounts();
@@ -1811,6 +1814,17 @@ function syncRecenter() {
   btn.hidden = !moved;
   $('streetBox').hidden = !nav || moved;
   $('etaBox').hidden = !nav || moved;
+  // v123: bez navigācijas — poga „Centrēt” apakšā, kad karte aizvilkta prom (poga „Es” vairs nav)
+  const pill = document.getElementById('recenterPill');
+  if (pill) pill.hidden = nav || state.follow || !state.me || document.documentElement.classList.contains('previewing');
+}
+// v123: apakšējā josla bez navigācijas — tikai, ja ar atrašanās vietu ir problēma (ar „Kā ieslēgt?”); ziņu par strādājošu GPS vairs nerāda
+function syncBottombar() {
+  const bar = document.getElementById('bottombar');
+  if (!bar) return;
+  const previewing = document.documentElement.classList.contains('previewing');
+  bar.hidden = previewing || !(state.nav && state.nav.active) && !gpsProblem;
+  syncRecenter();
 }
 
 function updateNav() {
@@ -2858,6 +2872,7 @@ function wireUi() {
     else { setStatus(gpsProblem || 'Meklē atrašanās vietu…'); startGps(); }
   });
   $('recenterBtn').addEventListener('click', () => { state.follow = true; if (state.me) followCamera(800); });   // v122
+  $('recenterPill').addEventListener('click', () => { state.follow = true; if (state.me) followCamera(800); });  // v123
   wireFabMore();
   $('gpsHelpBtn').addEventListener('click', openGpsHelp);       // F2
   $('closeGpsHelp').addEventListener('click', () => { $('gpsSheet').hidden = true; });
@@ -2950,8 +2965,8 @@ function cancelPreview() {
   drawRoute(null);
   if (destMarker) { destMarker.remove(); destMarker = null; }
   $('routeCard').hidden = true;
-  $('bottombar').hidden = false;
   document.documentElement.classList.remove('previewing');
+  syncBottombar();
   // F5: lauks kā pirms meklēšanas (vērtības iestatīšana „input” notikumu neizraisa — jauna meklēšana nesākas)
   clearTimeout(searchTimer); searchSeq++; lastResults = [];
   $('searchInput').value = ''; $('clearSearch').hidden = true; $('results').hidden = true;
