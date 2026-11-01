@@ -1860,6 +1860,30 @@ test('v123: statusa josla tikai GPS problēmai; poga „Es” paslēpta, „Cent
   ok(/map\.on\(ev, e => \{ if \(e\.originalEvent\) state\.follow = false; \}\)/.test(app), 'aizvelkot ar pirkstu — sekot izslēdzas');
 });
 
+// ---------- Coins: community reports, confirmations, Garāža (supabase/coins-1.sql) ----------
+test('Coins: SQL — report types config, validated confirmations, daily cap, atomic purchases, permissions', () => {
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'coins-1.sql'), 'utf8');
+  const fnOf = name => { const i = sql.indexOf('function public.' + name + '('); return sql.slice(i, sql.indexOf('$$;', sql.indexOf('$$', i) + 2)); };
+  // config: 5 types with Latvian labels/questions and lifetimes
+  for (const [id, label, min, q] of [['police', 'Policija', 45, 'Vai policija vēl ir šeit?'], ['camera-mobile', 'Radars', 60, 'Vai radars vēl ir šeit?'],
+    ['jam', 'Sastrēgums', 20, 'Vai sastrēgums vēl ir?'], ['accident', 'Avārija', 60, 'Vai avārija vēl ir šeit?'], ['obstacle', 'Šķērslis', 30, 'Vai šķērslis vēl ir uz ceļa?']]) {
+    ok(new RegExp(`\\('${id}',\\s*'${label}',\\s*'[a-z-]+',\\s*${min},\\s*'${q.replace('?', '\\?')}'`).test(sql), id + ': config row');
+  }
+  ok(/coin_reward\s+int\s+not null default 10/.test(sql) && /author_bonus\s+int\s+not null default 5/.test(sql) && /max_lifetime_factor\s+numeric not null default 2/.test(sql), 'defaults: 10 coins, +5 author, ≤ 2× lifetime');
+  ok(/coin_daily_cap\(\) returns int language sql immutable as \$\$ select 100 \$\$/.test(sql), 'daily cap 100');
+  const rc = fnOf('report_confirm');
+  for (const code of ['own_report', 'already_answered', 'not_nearby', 'not_driving', 'wrong_direction', 'poor_gps', 'gps_suspect']) ok(rc.includes(code), 'report_confirm checks ' + code);
+  ok(/wallet_award\(me, t\.coin_reward, 'answer'/.test(rc) && /wallet_award\(r\.user_id, t\.author_bonus, 'author_bonus'/.test(rc), 'coins: answer + author bonus, decided on the server');
+  ok(/streak >= 2/.test(fnOf('report_vote_apply')), 'two NO in a row hide the report');
+  const buy = fnOf('skin_buy');
+  ok(/wallet_can_spend\(me\)/.test(buy) && /wallet_lock\(me\)/.test(buy) && /balance < s\.price/.test(buy) && /balance = balance - s\.price/.test(buy) && /insert into user_skins/.test(buy), 'purchase: account check, row lock, balance, deduct, grant');
+  ok(/email_confirmed_at is not null/.test(fnOf('wallet_can_spend')), 'spending needs a confirmed e-mail account');
+  for (const tbl of ['report_types', 'skins', 'user_wallet', 'user_skins', 'coin_ledger']) ok(new RegExp(`alter table public\\.${tbl} enable row level security`).test(sql), tbl + ': RLS on');
+  ok(/revoke all on function public\.wallet_award\(uuid, int, text, uuid\) from public, anon, authenticated/.test(sql), 'award not callable by clients');
+  ok(!/grant execute on function public\.(skin_buy|wallet_get|report_confirm)[^;]*anon/.test(sql), 'anon cannot buy / confirm');
+  ok(fs.existsSync(path.join(__dirname, 'coins-test.sql')), 'database scenario test present');
+});
+
 // ---------- F19: Stripe webhook + „Sinhronizēt ar Stripe” ----------
 test('F19: stripe-webhook — paraksts, notikumi, idempotence, tikai uz priekšu', () => {
   const wh = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'stripe-webhook', 'index.ts'), 'utf8');
