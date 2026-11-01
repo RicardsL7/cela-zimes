@@ -55,6 +55,8 @@ const state = {
   counts: { osm: 0, mly: 0 },
   nav: { dest: null, route: null, active: false, offCount: 0, lastReroute: 0, along: null },
 };
+// v122: kad mainās „sekot man” (pabīda karti / Centrēt), atjauno apakšējo joslu
+{ let follow = state.follow; Object.defineProperty(state, 'follow', { get: () => follow, set: v => { const ch = follow !== v; follow = v; if (ch) syncRecenter(); }, enumerable: true }); }
 
 let map, signs;
 const $ = id => document.getElementById(id);
@@ -616,19 +618,19 @@ function resolveSpeedLimit() {
 const speedHold = new SpeedLimitHold();
 let limitKey = '', overNow = false;
 function updateLimit() {
+  // v122: apaļais rādītājs rāda MANU ātrumu; atļauto izmanto tikai brīdinājumam (sarkans + pulsē)
   const badge = $('limitBadge');
-  if (!state.me) { badge.hidden = true; return; }
+  if (!state.me) { badge.hidden = true; document.documentElement.classList.remove('has-limit'); return; }
   const res = speedHold.update(resolveSpeedLimit(), Date.now(), state.me.lat, state.me.lng);
-  badge.hidden = !res;
-  if (res) $('limitValue').textContent = res.limit;
-  document.documentElement.classList.toggle('has-limit', !!res);   // F7: „nākamā zīme” blakus plāksnītei, ne virsū
-  badge.classList.toggle('approx', !!(res && res.approx));
-  const label = !res ? '' : res.approx ? `Aptuvenais ierobežojums ${res.limit} km/h (zīme nav atrasta)` : `Ātruma ierobežojums ${res.limit} km/h`;
+  badge.hidden = false;
+  document.documentElement.classList.toggle('has-limit', true);   // F7: „nākamā zīme” blakus aplim, ne virsū
+  const sp = state.me.speedKmh == null ? null : Math.round(state.me.speedKmh);
+  const over = isOverspeed(state.me.speedKmh, res, state.warn);
+  const label = (sp == null ? 'Ātrums nav zināms' : `Tavs ātrums ${sp} km/h`) +
+    (res ? ` · atļauts ${res.approx ? 'aptuveni ' : ''}${res.limit} km/h` : '') + (over ? ' — pārsniegts!' : '');
   badge.title = label;
   badge.setAttribute('aria-label', label);
-  const over = isOverspeed(state.me.speedKmh, res, state.warn);
-  $('speedBox').classList.toggle('over', over);
-  badge.classList.toggle('pulse', over);
+  badge.classList.toggle('over', over);
   // F8 sagatavošanai: notikumi tikai pie maiņas (balss vēl nav)
   const key = speedLimitKey(res);
   if (key !== limitKey) {
@@ -1167,7 +1169,7 @@ function onFix(lat, lng, speedKmh, gpsHeading, dur = 900, accuracy = null) {
   }
   state.nav.onRoute = onRoute;
   if (!onRoute) moveMeMarker(lng, lat, state.follow ? dur : 300);
-  $('speedValue').textContent = speedKmh == null ? '–' : Math.round(speedKmh);
+  $('speedValue').textContent = speedKmh == null ? '–' : Math.round(speedKmh);   // v122: apaļajā rādītājā
   // Vājš signāls: neatjauno braukšanas virzienu (tas lēkātu) un brīdina.
   setBusy('gps', state.gpsQuality === 'poor' ? `Vājš GPS signāls (±${Math.round(accuracy)} m) — zīmes var būt neprecīzas` : null);
   if (state.gpsQuality !== 'poor') updateHeading(lat, lng, gpsHeading, speedKmh);
@@ -1748,7 +1750,9 @@ function startNav() {
   $('statusBox').hidden = true;
   $('etaBox').hidden = false;
   $('endNav').hidden = false;
+  $('streetName').textContent = '—';
   state.follow = true;
+  syncRecenter();
   setBusy('prep', null);
   resetNavProgress();
   drawRoute(state.nav.route);
@@ -1777,10 +1781,26 @@ function endNav() {
   $('statusBox').hidden = false;
   $('etaBox').hidden = true;
   $('endNav').hidden = true;
+  syncRecenter();
   $('searchInput').value = '';
   $('clearSearch').hidden = true;
   showCounts();
   map.easeTo({ pitch: 0, bearing: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 800 });
+}
+
+// v122: iela, pa kuru brauc (maršruta pašreizējais posms); bez nosaukuma — ceļa numurs vai „Ceļš bez nosaukuma”
+function navStreetName(st) {
+  const n = st && (st.name || st.ref) || '';
+  return n ? String(n).split(';')[0].trim() : 'Ceļš bez nosaukuma';
+}
+// v122: karte pabīdīta navigācijā → apakšā „Centrēt” + atlikušais laiks un attālums (kā Waze)
+function syncRecenter() {
+  const btn = document.getElementById('recenterBtn');
+  if (!btn) return;
+  const nav = !!(state.nav && state.nav.active), moved = nav && !state.follow;
+  btn.hidden = !moved;
+  $('streetBox').hidden = !nav || moved;
+  $('etaBox').hidden = !nav || moved;
 }
 
 function updateNav() {
@@ -1801,6 +1821,8 @@ function updateNav() {
   $('navInstr').textContent = maneuverText(p.next);
   $('etaTime').textContent = clockIn(p.timeLeft);
   $('etaMeta').textContent = `${navTime(p.timeLeft)} · ${navDist(p.remaining)}`;
+  $('recenterMeta').textContent = $('etaMeta').textContent;
+  $('streetName').textContent = navStreetName(p.cur);
   const goodFix = state.gpsQuality !== 'poor';    // vājš GPS — progresu un nobraukšanu nevērtē
   if (goodFix && p.loc.off < 50) {
     state.nav.along = p.loc.along;
@@ -2825,6 +2847,7 @@ function wireUi() {
     if (state.me) followCamera(800);
     else { setStatus(gpsProblem || 'Meklē atrašanās vietu…'); startGps(); }
   });
+  $('recenterBtn').addEventListener('click', () => { state.follow = true; if (state.me) followCamera(800); });   // v122
   wireFabMore();
   $('gpsHelpBtn').addEventListener('click', openGpsHelp);       // F2
   $('closeGpsHelp').addEventListener('click', () => { $('gpsSheet').hidden = true; });

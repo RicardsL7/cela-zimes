@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=116">
+  <link rel="stylesheet" href="style-gl.css?v=122">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -60,10 +60,10 @@
     <span id="loaderText">Ielādē zīmes…</span>
   </div>
 
-  <!-- Pašreizējais ātruma ierobežojums -->
-  <div id="limitBadge" class="limit-badge" hidden aria-live="polite">
-    <span id="limitValue">50</span>
-    <small class="limit-approx" aria-hidden="true">aptuveni</small>
+  <!-- v122: apaļais spidometrs — mans ātrums; pārsniedzot atļauto, kļūst sarkans un pulsē (id limitBadge — vēsturisks) -->
+  <div id="limitBadge" class="limit-badge speedo" hidden aria-live="off">
+    <span id="speedValue" class="speedo-num">–</span>
+    <small class="speedo-unit" aria-hidden="true">km/h</small>
   </div>
 
   <!-- Pogas labajā pusē -->
@@ -132,10 +132,16 @@
 
   <!-- Apakšējā josla -->
   <footer class="bottombar" id="bottombar">
-    <div class="speed" id="speedBox">
-      <span class="speed-num" id="speedValue">–</span>
-      <span class="speed-unit">km/h</span>
+    <!-- v122: navigācijā — iela, pa kuru brauc -->
+    <div class="street-box" id="streetBox" hidden>
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M7 21 10 3M17 21 14 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M12 5v2M12 11v2M12 17v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span id="streetName" class="street-name">—</span>
     </div>
+    <!-- v122: karte pabīdīta — atgriezties pie sevis -->
+    <button id="recenterBtn" class="recenter" type="button" hidden>
+      <span class="recenter-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 7.5 15.5 16 12 14.2 8.5 16Z" fill="currentColor"/></svg></span>
+      <span class="recenter-txt"><b>Centrēt</b><span id="recenterMeta">—</span></span>
+    </button>
     <div class="status" id="statusBox">
       <p id="statusText" class="status-text" role="status">Meklē GPS…</p>
       <button id="gpsHelpBtn" class="link-btn status-act" type="button" hidden>Kā ieslēgt?</button>
@@ -343,7 +349,7 @@
   <script src="basemap-gl.js?v=121"></script>
   <script src="speedlimit.js?v=101"></script>
   <script src="signs-gl.js?v=121"></script>
-  <script src="nav.js?v=99b"></script>
+  <script src="nav.js?v=122"></script>
   <script src="times.js?v=93"></script>
   <script src="parking.js?v=93"></script>
   <script src="alerts.js?v=121b"></script>
@@ -356,7 +362,7 @@
   <script src="traffic.js?v=93"></script>
   <script src="rides.js?v=119"></script>
   <script src="rides-ui.js?v=119"></script>
-  <script src="app-gl.js?v=121b"></script>
+  <script src="app-gl.js?v=122"></script>
   <script src="park-gl.js?v=116"></script>
   <script src="park-dest-gl.js?v=93"></script>
   <script src="traffic-gl.js?v=98"></script>

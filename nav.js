@@ -418,9 +418,12 @@ function routeProgress(route, lat, lng) {
     if (route.cum[st._start] > loc.along + 5) { next = st; break; }
   }
   if (!next) next = route.steps[route.steps.length - 1];
+  // v122: pašreizējais posms (iela, pa kuru brauc) — pēdējais, kas sākas pirms manas vietas
+  let cur = route.steps[0] || null;
+  for (const st of route.steps) { if (route.cum[st._start] <= loc.along + 5) cur = st; else break; }
   const toNext = Math.max(0, route.cum[next._start] - loc.along);
   const timeLeft = route.duration * (total ? remaining / total : 0);
-  return { loc, next, toNext, remaining, timeLeft, arrived: remaining < 25 };
+  return { loc, next, cur, toNext, remaining, timeLeft, arrived: remaining < 25 };
 }
 
 // ---------- Nobrauktā / atlikušā maršruta daļa ----------

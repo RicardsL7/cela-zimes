@@ -153,27 +153,28 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ---- Ātruma ierobežojuma zīme ---- */
+/* ---- v122: apaļais spidometrs (mans ātrums). Pārsniedzot atļauto — sarkans + pulsējošs brīdinājuma vilnis ---- */
 .limit-badge {
   position: fixed; z-index: 10; left: 14px;
   top: calc(env(safe-area-inset-top, 0px) + 84px);
   width: 72px; height: 72px; border-radius: 50%;
-  background: #fff; border: 7px solid #d0202a; box-shadow: var(--shadow);
-  display: grid; place-items: center;
-  font: 700 32px/1 var(--font-sign); color: #111;
+  background: var(--panel); color: var(--fg); box-shadow: var(--shadow);
+  border: 3px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  display: grid; place-content: center; text-align: center; gap: 1px;
   font-variant-numeric: tabular-nums;
-  transition: top .3s ease;
+  transition: top .3s ease, background .2s, color .2s, border-color .2s;
 }
+.speedo-num { font: 700 30px/1 var(--font-sign); }
+.speedo-unit { font: 600 11px/1 var(--font-body); color: var(--muted); }
 .navigating .limit-badge { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 120px); }
-.limit-badge.pulse { animation: pulse 1s ease-in-out infinite; }
-@keyframes pulse { 50% { transform: scale(1.08); } }
-/* F7: aptuvens ierobežojums (Latvijas noklusējums, zīme nav atrasta) — pārtraukta, pelēcīgāka apmale, "~" un "aptuveni" */
-.limit-badge .limit-approx { display: none; }
-.limit-badge.approx { border-style: dashed; border-color: color-mix(in srgb, #d0202a 55%, #9aa0a6); color: #333;
-  grid-template-rows: 1fr auto; align-content: center; gap: 0; }
-.limit-badge.approx #limitValue { font-size: 24px; line-height: 1; align-self: end; margin-top: 4px; }
-.limit-badge.approx #limitValue::before { content: '~'; font-size: 18px; vertical-align: 4px; margin-right: 1px; }
-.limit-badge.approx .limit-approx { display: block; font: 600 9px/1 var(--font-body); color: #555; text-transform: lowercase; margin-top: 0; margin-bottom: 6px; align-self: start; }
+.limit-badge.over { background: var(--danger); color: #fff; border-color: #fff; animation: speedo-warn 1s ease-out infinite; }
+.limit-badge.over .speedo-unit { color: #fff; }
+@keyframes speedo-warn {
+  0% { transform: scale(1); box-shadow: var(--shadow), 0 0 0 0 color-mix(in srgb, var(--danger) 70%, transparent); }
+  45% { transform: scale(1.1); }
+  100% { transform: scale(1); box-shadow: var(--shadow), 0 0 0 18px color-mix(in srgb, var(--danger) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .limit-badge.over { animation: none; } }
 .test-speed { display: flex; align-items: center; gap: 8px; }
 .test-speed input { width: 140px; }
 .test-speed b { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -238,15 +239,23 @@ button { font: inherit; color: inherit; cursor: pointer; }
   background: var(--panel); border-radius: 20px; box-shadow: var(--shadow);
   padding: 10px 14px 10px 10px;
 }
-.speed {
-  flex: none; width: 70px; height: 70px; border-radius: 16px;
-  background: var(--bg); display: grid; place-content: center; text-align: center;
-  transition: background .2s, color .2s;
+/* v122: iela, pa kuru brauc (navigācijā), un „Centrēt”, ja karte pabīdīta */
+.street-box {
+  flex: 0 1 42%; min-width: 0; min-height: 70px; border-radius: 16px; background: var(--bg);
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: var(--fg);
 }
-.speed-num { font: 700 32px/1 var(--font-sign); font-variant-numeric: tabular-nums; }
-.speed-unit { font-size: 12px; color: var(--muted); }
-.speed.over { background: var(--danger); color: #fff; }
-.speed.over .speed-unit { color: #fff; }
+.street-box[hidden], .recenter[hidden] { display: none; }
+.street-box svg { flex: none; color: var(--muted); }
+.street-name { font: 700 16px/1.2 var(--font-body); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.recenter {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; text-align: left;
+  border: 0; background: none; color: var(--fg); padding: 4px; font: inherit; cursor: pointer;
+}
+.recenter-ico { flex: none; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #fff; box-shadow: var(--shadow); }
+.recenter-txt { display: grid; gap: 2px; min-width: 0; }
+.recenter-txt b { font: 700 22px/1.1 var(--font-sign); }
+.recenter-txt span { color: var(--muted); font-size: 14px; font-weight: 500; }
+.recenter:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
 .status { min-width: 0; flex: 1; }
 .status-text { margin: 0; color: var(--muted); font-size: 14px; }
 .eta { flex: 1; min-width: 0; }
