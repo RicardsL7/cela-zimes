@@ -1027,9 +1027,13 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
     const srv = Object.fromEntries([...sql.matchAll(/when '([a-z-]+)'\s+then (\d+)/g)].map(m => [m[1], +m[2]]));
     const rep = Object.keys(T).filter(k => T[k].report);
     eq(rep.length, 20, 'ziņošanas pogu skaits');
-    for (const k of rep) eq(srv[k], T[k].ttl, 'derīgums ' + k);
+    // v124: the 5 community types take their lifetime from report_types (coins-1.sql), the rest from report_ttl
+    const coins = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'coins-1.sql'), 'utf8');
+    const rt = Object.fromEntries([...coins.matchAll(/\('([a-z-]+)',\s+'[^']+',\s+'[a-z-]+',\s+(\d+),/g)].map(m => [m[1], +m[2]]));
+    eq(Object.keys(rt).sort().join(), 'accident,camera-mobile,jam,obstacle,police', 'report_types');
+    for (const k of rep) eq(rt[k] != null ? rt[k] : srv[k], T[k].ttl, 'derīgums ' + k);
     eq(Object.keys(srv).length, rep.length, 'serverī nav lieku veidu');
-    eq(T.police.ttl, 60); eq(T['camera-mobile'].ttl, 120); eq(T.accident.ttl, 120); eq(T.roadworks.ttl, 1440);
+    eq(T.police.ttl, 45); eq(T['camera-mobile'].ttl, 60); eq(T.accident.ttl, 60); eq(T.jam.ttl, 20); eq(T.obstacle.ttl, 30); eq(T.roadworks.ttl, 1440);
   });
   test('F10: SQL — RLS, tieši rakstīt nevar, sarakstu var lasīt bez konta, ziņot — tikai ar kontu', () => {
     ok(/alter table public\.reports enable row level security/.test(sql) && /alter table public\.report_votes enable row level security/.test(sql), 'RLS');
@@ -1858,6 +1862,137 @@ test('v123: statusa josla tikai GPS problēmai; poga „Es” paslēpta, „Cent
   ok(/pill\.hidden = nav \|\| state\.follow \|\| !state\.me \|\| document\.documentElement\.classList\.contains\('previewing'\)/.test(sr), '„Centrēt” tikai bez navigācijas, kad karte nesekot un vieta zināma');
   ok(/\$\('recenterPill'\)\.addEventListener\('click', \(\) => \{ state\.follow = true; if \(state\.me\) followCamera\(800\)/.test(app), '„Centrēt” atgriež kameru');
   ok(/map\.on\(ev, e => \{ if \(e\.originalEvent\) state\.follow = false; \}\)/.test(app), 'aizvelkot ar pirkstu — sekot izslēdzas');
+});
+
+// ---------- v124: Ziņot (5 veidi), jautājums JĀ/NĒ, Garāža, citi braucēji ----------
+test('v124: ziņošanas veidi = report_types; jautājuma noteikumi (300 m, 1 km, ne pirms pagrieziena)', () => {
+  const C = G('REPORT_TYPE_CONFIG'), PK = G('REPORT_PICKER'), T = G('ALERT_TYPES'), block = G('reportAskBlock');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'coins-1.sql'), 'utf8');
+  eq(PK.join(), 'police,camera-mobile,jam,accident,obstacle', 'izvēlē tikai 5 veidi');
+  for (const m of sql.matchAll(/\('([a-z-]+)',\s+'([^']+)',\s+'[a-z-]+',\s+(\d+),\s+'([^']+)',\s+\d+,\s+(\d+)\)/g)) {
+    const [, id, label, min, q, dist] = m, c = C[id];
+    ok(c, id + ' ir klientā');
+    eq(c.label, label, id + ' nosaukums'); eq(c.ttl, +min, id + ' derīgums'); eq(c.question, q, id + ' jautājums'); eq(c.askDistance, +dist, id + ' attālums');
+    eq(T[id].label, label, id + ' nosaukums kartē'); eq(T[id].ttl, +min, id + ' ttl kartē');
+    ok(c.ask && c.reward === 10 && c.askOnce, id + ': jautā, 10 monētas, vienreiz');
+  }
+  const it = { id: 'rep:1', rid: '1', type: 'police', source: 'shared', mine: false, myVote: null };
+  const ctx = (o = {}) => Object.assign({ asked: new Set(), odo: 5000, lastAskOdo: null, toTurn: null, speedKmh: 50, busy: false }, o);
+  eq(block({ it, dist: 280 }, ctx()), '', '280 m priekšā — jautā');
+  eq(block({ it, dist: 450 }, ctx()), 'distance', 'par tālu');
+  eq(block({ it, dist: 20 }, ctx()), 'distance', 'jau garām');
+  eq(block({ it: { ...it, type: 'jam' }, dist: 200 }, ctx()), 'distance', 'sastrēgums — tikai iebraucot (150 m)');
+  eq(block({ it: { ...it, type: 'jam' }, dist: 120 }, ctx()), '', 'sastrēgums 120 m');
+  eq(block({ it: { ...it, mine: true }, dist: 200 }, ctx()), 'mine', 'savu nejautā');
+  eq(block({ it: { ...it, myVote: 'still' }, dist: 200 }, ctx()), 'voted', 'jau atbildēts');
+  eq(block({ it, dist: 200 }, ctx({ asked: new Set(['rep:1']) })), 'asked', 'vienreiz par ziņojumu');
+  eq(block({ it, dist: 200 }, ctx({ busy: true })), 'busy', 'viens jautājums vienlaikus');
+  eq(block({ it, dist: 200 }, ctx({ toTurn: 180 })), 'turn', 'ne pirms pagrieziena');
+  eq(block({ it, dist: 200 }, ctx({ toTurn: 600 })), '', 'pagrieziens tālu');
+  eq(block({ it, dist: 200 }, ctx({ lastAskOdo: 4400 })), 'gap', 'ne biežāk kā reizi ~1 km');
+  eq(block({ it, dist: 200 }, ctx({ lastAskOdo: 3900 })), '', 'pēc 1,1 km — atkal drīkst');
+  eq(block({ it, dist: 200 }, ctx({ speedKmh: 2 })), 'speed', 'tikai braucot');
+  eq(block({ it: { ...it, type: 'pothole' }, dist: 200 }, ctx()), 'type', 'veidam bez jautājuma — nejautā');
+  eq(block({ it: { ...it, source: 'osm' }, dist: 200 }, ctx()), 'none', 'tikai lietotāju ziņojumi');
+  const r = G('reportFromRow')({ id: 'x', type: 'police', lat: 1, lng: 2, created_at: '2026-11-01T10:00:00Z', expires_at: '2026-11-01T10:45:00Z', confidence: 0.8, pending: true });
+  ok(r.confidence === 0.8 && r.pending === true, 'confidence un pending no servera');
+});
+
+test('v124: ReportsApi.confirm — sūta pierādījumus; gps_suspect = kļūda; bez coins SQL — vecā atzīme bez monētām', async () => {
+  const CzAuth = G('CzAuth'), ReportsApi = G('ReportsApi'), errText = G('reportErrorText');
+  const mem = (init = {}) => { const m = new Map(Object.entries(init)); return { getItem: k => m.has(k) ? m.get(k) : null, setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; };
+  const consent = JSON.stringify({ terms: G('CZ_TERMS_VERSION'), privacy: G('CZ_PRIVACY_VERSION'), at: 'x' });
+  const sess = JSON.stringify({ access_token: 'eyJ0.eyJzdWIiOiJ1MSJ9.x', refresh_token: 'r', expires_at: Date.now() + 3600e3, user_id: 'u1' });
+  const mk = handler => { const calls = []; const f = async (url, o = {}) => { calls.push({ url, body: o.body }); const [st, b] = handler(url) || [200, {}];
+    return { ok: st < 400, status: st, text: async () => JSON.stringify(b), json: async () => b }; }; f.calls = calls; return f; };
+  const cfg = { url: 'https://x.supabase.co', anonKey: 'anon' };
+  let f = mk(u => /report_confirm/.test(u) ? [200, { coins: 10, balance: 130, hidden: false }] : [201, {}]);
+  let api = new ReportsApi(new CzAuth(cfg, { storage: mem({ 'cz.consent': consent, 'cz.auth.session': sess }), fetch: f }));
+  const res = await api.confirm('r1', 'yes', { lat: 56.9, lng: 24.1, heading: 91.6, speedKmh: 54, accuracy: 8, mock: false });
+  eq(res.coins, 10);
+  const b = JSON.parse(f.calls.find(c => /report_confirm/.test(c.url)).body);
+  eq(b.p_answer, 'yes'); eq(b.p_heading, 92); eq(b.p_speed_kmh, 54); eq(b.p_accuracy, 8); eq(b.p_mock, false); eq(b.p_lat, 56.9);
+  f = mk(u => /report_confirm/.test(u) ? [200, { error: 'gps_suspect' }] : [201, {}]);
+  api = new ReportsApi(new CzAuth(cfg, { storage: mem({ 'cz.consent': consent, 'cz.auth.session': sess }), fetch: f }));
+  let code = null; try { await api.confirm('r1', 'no', {}); } catch (e) { code = e.code; }
+  eq(code, 'gps_suspect', 'atgrieztā kļūda');
+  f = mk(u => /report_confirm/.test(u) ? [404, { message: 'Could not find the function' }] : /report_vote/.test(u) ? [200, { still: 2, hidden: false }] : [201, {}]);
+  api = new ReportsApi(new CzAuth(cfg, { storage: mem({ 'cz.consent': consent, 'cz.auth.session': sess }), fetch: f }));
+  const old = await api.confirm('r1', 'no', {});
+  ok(old.legacy && old.coins === 0, 'vecā atzīme');
+  eq(JSON.parse(f.calls.find(c => /report_vote/.test(c.url)).body).p_vote, 'gone', 'NĒ = vairs nav');
+  for (const c of ['already_answered', 'not_nearby', 'not_driving', 'wrong_direction', 'poor_gps', 'gps_suspect', 'need_account', 'not_enough', 'already_owned', 'not_owned'])
+    ok(errText(c) !== errText('???'), c + ' — saprotams teksts');
+  f = mk(() => [200, {}]);
+  api = new ReportsApi(new CzAuth(cfg, { storage: mem({ 'cz.consent': consent }), fetch: f }));
+  eq(await api.wallet(), null, 'bez konta maciņu neprasa un kontu neveido');
+  eq(f.calls.length, 0);
+});
+
+test('v124: Garāža — 8 tēli kā serverī, retums pēc cenas, kartīšu stāvokļi; lapsa kartē taisni, bultiņa griežas', () => {
+  const c2 = vm.createContext({ console, Math, Map, Set, JSON, Number, String, Array, Object, encodeURIComponent });
+  for (const f of ['skins.js', 'garage.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/if \(typeof module[\s\S]*$/m, ''), c2);
+  const g = n => vm.runInContext(n, c2);
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'coins-1.sql'), 'utf8');
+  const srv = [...sql.matchAll(/\('([a-z]+)',\s+'([^']+)',\s+(\d+),\s+'skins\/\1\.svg',\s+'skins\/\1-map\.svg'/g)].map(m => [m[1], m[2], +m[3]]);
+  eq(srv.length, 8, 'serverī 8 tēli');
+  const def = g('SKINS_DEFAULT');
+  eq(def.map(s => s.id + ':' + s.name + ':' + s.price).join(), srv.map(s => s.join(':')).join(), 'klienta saraksts = serveris');
+  eq(def.map(s => s.price).join(), '200,300,350,400,450,500,600,800', 'lētākie pirmie');
+  eq(def.map(s => s.rarity).join(), 'common,common,common,rare,rare,rare,epic,epic', 'retums');
+  for (const [id] of srv) {
+    ok(g('skinShopSvg')(id).startsWith('<svg'), id + ' attēls');
+    eq(fs.readFileSync(path.join(__dirname, '..', 'skins', id + '.svg'), 'utf8'), g('skinShopSvg')(id), id + '.svg sakrīt ar skins.js');
+    eq(fs.readFileSync(path.join(__dirname, '..', 'skins', id + '-map.svg'), 'utf8'), g('skinMapSvg')(id), id + '-map.svg sakrīt');
+  }
+  const st = g('garageCardState'), vik = def.find(s => s.id === 'viking');
+  eq(st(vik, null), 'locked', 'bez konta — slēgts');
+  eq(st(vik, { balance: 120, owned: [] }), 'locked');
+  eq(st(vik, { balance: 400, owned: [] }), 'buy');
+  eq(st(vik, { balance: 0, owned: ['viking'], equipped: null }), 'owned');
+  eq(st(vik, { balance: 0, owned: ['viking'], equipped: 'viking' }), 'equipped');
+  const gj = fs.readFileSync(path.join(__dirname, '..', 'garage.js'), 'utf8');
+  ok(/`\$\{garageCoins\(bal\)\} \/ \$\{garageCoins\(s\.price\)\}`/.test(gj) && /'Slēgts'|>Slēgts</.test(gj), '„Slēgts” ar „120 / 300”');
+  ok(/'Pirkt'/.test(gj) && /'Izmantot'/.test(gj) && /gr-check/.test(gj), 'Pirkt / Izmantot / ✓');
+  ok(/Pirkt „\$\{s\.name\}”\?/.test(gj) && /ridesOpenAccount/.test(gj), 'apstiprinājums; bez konta — konta izveide');
+  ok(!/balance\s*[-+]?=/.test(gj.replace(/garage\.wallet\.balance = n/, '')), 'klients pats atlikumu nemaina (tikai rāda servera vērtību)');
+  const pj = fs.readFileSync(path.join(__dirname, '..', 'presence.js'), 'utf8');
+  ok(/rotate\(\$\{\(h \|\| 0\) - /.test(pj) && /map\.on\('rotate', presenceRotateAll\)/.test(pj), 'bultiņa griežas pēc virziena un kartes');
+  ok(!/pr-fox[^\n]*rotate/.test(pj) && /PRESENCE_ICON_PX = 48/.test(pj), 'lapsa ~48 px netiek griezta');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  ok(!/skin/i.test(app.slice(app.indexOf('function createMeMarker('), app.indexOf('\n}\n', app.indexOf('function createMeMarker(')))), 'pats redzi savu zaļo bultiņu');
+});
+
+test('v124: citi braucēji — tikai ar „Palīdzēt citiem” (jaunā versija), braucot, noapaļoti, bez ID; privātums atjaunots', () => {
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'coins-2-presence.sql'), 'utf8');
+  ok(/alter table public\.user_presence enable row level security/.test(sql) && !/create policy/i.test(sql), 'RLS, tikai funkcijas');
+  ok(/kind = 'speed_share'/.test(sql) && /version >= '2026-11-01'/.test(sql), 'tikai ar jaunāko piekrišanu');
+  ok(/p_speed_kmh < 15/.test(sql) && /delete from user_presence where user_id = me/.test(sql), 'apstājoties — dzēš uzreiz');
+  ok(/interval '2 minutes'/.test(sql) && /interval '10 minutes'/.test(sql), '2 min redzams, 10 min dzēš');
+  ok(/round\(p_lat::numeric \* 5000\) \/ 5000/.test(sql), 'noapaļots ~20 m');
+  const nb = sql.slice(sql.indexOf('function public.presence_nearby'), sql.indexOf('$$;', sql.indexOf('function public.presence_nearby')));
+  ok(!/returns table \([^)]*user_id/.test(nb) && /user_id is distinct from auth\.uid\(\)/.test(nb), 'neatdod ID, neatdod mani');
+  ok(/revoke all on function public\.presence_update\([^)]*\) from public, anon/.test(sql) && /grant execute on function public\.presence_nearby\([^)]*\) to anon, authenticated/.test(sql), 'tiesības');
+  const tr = fs.readFileSync(path.join(__dirname, '..', 'traffic-gl.js'), 'utf8');
+  ok(/TR_SHARE_VERSION = '2026-11-01'/.test(tr) && /const trShareCurrent = /.test(tr) && /Garāžas tēlu/.test(tr), 'piekrišanas teksts un versija');
+  ok(/presenceStop\(\)/.test(tr), 'izslēdzot — noņem no kartes uzreiz');
+  const pj = fs.readFileSync(path.join(__dirname, '..', 'presence.js'), 'utf8');
+  ok(/trShareCurrent\(\)/.test(pj) && /!state\.testMode/.test(pj) && /PRESENCE_MIN_KMH = 15/.test(pj), 'sūta tikai ar piekrišanu, braucot, ne testa režīmā');
+  eq(G('CZ_PRIVACY_VERSION'), '2026-11-01', 'privātuma versija');
+  const pr = fs.readFileSync(path.join(__dirname, '..', 'privacy.html'), 'utf8');
+  ok(/Versija 2026-11-01/.test(pr) && /monētu atlikums/.test(pr) && /uzticamības rādītājs/.test(pr) && /Tava vieta citu kartē/.test(pr), 'privātuma politika');
+  for (const f of ['index.html', 'index-gl.html']) {
+    const html = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    ok(/id="garageBtn"[\s\S]{0,700}Garāža[\s\S]{0,200}id="garageBal"/.test(html), f + ': poga „Garāža” ar atlikumu');
+    ok(/id="garageSheet"/.test(html) && /id="garageGrid"/.test(html), f + ': Garāžas logs');
+    for (const s of ['skins.js', 'garage.js', 'presence.js']) ok(html.indexOf(s) > 0 && html.indexOf(s) < html.indexOf('app-gl.js'), f + ': ' + s);
+  }
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  ok(/for \(const type of REPORT_PICKER\)/.test(app), 'izvēlē REPORT_PICKER');
+  ok(/REPORT_PROMPT_MS = 7000/.test(app) && /mk\('JĀ', 'yes', 'yes'\); mk\('NĒ', 'no', 'no'\)/.test(app), 'JĀ / NĒ, 7 s');
+  ok(/mock: !!state\.testMode/.test(app), 'testa režīmā — bez monētām');
+  ok(/it\.pending && !it\.mine\) reportsState\.pending\.set/.test(app), 'neapstiprinātos nezīmē, bet par tiem jautā');
+  ok(!/reportAskStill|reportPassed/.test(app), 'vecais „Vēl ir?” pēc garāmbraukšanas noņemts');
 });
 
 // ---------- Coins: community reports, confirmations, Garāža (supabase/coins-1.sql) ----------
