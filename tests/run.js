@@ -1790,8 +1790,7 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
   }
   for (const t of ['police', 'police-hidden']) ok(A.alertSvg(t, 64, 'light').includes('M32 2.5l20 6.8'), t + ': vairogs');
   for (const t of ['camera-fixed', 'camera-mobile']) ok(A.alertSvg(t, 64, 'dark').includes('M18 3h28'), t + ': ceļazīme');
-  for (const t of Object.keys(A.ALERT_SPECIAL)) ok(/r="33"/.test(A.alertSvg(t, 64, 'dark')) && /r="28.5"/.test(A.alertSvg(t, 64, 'dark')), t + ': signāla gredzeni');
-  ok(!/r="33"/.test(A.alertSvg('accident', 64, 'dark')), 'parastajām zīmēm gredzenu nav');
+  for (const t of Object.keys(A.ALERT_SPECIAL)) ok(!/r="33"/.test(A.alertSvg(t, 64, 'dark')), t + ': attēlā nekustīgu gredzenu nav (tie kustas atsevišķā slānī)');
   ok(A.alertSvg('accident', 64, 'dark').includes('fill="#0a0f17"') && A.alertSvg('accident', 64, 'light').includes('<circle cx="32" cy="25" r="21" fill="#fff"'), 'T1 tumša mala, G1 balta mala');
   A.setAlertTheme('dark'); const ud = A.alertDataUrl('jam'); A.setAlertTheme('light'); const ul = A.alertDataUrl('jam');
   ok(ud !== ul, 'kešatmiņa atsevišķi katram stilam');
@@ -1800,6 +1799,12 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
   ok(!/bottom-left|-5\.5, 4\.75/.test(app + sg), 'vecais burbuļa enkurs vairs netiek lietots');
   ok((app.match(/setAlertTheme\(bm\.theme === 'dark'/g) || []).length === 2, 'zīmju stils mainās kopā ar kartes stilu (starts un maiņa)');
   ok(/normBasemap\(store\.get\('basemap'/.test(app), 'agrākā izvēle pārvēršas par tumšo / gaišo');
+  // v121b: kustīgi gredzeni ap policiju un radariem
+  ok(/installPulseLayer\(\);/.test(app) && /function pulseAnimate\(/.test(app), 'gredzenu slānis un animācija');
+  ok(/prefers-reduced-motion: reduce/.test(app) && /if \(pulse\.raf \|\| pulseStill\(\)/.test(app), 'samazināta kustība — gredzeni stāv');
+  ok(/it\.type === 'police' \|\| it\.type === 'police-hidden'/.test(app) && /kind: 'camera'/.test(app), 'gredzeni policijai un radariem, citām zīmēm nav');
+  ok(/PULSE_HEAD_PX = 18\.25/.test(app) && /'circle-translate': tr/.test(app), 'gredzenu centrs — zīmes galvā, nevis smailē');
+  ok(/document\.hidden/.test(app.slice(app.indexOf('function pulseAnimate'), app.indexOf('function pulseAnimate') + 600)), 'fonā animācija apstājas');
 });
 
 // ---------- F19: Stripe webhook + „Sinhronizēt ar Stripe” ----------
