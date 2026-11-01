@@ -538,8 +538,8 @@ class SignStore {
         'icon-image': ['get', 'icon'],
         'icon-size': signsIconSize(this.pinScale),
         // Marķiera burbuļa aste (apakšā pa kreisi) rāda precīzo vietu; luksofors un pārējās zīmes — centrā.
-        'icon-anchor': ['case', ['==', ['get', 'icon'], 'alert:traffic-light'], 'center', ['has', 'pin'], 'bottom-left', 'center'],
-        'icon-offset': ['case', ['==', ['get', 'icon'], 'alert:traffic-light'], ['literal', [0, 0]], ['has', 'pin'], ['literal', [-5.5, 4.75]], ['literal', [0, 0]]],
+        'icon-anchor': ['case', ['==', ['get', 'icon'], 'alert:traffic-light'], 'center', ['has', 'pin'], 'bottom', 'center'],   // v121: spraudas smaile
+        'icon-offset': ['case', ['==', ['get', 'icon'], 'alert:traffic-light'], ['literal', [0, 0]], ['has', 'pin'], ['literal', [0, 0.5]], ['literal', [0, 0]]],
         'symbol-sort-key': ['get', 'prio'],
         'icon-padding': 1,
         'icon-pitch-alignment': 'viewport',
@@ -591,7 +591,7 @@ class SignStore {
     this.loading.add(id);
     const url = this.iconUrl.get(id) || svgDataUrl({ kind: 'other' });
     // Brīdinājumu ikonas — 4× izšķirtspējā (asas arī telefonu ekrānos ar augstu blīvumu).
-    const hi = /^alert:/.test(id), PX = hi ? SIGN_IMG_PX * 2 : SIGN_IMG_PX;
+    const hi = /^alert:/.test(id), PX = hi ? Math.round(SIGN_IMG_PX * 2.25) : SIGN_IMG_PX;   // v121: laukums 72 (bija 64) — galva tikpat liela
     const done = (img) => {
       this.loading.delete(id);
       if (this.map.hasImage(id)) return;

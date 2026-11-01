@@ -155,44 +155,81 @@ const ALERT_GLYPH_FIT = {
   'rail': [1.553, 17.36, 8.36], 'traffic-light': [1.432, 18.82, 9.82], 'school': [1.547, 17.44, 9.21],
   'restriction': [1.495, 18.07, 9.07],
 };
-// Marķiera forma: aplis ar baltu malu un īsu "runas burbuļa" asti apakšā pa kreisi.
-// Astes gals (11,54.5) — tieši notikuma vieta (kartē: enkurs apakšā pa kreisi + nobīde).
-const ALERT_PIN = 'M36 3A24 24 0 1 1 22.2 46.7L11 54.5 15.2 39A24 24 0 0 1 36 3Z';
-const ALERT_STANDALONE = new Set(['traffic-light']);   // bez burbuļa — pats objekts uz ceļa (enkurs centrā)
-function alertSvg(type, size = 64) {
-  const head = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 64 64"><defs>` +
-    `<filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="1.5"/><feOffset dy="1.4"/>` +
-    `<feComponentTransfer><feFuncA type="linear" slope=".3"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+// ---------- v121: marķieri — „sprauda” (apaļa galva + asa smaile) ----------
+// Divi stili pēc kartes: T1 tumšajai kartei (galvai tumša mala), G1 gaišajai (galvai balta mala ar ēnu).
+// Policija (vairogs) un radari (kvadrātveida ceļazīme) — atšķirīga forma + divi signāla gredzeni, lai izceltos.
+// Visiem attēliem vienāds laukums viewBox "-4 -10 72 72": smailes gals (32, 61) — tieši notikuma vieta
+// (kartē: enkurs 'bottom', nobīde ALERT_ICON_OFFSET).
+const ALERT_BOX = '-4 -10 72 72';
+const ALERT_ICON_ANCHOR = 'bottom';
+const ALERT_ICON_OFFSET = [0, 0.5];
+const ALERT_STANDALONE = new Set(['traffic-light']);   // bez spraudas — pats objekts uz ceļa (enkurs centrā)
+const ALERT_SPECIAL = { 'police': 'shield', 'police-hidden': 'shield', 'camera-fixed': 'square', 'camera-mobile': 'square' };
+const ALERT_SPECIAL_COLOR = { 'police': '#2F6BFF', 'police-hidden': '#1C2740', 'camera-fixed': '#1F5FCF', 'camera-mobile': '#7B4CE6' };
+const ALERT_SPECIAL_WAVE = { 'police': '#2F6BFF', 'police-hidden': '#2F6BFF', 'camera-fixed': '#1F5FCF', 'camera-mobile': '#7B4CE6' };
+const ALERT_SHIELD = 'M32 2.5l20 6.8v12.2c0 12.6-8.4 21.6-20 25.6-11.6-4-20-13-20-25.6V9.3z';
+const ALERT_SQUARE = 'M18 3h28a8 8 0 0 1 8 8v27a8 8 0 0 1-8 8H18a8 8 0 0 1-8-8V11a8 8 0 0 1 8-8z';
+let ALERT_THEME = 'light';                 // 'dark' | 'light' — iestata app-gl.js pēc kartes stila
+function setAlertTheme(theme) { ALERT_THEME = theme === 'dark' ? 'dark' : 'light'; }
+
+// Simbols (ALERT_GLYPHS, 24×24) pārnests no vecā apļa (36,27 r20,6) uz jauno vietu (cx, cy) ar mērogu k.
+function alertGlyph(type, C, cx, cy, k) {
+  const fit = ALERT_GLYPH_FIT[type] || ALERT_GLYPH_FIT.hazard;
+  const g = (ALERT_GLYPHS[type] || ALERT_GLYPHS.hazard)(C);
+  return `<g filter="url(#d)" transform="translate(${cx} ${cy}) scale(${k}) translate(-36 -27)"><g transform="translate(${fit[1]} ${fit[2]}) scale(${fit[0]})">${g}</g></g>`;
+}
+
+function alertSvg(type, size = 64, theme = ALERT_THEME) {
+  const dark = theme === 'dark';
+  const defs = `<filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="1.5"/><feOffset dy="1.4"/>` +
+    `<feComponentTransfer><feFuncA type="linear" slope=".3"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>` +
+    `<filter id="d" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur in="SourceAlpha" stdDeviation=".45"/><feOffset dy=".45"/>` +
+    `<feComponentTransfer><feFuncA type="linear" slope=".22"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+  const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="${ALERT_BOX}"><defs>${defs}`;
   if (type === 'traffic-light') {
-    // Luksofors: kompakts tumši zils korpuss (bez baltas malas) ar trim spilgtām lampām (bez staba)
+    // Luksofors: kompakts tumši zils korpuss ar trim spilgtām lampām (bez spraudas, enkurs centrā)
     const lampDef = (id, c0, c1) => `<radialGradient id="${id}" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="${c0}"/><stop offset="1" stop-color="${c1}"/></radialGradient>`;
-    return head + lampDef('lr', '#ff8a8a', '#f2484f') + lampDef('ly', '#ffe27a', '#f7c21c') + lampDef('lg', '#6ff0a6', '#22c46a') +
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="-4 -4 72 72"><defs>${defs}` +
+      lampDef('lr', '#ff8a8a', '#f2484f') + lampDef('ly', '#ffe27a', '#f7c21c') + lampDef('lg', '#6ff0a6', '#22c46a') +
       `<linearGradient id="b" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2c3a50"/><stop offset="1" stop-color="#1a2536"/></linearGradient></defs>` +
-      `<g filter="url(#s)"><rect x="16.5" y="2.5" width="31" height="59" rx="10.5" fill="url(#b)"/></g>` +
+      `<g filter="url(#s)"><rect x="16.5" y="2.5" width="31" height="59" rx="10.5" fill="url(#b)"${dark ? ' stroke="#fff" stroke-opacity=".25"' : ''}/></g>` +
       `<rect x="20" y="6" width="4.6" height="52" rx="2.3" fill="#fff" opacity=".07"/>` +
       [[14.6, 'lr'], [32, 'ly'], [49.4, 'lg']].map(([cy, id]) =>
         `<circle cx="32" cy="${cy}" r="8.4" fill="url(#${id})"/><ellipse cx="29.6" cy="${cy - 2.9}" rx="3.1" ry="1.9" fill="#fff" opacity=".45"/>`).join('') +
       `</svg>`;
   }
-  const c = alertColor(type), hi = alertMix(c, 'w', 0.22), lo = alertMix(c, 'k', 0.16);
-  const glyph = (ALERT_GLYPHS[type] || ALERT_GLYPHS.hazard)(alertMix(c, 'k', 0.04));
-  const fit = ALERT_GLYPH_FIT[type] || ALERT_GLYPH_FIT.hazard;
-  return head +
-    `<linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset=".55" stop-color="${c}"/><stop offset="1" stop-color="${lo}"/></linearGradient>` +
-    `<linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".34"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
-    `<filter id="d" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur in="SourceAlpha" stdDeviation=".45"/><feOffset dy=".45"/>` +
-    `<feComponentTransfer><feFuncA type="linear" slope=".22"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>` +
-    // radariem — maigs violets mirdzums ap marķieri (svarīga brīdinājumu kategorija, nedaudz izceļas)
-    (type === 'camera-fixed' || type === 'camera-mobile' ? `<filter id="rg" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2.6"/></filter><circle cx="36" cy="27" r="24.5" fill="${hi}" opacity=".55" filter="url(#rg)"/>` : '') +
-    `<g filter="url(#s)"><path d="${ALERT_PIN}" fill="#fff"/><circle cx="36" cy="27" r="20.6" fill="url(#f)"/></g>` +
-    `<path d="M18.4 23A18 18 0 0 1 53.6 23C48.8 19.6 43 18.2 36 18.2S23.2 19.6 18.4 23Z" fill="url(#g)"/>` +
-    `<circle cx="36" cy="27" r="19.9" fill="none" stroke="#fff" stroke-width=".7" opacity=".28"/>` +
-    `<g filter="url(#d)" transform="translate(${fit[1]} ${fit[2]}) scale(${fit[0]})">${glyph}</g></svg>`;
+  const rim = dark ? `fill="#0a0f17" stroke="#fff" stroke-opacity=".2" stroke-width="1"` : `fill="#fff" filter="url(#s)"`;
+  const shape = ALERT_SPECIAL[type];
+  if (shape) {
+    // Policija / radari: vairogs vai ceļazīme + signāla gredzeni; smaile līdz (32, 61)
+    const f = ALERT_SPECIAL_COLOR[type], w = ALERT_SPECIAL_WAVE[type], CX = 32, CY = 24.5;
+    const sc = k => `transform="translate(${CX} ${CY}) scale(${k}) translate(${-CX} ${-CY})"`;
+    const needle = dark ? '#cfd8e8' : '#3c4658';
+    const rings = `<circle cx="${CX}" cy="${CY}" r="33" fill="${dark ? 'none' : w}" fill-opacity=".06" stroke="${w}" stroke-opacity="${dark ? .3 : .3}" stroke-width="1.5"/>` +
+      `<circle cx="${CX}" cy="${CY}" r="28.5" fill="none" stroke="${w}" stroke-opacity=".55" stroke-width="1.8"/>`;
+    if (shape === 'shield') {
+      return open + `</defs>${rings}<path d="M29.5 44L32 61 34.5 44z" fill="${needle}"/>` +
+        `<path d="${ALERT_SHIELD}" ${rim}/><path d="${ALERT_SHIELD}" fill="${f}" ${sc(0.86)}/>` +
+        alertGlyph(type, f, 32, 23.5, 0.8) + `</svg>`;
+    }
+    return open + `</defs>${rings}<path d="M28.6 45L32 61 35.4 45z" fill="${needle}"/>` +
+      `<path d="${ALERT_SQUARE}" ${rim}/><path d="${ALERT_SQUARE}" fill="${f}" ${sc(0.87)}/>` +
+      `<path d="${ALERT_SQUARE}" fill="none" stroke="#fff" stroke-opacity="${dark ? .7 : .9}" stroke-width="1.5" ${sc(0.73)}/>` +
+      alertGlyph(type, f, 32, 24.5, 0.74) + `</svg>`;
+  }
+  // Parastās zīmes: apaļa galva (32,25) ar malu, krāsains disks, balts simbols, asa smaile līdz (32, 61)
+  const c = alertColor(type), hi = alertMix(c, 'w', 0.14), lo = alertMix(c, 'k', 0.12);
+  return open +
+    `<linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset="1" stop-color="${lo}"/></linearGradient></defs>` +
+    `<path d="M28.2 42L32 61 35.8 42z" fill="${alertMix(c, 'k', dark ? 0.1 : 0.15)}"/>` +
+    `<circle cx="32" cy="25" r="21" ${rim}/><circle cx="32" cy="25" r="18.4" fill="url(#f)"/>` +
+    alertGlyph(type, alertMix(c, 'k', 0.04), 32, 25, 0.86) + `</svg>`;
 }
 const alertUrlCache = new Map();
-function alertDataUrl(type) {
-  if (!alertUrlCache.has(type)) alertUrlCache.set(type, 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(alertSvg(type, 128)));
-  return alertUrlCache.get(type);
+function alertDataUrl(type, theme = ALERT_THEME) {
+  const key = theme + ':' + type;
+  if (!alertUrlCache.has(key)) alertUrlCache.set(key, 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(alertSvg(type, 144, theme)));
+  return alertUrlCache.get(key);
 }
 
 // Kura zīme / OSM objekts ir brīdinājums? (null — tas nav brīdinājums, kartē nerāda)
@@ -303,5 +340,5 @@ function alertInfo(it, now = Date.now()) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { ALERT_TYPES, REPORT_GROUPS, alertSvg, ALERT_STANDALONE, alertDotColor, alertCode, alertCodeColorExpr, ALERT_ORDER, alertTypeForSign, signNeedsDirection, alertTypeForOsm, weatherAlerts, AlertStore, makeReport, alertInfo };
+  module.exports = { ALERT_TYPES, REPORT_GROUPS, alertSvg, alertDataUrl, setAlertTheme, ALERT_SPECIAL, ALERT_ICON_ANCHOR, ALERT_ICON_OFFSET, ALERT_STANDALONE, alertDotColor, alertCode, alertCodeColorExpr, ALERT_ORDER, alertTypeForSign, signNeedsDirection, alertTypeForOsm, weatherAlerts, AlertStore, makeReport, alertInfo };
 }

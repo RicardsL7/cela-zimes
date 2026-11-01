@@ -1,13 +1,17 @@
 // Kartes stils: skaista vektoru karte (OpenFreeMap, bez atslēgas un limitiem)
 // ar mūsu krāsām, vai klasiskā OSM karte vājiem telefoniem.
 
+// v121: tikai divi stili — tumšā (zīmes T1) un gaišā (zīmes G1). Agrākās izvēles (auto, krāsaina, klasiskā)
+// tiek pārvērstas par vienu no šiem (normBasemap). Klasiskā OSM karte paliek tikai rezervei, ja vektoru stils neielādējas.
 const BASEMAP_STYLES = {
-  auto:     { label: 'Automātiski (krāsaina / tumša)' },
-  colorful: { label: 'Krāsaina', url: 'https://tiles.openfreemap.org/styles/liberty' },
   dark:     { label: 'Tumša', url: 'https://tiles.openfreemap.org/styles/dark' },
   light:    { label: 'Vienkārša gaiša', url: 'https://tiles.openfreemap.org/styles/positron' },
-  classic:  { label: 'Klasiskā (vieglākā vājiem telefoniem)' },
 };
+function normBasemap(choice, prefersDark) {
+  if (choice === 'dark' || choice === 'light') return choice;
+  if (prefersDark == null) prefersDark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  return prefersDark ? 'dark' : 'light';
+}
 
 const CLASSIC_STYLE = {
   version: 8,
@@ -81,9 +85,7 @@ function tuneStyle(style, theme) {
 
 // Atgriež { theme, style, vector } izvēlētajam variantam.
 async function loadBasemapStyle(choice) {
-  const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const theme = choice === 'auto' ? (darkMode ? 'dark' : 'colorful') : choice;
-  if (theme === 'classic') return { theme, style: CLASSIC_STYLE, vector: false };
+  const theme = normBasemap(choice);
   try {
     const res = await fetch(BASEMAP_STYLES[theme].url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -94,4 +96,4 @@ async function loadBasemapStyle(choice) {
   }
 }
 
-if (typeof module !== 'undefined') module.exports = { tuneStyle, localizeLabels, isNameLabel, LABEL_LV };
+if (typeof module !== 'undefined') module.exports = { tuneStyle, localizeLabels, isNameLabel, LABEL_LV, BASEMAP_STYLES, normBasemap };

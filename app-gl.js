@@ -38,7 +38,7 @@ const state = {
   warn: store.get('warn', true),
   profile: 'car',   // vienmēr vieglais automobilis (izvēle no iestatījumiem noņemta)
   mapMode: 'alerts', // kartē vienmēr tikai brīdinājumi; visu zīmju režīms vairs netiek piedāvāts
-  basemap: store.get('basemap', 'auto'),
+  basemap: normBasemap(store.get('basemap', 'auto')),   // v121: tikai 'dark' / 'light'
   mlyToken: store.get('mlyToken', '') || mlyPublicToken(),
   testMode: false,
   testSpeed: 55,          // F7: testa režīmā simulētais ātrums (klikšķis uz kartes bez maršruta)
@@ -1962,7 +1962,7 @@ function installAlertLayer() {
     layout: {
       'icon-image': ['get', 'icon'],
       'icon-size': alertIconSize(markerMorph.pos ? 1 : 0.3),
-      'icon-anchor': 'bottom-left', 'icon-offset': [-5.5, 4.75],   // burbuļa astes gals — tieši notikuma vietā
+      'icon-anchor': ALERT_ICON_ANCHOR, 'icon-offset': ALERT_ICON_OFFSET,   // spraudas smailes gals — tieši notikuma vietā
       'icon-allow-overlap': true,
       'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
       'symbol-sort-key': ['get', 'prio'],
@@ -2127,10 +2127,7 @@ const RADAR_ICON_FROM = 12.2, RADAR_ICON_FULL = 13.5;   // marķiera "izaugšana
 let radarSignDots = [];
 const radar = { sel: null, raf: 0, last: 0, t0: performance.now(), on: false, dark: true, near: new Map() };
 
-function mapIsDark() {
-  const c = state.basemap;
-  return c === 'dark' || (c === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-}
+function mapIsDark() { return state.basemap === 'dark'; }
 function isRadarCode(code) { return RADAR_TYPES.includes(ALERT_ORDER[code]); }
 function radarPhase(lng, lat) {           // stabila, vienmērīgi izkliedēta fāze no koordinātām
   const x = Math.sin(lng * 12.9898 + lat * 78.233) * 43758.5453;
@@ -2230,7 +2227,7 @@ function installRadarLayer() {
     layout: {
       'icon-image': ['get', 'icon'],
       'icon-size': RZ(RADAR_ICON_FROM, sel(0.2), RADAR_ICON_FULL, sel(0.84), 16, sel(1.08), 18.5, sel(1.3)),
-      'icon-anchor': 'bottom-left', 'icon-offset': [-5.5, 4.75],
+      'icon-anchor': ALERT_ICON_ANCHOR, 'icon-offset': ALERT_ICON_OFFSET,
       'icon-allow-overlap': true, 'icon-ignore-placement': true,
       'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
       'symbol-sort-key': ['-', 10, ['coalesce', ['get', 'ahead'], 0]],
@@ -2699,6 +2696,7 @@ function toggleSettings(open) {
 async function applyBasemap(choice) {
   const bm = await loadBasemapStyle(choice);
   state.vector = bm.vector;
+  setAlertTheme(bm.theme === 'dark' ? 'dark' : 'light');   // v121: zīmes T1 (tumšā) / G1 (gaišā); attēli pārlādējas pēc setStyle
   map.setStyle(bm.style, { diff: false });
 }
 
@@ -2778,10 +2776,8 @@ function wireUi() {
   const sel = $('basemapSelect');
   for (const [key, b] of Object.entries(BASEMAP_STYLES)) sel.add(new Option(b.label, key));
   sel.value = state.basemap;
+  store.set('basemap', state.basemap);      // agrākā izvēle (auto / krāsaina / klasiskā) saglabājas kā tumšā vai gaišā
   sel.addEventListener('change', () => { state.basemap = sel.value; store.set('basemap', state.basemap); applyBasemap(state.basemap); });
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
-    if (state.basemap === 'auto') applyBasemap('auto');
-  });
 
   // Mapillary atslēga
   const tokenInput = $('mlyToken');
@@ -3114,6 +3110,7 @@ async function init() {
   setTimeout(() => cachePrune(), 20000);   // izmet > 7 dienas vecus kešatmiņas ierakstus
   const bm = await loadBasemapStyle(state.basemap);
   state.vector = bm.vector;
+  setAlertTheme(bm.theme === 'dark' ? 'dark' : 'light');
   map = new maplibregl.Map({
     container: 'map', style: bm.style,
     center: [START[1], START[0]], zoom: 15,
