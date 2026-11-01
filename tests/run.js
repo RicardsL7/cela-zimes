@@ -1769,6 +1769,39 @@ test('F18: kartes stila nosaukumi — name:lv / name, ceļu un māju numuri nesk
   ok((app.match(/await loadBasemapStyle\(/g) || []).length >= 2 && /map\.setStyle\(bm\.style/.test(app), 'katra stila maiņa iet caur loadBasemapStyle → tuneStyle');
 });
 
+// ---------- v121: kartes stili — tikai tumšā (T1) un gaišā (G1); spraudas zīmes ----------
+test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma vietā', () => {
+  const b = require(path.join(__dirname, '..', 'basemap-gl.js'));
+  eq(Object.keys(b.BASEMAP_STYLES).join(), 'dark,light', 'tikai Tumša un Vienkārša gaiša');
+  eq(b.BASEMAP_STYLES.dark.label, 'Tumša'); eq(b.BASEMAP_STYLES.light.label, 'Vienkārša gaiša');
+  for (const old of ['auto', 'colorful', 'classic', undefined, 'xyz']) {
+    eq(b.normBasemap(old, true), 'dark', String(old) + ' → tumšā (tumšs sistēmas režīms)');
+    eq(b.normBasemap(old, false), 'light', String(old) + ' → gaišā');
+  }
+  eq(b.normBasemap('dark', false), 'dark'); eq(b.normBasemap('light', true), 'light');
+  const A = require(path.join(__dirname, '..', 'alerts.js'));
+  for (const type of Object.keys(A.ALERT_TYPES)) {
+    const d = A.alertSvg(type, 144, 'dark'), l = A.alertSvg(type, 144, 'light');
+    ok(d !== l, type + ': tumšais un gaišais atšķiras');
+    if (type !== 'traffic-light') {
+      ok(/viewBox="-4 -10 72 72"/.test(d) && /viewBox="-4 -10 72 72"/.test(l), type + ': vienāds laukums');
+      ok(/32 61/.test(d) && /32 61/.test(l), type + ': smaile līdz (32, 61)');
+    }
+  }
+  for (const t of ['police', 'police-hidden']) ok(A.alertSvg(t, 64, 'light').includes('M32 2.5l20 6.8'), t + ': vairogs');
+  for (const t of ['camera-fixed', 'camera-mobile']) ok(A.alertSvg(t, 64, 'dark').includes('M18 3h28'), t + ': ceļazīme');
+  for (const t of Object.keys(A.ALERT_SPECIAL)) ok(/r="33"/.test(A.alertSvg(t, 64, 'dark')) && /r="28.5"/.test(A.alertSvg(t, 64, 'dark')), t + ': signāla gredzeni');
+  ok(!/r="33"/.test(A.alertSvg('accident', 64, 'dark')), 'parastajām zīmēm gredzenu nav');
+  ok(A.alertSvg('accident', 64, 'dark').includes('fill="#0a0f17"') && A.alertSvg('accident', 64, 'light').includes('<circle cx="32" cy="25" r="21" fill="#fff"'), 'T1 tumša mala, G1 balta mala');
+  A.setAlertTheme('dark'); const ud = A.alertDataUrl('jam'); A.setAlertTheme('light'); const ul = A.alertDataUrl('jam');
+  ok(ud !== ul, 'kešatmiņa atsevišķi katram stilam');
+  eq(A.ALERT_ICON_ANCHOR, 'bottom'); eq(JSON.stringify(A.ALERT_ICON_OFFSET), '[0,0.5]');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8'), sg = fs.readFileSync(path.join(__dirname, '..', 'signs-gl.js'), 'utf8');
+  ok(!/bottom-left|-5\.5, 4\.75/.test(app + sg), 'vecais burbuļa enkurs vairs netiek lietots');
+  ok((app.match(/setAlertTheme\(bm\.theme === 'dark'/g) || []).length === 2, 'zīmju stils mainās kopā ar kartes stilu (starts un maiņa)');
+  ok(/normBasemap\(store\.get\('basemap'/.test(app), 'agrākā izvēle pārvēršas par tumšo / gaišo');
+});
+
 // ---------- F19: Stripe webhook + „Sinhronizēt ar Stripe” ----------
 test('F19: stripe-webhook — paraksts, notikumi, idempotence, tikai uz priekšu', () => {
   const wh = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'stripe-webhook', 'index.ts'), 'utf8');
