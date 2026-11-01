@@ -1828,8 +1828,9 @@ test('v122: apaļajā aplī mans ātrums (pārsniedzot — sarkans, pulsē), iel
   // iela: pašreizējais maršruta posms
   ok(/let cur = route\.steps\[0\]/.test(fs.readFileSync(path.join(__dirname, '..', 'nav.js'), 'utf8')), 'routeProgress atdod pašreizējo posmu (cur)');
   ok(/\$\('streetName'\)\.textContent = navStreetName\(p\.cur\)/.test(app), 'iela atjaunojas braucot');
-  const nsn = new Function(fn('navStreetName') + '\n}\nreturn navStreetName;')();
+  const nsn = new Function('const roadNameAt = () => "";\n' + fn('navStreetName') + '\n}\nreturn navStreetName;')();
   eq(nsn({ name: 'Kaplavas iela' }), 'Kaplavas iela'); eq(nsn({ name: '', ref: 'A2' }), 'A2'); eq(nsn({}), 'Ceļš bez nosaukuma'); eq(nsn({ name: 'Brīvības iela;Brīvības gatve' }), 'Brīvības iela');
+  ok(/function roadNameAt\(/.test(app) && /transportation_name/.test(fn('roadNameAt')), 'bez nosaukuma — iela no kartes');
   // „Centrēt”: redzams tikai navigācijā, kad karte pabīdīta
   const sr = fn('syncRecenter');
   ok(/moved = nav && !state\.follow/.test(sr) && /btn\.hidden = !moved/.test(sr) && /\$\('etaBox'\)\.hidden = !nav \|\| moved/.test(sr), 'pabīdot — Centrēt; citādi iela + ierašanās laiks');
