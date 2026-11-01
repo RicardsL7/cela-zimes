@@ -1404,7 +1404,7 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
     const ret = fnOf(ui, 'ridesPayReturn');
     ok(ret && !/setStatus/.test(ret) && ret.indexOf('ridesOpen(true)') < ret.indexOf('ridesToast(msg'), 'ridesPayReturn: logs atveras, ziņa virs tā');
     ok(/if \(rides\.open\) ridesToast\(msg\)/.test(ui), 'jaunumi atvērtā logā — uznirstoši');
-    eq((ui.match(/setStatus\(/g) || []).length, 2, 'rides-ui.js: palikuši tikai jaunumi aizvērtam logam un v91 „Paņemšu” (ziņa jau kartītē)');
+    eq((ui.match(/setStatus\(/g) || []).length, 1, 'rides-ui.js: palicis tikai v91 „Paņemšu” (ziņa jau kartītē); jaunumi aizvērtam logam — czToast (v123)');
   });
   test('F9: testa slēdzis, Mapillary atslēga (vienreiz), maršruts neatrasts — czToast', () => {
     ok(/czToast\(state\.testMode \?/.test(app) && !/setStatus\(state\.testMode/.test(app), 'testa slēdzis');
@@ -1412,7 +1412,7 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
     ok(/czToast\('Maršrutu neizdevās atrast\. Pamēģini vēlreiz\.', true\)/.test(app) && !/setStatus\('Maršrutu neizdevās/.test(app));
     // F2: onGpsError un startGps ziņas tagad iet caur vienu gpsShow() izsaukumu (5 → 4)
     const left = (app.match(/setStatus\([^)]*\)/g) || []).filter(x => !/^setStatus\(text(, force = false)?\)$/.test(x));
-    eq(left.length, 4, 'app-gl.js: tikai kartes statuss (zīmju skaits, GPS darbojas, GPS problēma, centrēšana): ' + left.join(' | '));
+    eq(left.length, 3, 'app-gl.js: tikai kartes statuss (zīmju skaits, GPS problēma, centrēšana; „GPS darbojas” vairs nerāda — v123): ' + left.join(' | '));
   });
 }
 
@@ -1556,7 +1556,7 @@ test('F13: UI — kopsavilkums, vēsture, ziņas kartītē (nevis statusa joslā
     const show = fnOf(app, 'gpsShow');
     ok(/statusLock = kind === 'denied' \|\| kind === 'unsupported'/.test(show) && /\$\('gpsHelpBtn'\)\.hidden = kind !== 'denied'/.test(show), 'liegts → bloķē un rāda pogu');
     ok(/if \(state\.nav\.active \|\| !CZ_DEV\) return;/.test(fnOf(app, 'showCounts')), 'zīmju skaits tikai ?dev=1');
-    ok(/gpsClear\(\)/.test(fnOf(app, 'onPosition')) && /setStatus\('GPS darbojas\.'\)/.test(fnOf(app, 'onPosition')), 'vieta → ziņa pazūd, „GPS darbojas.”');
+    ok(/gpsClear\(\)/.test(fnOf(app, 'onPosition')) && /syncBottombar\(\)/.test(fnOf(app, 'onPosition')) && !/GPS darbojas/.test(fnOf(app, 'onPosition')), 'vieta → ziņa un josla pazūd (v123: bez „GPS darbojas”)');
     ok(/kind === 'timeout' && !gpsRetryTimer/.test(fnOf(app, 'onGpsError')) && /startGps\(\)/.test(fnOf(app, 'onGpsError')), 'TIMEOUT → mēģina vēlreiz');
     const perm = fnOf(app, 'gpsWatchPermission');
     ok(/!navigator\.permissions/.test(perm) && /st\.onchange/.test(perm) && /gpsClear\(\); startGps\(\);/.test(perm) && /\.catch\(/.test(perm), 'permissions onchange (ja ir)');
@@ -1837,6 +1837,27 @@ test('v122: apaļajā aplī mans ātrums (pārsniedzot — sarkans, pulsē), iel
   ok(/Object\.defineProperty\(state, 'follow'/.test(app) && /if \(ch\) syncRecenter\(\)/.test(app), 'reaģē uz katru „sekot man” maiņu');
   ok(/\$\('recenterBtn'\)\.addEventListener\('click', \(\) => \{ state\.follow = true; if \(state\.me\) followCamera\(800\)/.test(app), 'Centrēt atgriež kameru pie manis');
   ok(/\$\('recenterMeta'\)\.textContent = \$\('etaMeta'\)\.textContent/.test(app), 'zem Centrēt — min · km');
+});
+
+// ---------- v123: bez „GPS darbojas” joslas; „Es” → „Centrēt”, kad karte aizvilkta ----------
+test('v123: statusa josla tikai GPS problēmai; poga „Es” paslēpta, „Centrēt” parādās aizvelkot karti', () => {
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'style-gl.css'), 'utf8');
+  const fn = name => { const i = app.indexOf('function ' + name + '('); return app.slice(i, app.indexOf('\n}\n', i)); };
+  for (const f of ['index.html', 'index-gl.html']) {
+    const html = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    ok(/id="centerBtn"[^>]*hidden/.test(html), f + ': poga „Es” paslēpta');
+    ok(/id="recenterPill"[^>]*hidden[\s\S]{0,600}Centrēt/.test(html), f + ': „Centrēt” poga (sākumā paslēpta)');
+  }
+  ok(/\.fab\[hidden\] \{ display: none/.test(css) && /\.recenter-pill\[hidden\] \{ display: none/.test(css), 'paslēptās pogas tiešām nav redzamas');
+  const sb = fn('syncBottombar');
+  ok(/bar\.hidden = previewing \|\| !\(state\.nav && state\.nav\.active\) && !gpsProblem/.test(sb), 'josla: navigācijā vai ar GPS problēmu');
+  ok(!/GPS darbojas/.test(app), '„GPS darbojas” vairs netiek rādīts');
+  ok(/syncBottombar\(\)/.test(fn('gpsShow')) && /syncBottombar\(\)/.test(fn('endNav')) && /syncBottombar\(\)/.test(fn('cancelPreview')), 'josla atjaunojas pie GPS maiņas, navigācijas beigās un atceļot maršrutu');
+  const sr = fn('syncRecenter');
+  ok(/pill\.hidden = nav \|\| state\.follow \|\| !state\.me \|\| document\.documentElement\.classList\.contains\('previewing'\)/.test(sr), '„Centrēt” tikai bez navigācijas, kad karte nesekot un vieta zināma');
+  ok(/\$\('recenterPill'\)\.addEventListener\('click', \(\) => \{ state\.follow = true; if \(state\.me\) followCamera\(800\)/.test(app), '„Centrēt” atgriež kameru');
+  ok(/map\.on\(ev, e => \{ if \(e\.originalEvent\) state\.follow = false; \}\)/.test(app), 'aizvelkot ar pirkstu — sekot izslēdzas');
 });
 
 // ---------- F19: Stripe webhook + „Sinhronizēt ar Stripe” ----------
