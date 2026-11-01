@@ -1369,7 +1369,7 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
     ok(/LIMIT_MATCH_M = 20/.test(app) && /\["maxspeed:type"\]/.test(app) && /"living_street"/.test(app));
     ok(/classList\.toggle\('has-limit'/.test(ul), 'nākamās zīmes kartīte neaizsedz plāksnīti');
     const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-    ok(/id="testSpeed"/.test(html) && /class="limit-approx"/.test(html) && /speedlimit\.js\?v=\d+/.test(html));
+    ok(/id="testSpeed"/.test(html) && /class="speedo-unit"/.test(html) && /speedlimit\.js\?v=\d+/.test(html));
   });
 }
 
@@ -1805,6 +1805,37 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
   ok(/it\.type === 'police' \|\| it\.type === 'police-hidden'/.test(app) && /kind: 'camera'/.test(app), 'gredzeni policijai un radariem, citām zīmēm nav');
   ok(/PULSE_HEAD_PX = 18\.25/.test(app) && /'circle-translate': tr/.test(app), 'gredzenu centrs — zīmes galvā, nevis smailē');
   ok(/document\.hidden/.test(app.slice(app.indexOf('function pulseAnimate'), app.indexOf('function pulseAnimate') + 600)), 'fonā animācija apstājas');
+});
+
+// ---------- v122: viens apaļš ātruma rādītājs, iela apakšējā joslā, „Centrēt” ----------
+test('v122: apaļajā aplī mans ātrums (pārsniedzot — sarkans, pulsē), iela un „Centrēt” navigācijas joslā', () => {
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'style-gl.css'), 'utf8');
+  const fn = name => { const i = app.indexOf('function ' + name + '('); return app.slice(i, app.indexOf('\n}\n', i)); };
+  for (const f of ['index.html', 'index-gl.html']) {
+    const html = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    const bar = html.slice(html.indexOf('id="bottombar"'), html.indexOf('</footer>'));
+    ok(!/speedBox|km\/h/.test(bar), f + ': apakšējā joslā ātruma vairs nav');
+    ok(/id="limitBadge"[^>]*>\s*<span id="speedValue"/.test(html), f + ': ātrums apaļajā aplī');
+    ok((html.match(/id="speedValue"/g) || []).length === 1, f + ': tikai viens ātruma rādītājs');
+    ok(/id="streetBox"/.test(bar) && /id="streetName"/.test(bar), f + ': iela joslā');
+    ok(/id="recenterBtn"/.test(bar) && /Centrēt/.test(bar) && /id="recenterMeta"/.test(bar), f + ': „Centrēt” + laiks/attālums');
+  }
+  const ul = fn('updateLimit');
+  ok(/classList\.toggle\('over', over\)/.test(ul) && !/limitValue/.test(ul), 'pārsniedzot — klase over (nevis limita skaitlis)');
+  ok(/\.limit-badge\.over \{[^}]*animation: speedo-warn/.test(css) && /@keyframes speedo-warn/.test(css), 'sarkans + pulsējoša animācija');
+  ok(/prefers-reduced-motion: reduce\) \{ \.limit-badge\.over \{ animation: none/.test(css), 'samazināta kustība — bez animācijas');
+  // iela: pašreizējais maršruta posms
+  ok(/let cur = route\.steps\[0\]/.test(fs.readFileSync(path.join(__dirname, '..', 'nav.js'), 'utf8')), 'routeProgress atdod pašreizējo posmu (cur)');
+  ok(/\$\('streetName'\)\.textContent = navStreetName\(p\.cur\)/.test(app), 'iela atjaunojas braucot');
+  const nsn = new Function(fn('navStreetName') + '\n}\nreturn navStreetName;')();
+  eq(nsn({ name: 'Kaplavas iela' }), 'Kaplavas iela'); eq(nsn({ name: '', ref: 'A2' }), 'A2'); eq(nsn({}), 'Ceļš bez nosaukuma'); eq(nsn({ name: 'Brīvības iela;Brīvības gatve' }), 'Brīvības iela');
+  // „Centrēt”: redzams tikai navigācijā, kad karte pabīdīta
+  const sr = fn('syncRecenter');
+  ok(/moved = nav && !state\.follow/.test(sr) && /btn\.hidden = !moved/.test(sr) && /\$\('etaBox'\)\.hidden = !nav \|\| moved/.test(sr), 'pabīdot — Centrēt; citādi iela + ierašanās laiks');
+  ok(/Object\.defineProperty\(state, 'follow'/.test(app) && /if \(ch\) syncRecenter\(\)/.test(app), 'reaģē uz katru „sekot man” maiņu');
+  ok(/\$\('recenterBtn'\)\.addEventListener\('click', \(\) => \{ state\.follow = true; if \(state\.me\) followCamera\(800\)/.test(app), 'Centrēt atgriež kameru pie manis');
+  ok(/\$\('recenterMeta'\)\.textContent = \$\('etaMeta'\)\.textContent/.test(app), 'zem Centrēt — min · km');
 });
 
 // ---------- F19: Stripe webhook + „Sinhronizēt ar Stripe” ----------
