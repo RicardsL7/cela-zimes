@@ -1024,3 +1024,17 @@ html.navigating .alt-bubble { display: none; }
   font: 700 13px var(--font-body); white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .pr-preview .pr-fox, .garage-bal b.bump { animation: none; } .rep-prompt, .pr-arrow { transition: none; } }
 .gr-card .btn.ghost { background: var(--panel); color: var(--fg); border: 1px solid var(--line); }
+
+/* v125: Garāža — tēlu filtrs un „Mythic” */
+.gr-chips { display: flex; gap: 6px; overflow-x: auto; margin: 0 -18px 10px; padding: 2px 18px 4px; scrollbar-width: none; }
+.gr-chips::-webkit-scrollbar { display: none; }
+.gr-chip { flex: none; display: flex; align-items: center; gap: 5px; padding: 5px 12px 5px 8px; border-radius: 99px;
+  border: 1.5px solid var(--line); background: var(--bg); color: var(--fg); font: 700 13.5px var(--font-body); cursor: pointer; }
+.gr-chip img { width: 22px; height: 23px; }
+.gr-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.gr-empty { grid-column: 1 / -1; color: var(--muted); text-align: center; font-weight: 600; margin: 16px 0; }
+.gr-card.rar-mythic { --rar: #ff3d6e; border-color: transparent;
+  background: linear-gradient(var(--bg), var(--bg)) padding-box, linear-gradient(135deg, #ff3d6e, #ffb300, #2ee6c5, #7c3aed) border-box;
+  box-shadow: 0 0 16px color-mix(in srgb, #ff3d6e 30%, transparent); }
+.gr-card.rar-mythic .gr-rar { background: linear-gradient(90deg, #ff3d6e, #ffb300, #7c3aed); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.gr-card.rar-mythic.st-equipped { box-shadow: 0 0 0 3px color-mix(in srgb, var(--go) 55%, transparent), 0 0 16px #ff3d6e55; }

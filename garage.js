@@ -1,10 +1,11 @@
-// Ceļa Zīmes — "Garāža": coin balance and the skin shop (v124).
+// Ceļa Zīmes — "Garāža": coin balance and the skin shop (v124; v125: 8 characters, mythic tier, filter).
 // Server: supabase/coins-1.sql (wallet_get, skins_list, skin_buy, skin_equip). All coin logic runs on the
 // server — this file only shows the state and sends requests. Skin images: skins.js.
 //
 //   • The "Garāža" button shows the balance. Coins are earned by anyone (also anonymous accounts) by
 //     answering confirmation prompts; buying needs an account with a confirmed e-mail.
-//   • Cards: 2 columns, cheapest first, border colour = rarity. States: locked (progress "120 / 300"),
+//   • Filter chips: all / mine / one character (remembered in this browser).
+//   • Cards: 2 columns, cheapest first, border colour = rarity (common, rare, epic, mythic). States: locked (progress "120 / 300"),
 //     affordable ("Pirkt" + confirmation), owned ("Izmantot"), equipped (highlight + ✓).
 //   • "Apskatīt" shows on the real map how other drivers will see you. You yourself always keep the
 //     green arrow — your skin is shown to OTHER drivers (presence.js, only with "Palīdzēt citiem").
@@ -16,7 +17,41 @@ const garage = {
   busy: false,
   user: undefined,       // user id the wallet belongs to
   previewMarker: null,
+  filter: (() => { try { return localStorage.getItem('cz.garage.filter') || 'all'; } catch { return 'all'; } })(),
 };
+
+// Filter chips above the grid: "Visi", "Mani" (owned) and one per character present in the catalogue.
+function garageRenderChips() {
+  const box = $('garageChars');
+  if (!box) return;
+  const chars = [...new Set(garage.skins.map(s => s.character || 'fox'))];
+  if (garage.filter !== 'all' && garage.filter !== 'mine' && !chars.includes(garage.filter)) garage.filter = 'all';
+  const opts = [['all', 'Visi'], ['mine', 'Mani'], ...chars.map(c => [c, SKIN_CHARS[c] || c])];
+  box.textContent = '';
+  for (const [k, label] of opts) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'gr-chip' + (garage.filter === k ? ' on' : ''); b.setAttribute('aria-pressed', garage.filter === k);
+    if (k !== 'all' && k !== 'mine') {
+      const first = garage.skins.find(s => (s.character || 'fox') === k);
+      if (first) { const im = document.createElement('img'); im.src = skinDataUrl(first.id); im.alt = ''; im.width = 22; im.height = 23; b.appendChild(im); }
+    }
+    b.appendChild(document.createTextNode(label));
+    b.addEventListener('click', () => {
+      garage.filter = k;
+      try { localStorage.setItem('cz.garage.filter', k); } catch { /* */ }
+      garageRender();
+    });
+    box.appendChild(b);
+  }
+  const on = box.querySelector('.gr-chip.on');                       // keep the chosen chip visible
+  if (on && box.scrollWidth > box.clientWidth) box.scrollLeft = Math.max(0, on.offsetLeft - box.clientWidth / 2 + on.offsetWidth / 2);
+}
+// Skins shown for the current filter, cheapest first.
+function garageVisible(skins, filter, w) {
+  return skins.filter(s => filter === 'all' ? true
+    : filter === 'mine' ? !!(w && Array.isArray(w.owned) && w.owned.includes(s.id))
+    : (s.character || 'fox') === filter).sort((a, b) => a.price - b.price || (a.sort || 0) - (b.sort || 0));
+}
 
 function garageApi() { return typeof reportsApi !== 'undefined' && reportsApi ? reportsApi : null; }
 function garageCoins(n) { return Number(n || 0).toLocaleString('lv-LV'); }
@@ -34,7 +69,7 @@ async function garageLoad({ create = false } = {}) {
   if (!api) return;
   try {
     const [skins, wallet] = await Promise.all([api.skins(), api.wallet({ create })]);
-    if (Array.isArray(skins) && skins.length) garage.skins = skins.map(s => ({ ...s, price: +s.price, rarity: s.rarity || skinRarity(+s.price) }));
+    if (Array.isArray(skins) && skins.length) garage.skins = skins.map(s => ({ ...s, price: +s.price, rarity: s.rarity || skinRarity(+s.price), character: s.animal || 'fox' }));
     garage.wallet = wallet;
     garage.serverOk = true;
   } catch (e) {
@@ -77,14 +112,20 @@ function garageRender() {
   else if (!w.can_spend) note.textContent = 'Monētas krāj arī bez konta. Lai pirktu tēlu, vajag kontu ar apstiprinātu e-pastu.';
   else note.hidden = true;
 
+  garageRenderChips();
   const grid = $('garageGrid');
   grid.textContent = '';
-  const list = [...garage.skins].sort((a, b) => a.price - b.price);
+  const list = garageVisible(garage.skins, garage.filter, w);
+  if (!list.length) {
+    const e = document.createElement('p'); e.className = 'gr-empty';
+    e.textContent = garage.filter === 'mine' ? 'Tev vēl nav neviena tēla. Krāj monētas un izvēlies savu pirmo!' : 'Šeit vēl nav tēlu.';
+    grid.appendChild(e);
+  }
   for (const s of list) {
     const st = garageCardState(s, w);
     const card = document.createElement('div');
     card.className = `gr-card rar-${s.rarity} st-${st}`;
-    card.innerHTML = `<div class="gr-rar"></div><button type="button" class="gr-img" title="Apskatīt kartē"><img alt="" width="96" height="99"></button>
+    card.innerHTML = `<div class="gr-rar"></div><button type="button" class="gr-img" title="Apskatīt kartē"><img alt="" width="96" height="99" loading="lazy" decoding="async"></button>
       <div class="gr-name"></div><div class="gr-price"><span class="coin" aria-hidden="true"></span><b></b></div><div class="gr-act"></div>`;
     card.querySelector('.gr-rar').textContent = SKIN_RARITY_LABEL[s.rarity] || '';
     card.querySelector('img').src = skinDataUrl(s.id);
@@ -202,4 +243,4 @@ function garageInit() {
   if (typeof czWhenConsent === 'function') czWhenConsent(() => garageLoad()); else garageLoad();
 }
 
-if (typeof module !== 'undefined') module.exports = { garage, garageCardState };
+if (typeof module !== 'undefined') module.exports = { garage, garageCardState, garageVisible };
