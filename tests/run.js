@@ -1936,7 +1936,7 @@ test('v124: Garāža — 8 tēli kā serverī, retums pēc cenas, kartīšu stā
   const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'coins-1.sql'), 'utf8');
   const srv = [...sql.matchAll(/\('([a-z]+)',\s+'([^']+)',\s+(\d+),\s+'skins\/\1\.svg',\s+'skins\/\1-map\.svg'/g)].map(m => [m[1], m[2], +m[3]]);
   eq(srv.length, 8, 'serverī 8 tēli');
-  const def = g('SKINS_DEFAULT');
+  const def = g('SKINS_DEFAULT').filter(s => s.character === 'fox');
   eq(def.map(s => s.id + ':' + s.name + ':' + s.price).join(), srv.map(s => s.join(':')).join(), 'klienta saraksts = serveris');
   eq(def.map(s => s.price).join(), '200,300,350,400,450,500,600,800', 'lētākie pirmie');
   eq(def.map(s => s.rarity).join(), 'common,common,common,rare,rare,rare,epic,epic', 'retums');
@@ -1985,7 +1985,7 @@ test('v124: citi braucēji — tikai ar „Palīdzēt citiem” (jaunā versija)
     const html = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     ok(/id="garageBtn"[\s\S]{0,700}Garāža[\s\S]{0,200}id="garageBal"/.test(html), f + ': poga „Garāža” ar atlikumu');
     ok(/id="garageSheet"/.test(html) && /id="garageGrid"/.test(html), f + ': Garāžas logs');
-    for (const s of ['skins.js', 'garage.js', 'presence.js']) ok(html.indexOf(s) > 0 && html.indexOf(s) < html.indexOf('app-gl.js'), f + ': ' + s);
+    for (const s of ['skins-art.js', 'skins.js', 'garage.js', 'presence.js']) ok(html.indexOf(s) > 0 && html.indexOf(s) < html.indexOf('app-gl.js'), f + ': ' + s);
   }
   const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
   ok(/for \(const type of REPORT_PICKER\)/.test(app), 'izvēlē REPORT_PICKER');
@@ -1993,6 +1993,46 @@ test('v124: citi braucēji — tikai ar „Palīdzēt citiem” (jaunā versija)
   ok(/mock: !!state\.testMode/.test(app), 'testa režīmā — bez monētām');
   ok(/it\.pending && !it\.mine\) reportsState\.pending\.set/.test(app), 'neapstiprinātos nezīmē, bet par tiem jautā');
   ok(!/reportAskStill|reportPassed/.test(app), 'vecais „Vēl ir?” pēc garāmbraukšanas noņemts');
+});
+
+
+test('v125: Garāža — 8 tēli × 10 dizaini (lapsām 8), „Mythic”, filtrs; katalogs = SQL = faili; bez valstu karogiem', () => {
+  const c2 = vm.createContext({ console, Math, Map, Set, JSON, Number, String, Array, Object, encodeURIComponent, localStorage: { getItem: () => null, setItem() {} } });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'skins-art.js'), 'utf8'), c2);
+  for (const f of ['skins.js', 'garage.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/if \(typeof module[\s\S]*$/m, ''), c2);
+  const g = n => vm.runInContext(n, c2);
+  const all = g('SKINS_DEFAULT'), CH = g('SKIN_CHARS'), rar = g('skinRarity');
+  eq(all.length, 78, '8 lapsas + 7 × 10');
+  eq(new Set(all.map(s => s.id)).size, 78, 'unikāli id');
+  for (const ch of ['bear', 'cat', 'panda', 'penguin', 'owl', 'bunny', 'raccoon']) {
+    const set = all.filter(s => s.character === ch);
+    ok(CH[ch], ch + ' nosaukums');
+    eq(set.map(s => s.rarity).join(), 'common,common,common,rare,rare,rare,epic,epic,mythic,mythic', ch + ': 3 / 3 / 2 / 2');
+    eq(set.map(s => s.price).join(), '200,250,300,400,450,500,650,750,1200,1500', ch + ' cenas');
+  }
+  eq(rar(999), 'epic'); eq(rar(1000), 'mythic'); eq(g('SKIN_RARITY_LABEL').mythic, 'Mythic');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'coins-3-skins.sql'), 'utf8');
+  const rows = [...sql.matchAll(/\('([a-z-]+)', '([^']+)', (\d+), '([a-z]+)', '(?:skins\/\1\.svg|skins-art\.js#\1)', '(?:skins\/\1-map\.svg|skins-art\.js#\1)', \d+\)/g)].map(m => m.slice(1, 5).join(':'));
+  eq(rows.join(), all.map(s => [s.id, s.name, s.price, s.character].join(':')).join(), 'SQL rindas = klienta katalogs');
+  ok(/price >= 1000 then 'mythic'/.test(sql) && /drop function if exists public\.skins_list\(\)/.test(sql) && /grant execute on function public\.skins_list\(\) to anon, authenticated/.test(sql), 'SQL: mythic, skins_list ar tēlu');
+  for (const s of all.filter(x => x.character === 'fox')) for (const f of [s.id + '.svg', s.id + '-map.svg'])
+    ok(fs.existsSync(path.join(__dirname, '..', 'skins', f)), 'fails skins/' + f);
+  for (const s of all.filter(x => x.character !== 'fox')) ok(/^<svg[\s\S]*<\/svg>$/.test(g('skinArtSvg')(s.id)), s.id + ' — zīmējums');
+  ok(g('skinDataUrl')('bear-karalis').startsWith('data:image/svg+xml'), 'citi tēli — zīmēti pārlūkā (skins-art.js)');
+  ok(g('skinDataUrl')('chef').startsWith('data:image/svg+xml'), 'lapsas — zīmētas');
+  eq(g('skinDataUrl')('nav-tada'), '', 'nezināms tēls — nekas');
+  const costumes = fs.readFileSync(path.join(__dirname, '..', 'tools', 'skins', 'costumes.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '..', 'tools', 'skins', 'sets.js'), 'utf8');
+  const art = fs.readFileSync(path.join(__dirname, '..', 'skins-art.js'), 'utf8');
+  ok(art.includes(fs.readFileSync(path.join(__dirname, '..', 'tools', 'skins', 'sets.js'), 'utf8').split('\n').slice(2, 6).join('\n')), 'skins-art.js uzģenerēts no tools/skins (node tools/skins/build.js)');
+  ok(!/flag|#9e1b32|Latvij/.test(art), 'arī pārlūka failā nav karogu');
+  ok(!/flag|#9e1b32|Latvij/.test(costumes), 'nav valstu karogu (lietotne visai pasaulei)');
+  ok(!/Astronauts/.test(costumes) && /Dziļjūras nirējs/.test(costumes), 'pandas astronauts nomainīts');
+  const vis = g('garageVisible');
+  eq(vis(all, 'panda', null).length, 10); eq(vis(all, 'fox', null).length, 8); eq(vis(all, 'all', null).length, 78);
+  eq(vis(all, 'mine', { owned: ['chef', 'owl-fenikss'] }).map(s => s.id).join(), 'chef,owl-fenikss', '„Mani”');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'style-gl.css'), 'utf8');
+  ok(/\.gr-card\.rar-mythic/.test(css) && /\.gr-chip\.on/.test(css), 'CSS');
+  for (const f of ['index.html', 'index-gl.html']) ok(/id="garageChars"/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': filtrs');
 });
 
 // ---------- Coins: community reports, confirmations, Garāža (supabase/coins-1.sql) ----------
