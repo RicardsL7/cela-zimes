@@ -2877,6 +2877,33 @@ function wireFabMore() {
   document.addEventListener('pointerdown', e => { if (!e.target.closest('#fabMore')) fabMore(false); });
 }
 
+// v126: segmented control for a short <select>: one button per option, kept in sync both ways.
+function segmentize(select) {
+  if (!select || select.dataset.seg) return;
+  select.dataset.seg = '1';
+  const box = document.createElement('div');
+  box.className = 'set-seg'; box.setAttribute('role', 'radiogroup');
+  const lab = select.labels && select.labels[0];
+  if (lab) box.setAttribute('aria-label', lab.textContent.trim());
+  const sync = () => box.querySelectorAll('button').forEach(b => {
+    const on = b.dataset.v === select.value;
+    b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
+  });
+  for (const o of select.options) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.dataset.v = o.value; b.textContent = o.textContent; b.setAttribute('role', 'radio');
+    b.addEventListener('click', () => {
+      if (select.value === o.value) return;
+      select.value = o.value; select.dispatchEvent(new Event('change', { bubbles: true })); sync();
+    });
+    box.appendChild(b);
+  }
+  select.addEventListener('change', sync);
+  select.classList.add('seg-hidden'); select.tabIndex = -1; select.setAttribute('aria-hidden', 'true');
+  select.after(box);
+  sync();
+}
+
 function toggleSettings(open) {
   $('settings').hidden = !open;
   $('settingsBtn').setAttribute('aria-expanded', String(open));
@@ -2969,6 +2996,8 @@ function wireUi() {
   sel.value = state.basemap;
   store.set('basemap', state.basemap);      // agrākā izvēle (auto / krāsaina / klasiskā) saglabājas kā tumšā vai gaišā
   sel.addEventListener('change', () => { state.basemap = sel.value; store.set('basemap', state.basemap); applyBasemap(state.basemap); });
+  // v126: in settings, short choices are shown as segmented buttons (the <select> stays for state and accessibility)
+  segmentize(sel); segmentize($('markerAnim'));
 
   // Mapillary atslēga
   const tokenInput = $('mlyToken');

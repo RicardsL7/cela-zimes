@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=125">
+  <link rel="stylesheet" href="style-gl.css?v=126">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -276,53 +276,82 @@
   </section>
 
   <!-- Iestatījumu panelis -->
-  <section id="settings" class="sheet" hidden aria-labelledby="settingsTitle">
+  <section id="settings" class="sheet set-sheet" hidden aria-labelledby="settingsTitle">
     <div class="sheet-head">
-      <h2 id="settingsTitle">Ko rādīt uz kartes</h2>
-      <button id="closeSettings" class="link-btn">Gatavs</button>
+      <h2 id="settingsTitle">Iestatījumi</h2>
+      <button id="closeSettings" class="link-btn set-done">Gatavs</button>
     </div>
-    <!-- Sastrēgumu karte (F15): labi redzama, iestatījumu augšā -->
-    <div id="trafficRows" class="tr-card">
-      <div class="tr-card-t">🚦 Sastrēgumu karte</div>
-      <label class="row">
-        <span><b>Palīdzēt citiem — anonīmi dalīties ar braukšanas ātrumu</b><br><small class="fine">Braucot tiek sūtīts tikai ātrums, aptuvenā vieta uz ceļa (~50 m) un virziens — bez vārda, e-pasta un maršruta, ne brauciena pirmie un pēdējie 400 m. Glabājas 28 dienas. Kamēr brauc, citi kartē redz tavu aptuveno vietu ar Garāžas tēlu (bez vārda).</small></span>
+
+    <!-- Sastrēgumi un kopiena (F15: iestatījumu augšā) -->
+    <div class="set-h">Sastrēgumi un kopiena</div>
+    <div id="trafficRows" class="set-group">
+      <label class="set-row">
+        <span class="set-ic" style="--ic:#d6336c" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z" fill="#fff"/></svg></span>
+        <span class="set-txt"><b>Palīdzēt citiem</b><small>Anonīmi dalies ar braukšanas ātrumu sastrēgumu kartei</small></span>
         <input type="checkbox" id="trafficShare" class="switch">
       </label>
-      <label class="row">
-        <span>Rādīt sastrēgumus kartē</span>
+      <details class="set-more">
+        <summary>Kas tiek sūtīts?</summary>
+        <p>Braucot tiek sūtīts tikai ātrums, aptuvenā vieta uz ceļa (~50 m) un virziens — bez vārda, e-pasta un maršruta, ne brauciena pirmie un pēdējie 400 m. Glabājas 28 dienas. Kamēr brauc, citi kartē redz tavu aptuveno vietu ar Garāžas tēlu (bez vārda).</p>
+      </details>
+      <label class="set-row">
+        <span class="set-ic" style="--ic:#e8590c" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><rect x="8" y="3" width="8" height="18" rx="3" fill="none" stroke="#fff" stroke-width="2"/><circle cx="12" cy="7.5" r="1.7" fill="#fff"/><circle cx="12" cy="12" r="1.7" fill="#fff"/><circle cx="12" cy="16.5" r="1.7" fill="#fff"/></svg></span>
+        <span class="set-txt"><b>Rādīt sastrēgumus kartē</b></span>
         <input type="checkbox" id="trafficShow" class="switch" checked>
       </label>
-      <p id="trHelpersSet" class="tr-helpers" hidden></p>
+      <p id="trHelpersSet" class="tr-helpers set-note" hidden></p>
     </div>
-    <label class="row master">
-      <span>Rādīt brīdinājumus / zīmes</span>
-      <input type="checkbox" id="masterSwitch" class="switch" checked>
-    </label>
-    <div id="catList" class="cat-list"></div>
-    <label class="row">
-      <span>Brīdināt, ja pārsniedz ātrumu</span>
-      <input type="checkbox" id="warnSwitch" class="switch" checked>
-    </label>
-    <div class="row arrow-row">
-      <span>Bultas krāsa</span>
-      <div id="arrowColors" class="arrow-colors" role="group" aria-label="Bultas krāsa"></div>
+
+    <!-- Brīdinājumi -->
+    <div class="set-h">Brīdinājumi</div>
+    <div class="set-group">
+      <label class="set-row master">
+        <span class="set-ic" style="--ic:#f08c00" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 4 21 19H3Z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v4" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.6" r="1.1" fill="#fff"/></svg></span>
+        <span class="set-txt"><b>Rādīt brīdinājumus un zīmes</b></span>
+        <input type="checkbox" id="masterSwitch" class="switch" checked>
+      </label>
+      <details class="set-more set-cats">
+        <summary>Kuras zīmes rādīt</summary>
+        <div id="catList" class="cat-list"></div>
+      </details>
+      <label class="set-row">
+        <span class="set-ic" style="--ic:#e03131" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M4.5 16a8 8 0 1 1 15 0" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/><path d="M12 15 16 9" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg></span>
+        <span class="set-txt"><b>Brīdināt, ja pārsniedz ātrumu</b><small>Apaļais rādītājs kļūst sarkans un pulsē</small></span>
+        <input type="checkbox" id="warnSwitch" class="switch" checked>
+      </label>
     </div>
-    <div class="row anim-row">
-      <label for="markerAnim">Marķieru animācija</label>
-      <select id="markerAnim" class="select">
-        <option value="pop">Uzlēciens</option>
-        <option value="morph">Pārveidošanās</option>
-      </select>
-      <button id="markerAnimTest" type="button" class="link-btn">Parādīt</button>
+
+    <!-- Izskats -->
+    <div class="set-h">Izskats</div>
+    <div class="set-group">
+      <div class="set-row set-stack">
+        <div class="set-line"><span class="set-ic" style="--ic:#1e5bb8" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 6.5 9 4.5l6 2 5-2v13l-5 2-6-2-5 2Z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M9 4.5v13M15 6.5v13" stroke="#fff" stroke-width="2"/></svg></span><label class="set-txt" for="basemapSelect"><b>Kartes stils</b></label></div>
+        <select id="basemapSelect" class="select set-seg-src"></select>
+      </div>
+      <div class="set-row set-stack arrow-row">
+        <div class="set-line"><span class="set-ic" style="--ic:#2f9e44" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 3 19 20l-7-4-7 4Z" fill="#fff"/></svg></span><span class="set-txt"><b>Bultas krāsa</b></span></div>
+        <div id="arrowColors" class="arrow-colors" role="group" aria-label="Bultas krāsa"></div>
+      </div>
+      <div class="set-row set-stack anim-row">
+        <div class="set-line"><span class="set-ic" style="--ic:#7048e8" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 3l2 5.5L19.5 10 14 12l-2 6-2-6-5.5-2L10 8.5Z" fill="#fff"/></svg></span><label class="set-txt" for="markerAnim"><b>Marķieru animācija</b></label>
+          <button id="markerAnimTest" type="button" class="link-btn">Parādīt</button></div>
+        <select id="markerAnim" class="select set-seg-src">
+          <option value="pop">Uzlēciens</option>
+          <option value="morph">Pārveidošanās</option>
+        </select>
+      </div>
     </div>
-    <label class="row" for="basemapSelect">
-      <span>Kartes stils</span>
-      <select id="basemapSelect" class="select"></select>
-    </label>
-    <div class="row acc-row">
-      <span>Konts un dati<br><small class="fine">Saglabāt kontu ar e-pastu, izrakstīties, dzēst kontu</small></span>
-      <button id="accountBtn" type="button" class="link-btn">Atvērt</button>
+
+    <!-- Konts -->
+    <div class="set-h">Konts</div>
+    <div class="set-group">
+      <button id="accountBtn" type="button" class="set-row set-link">
+        <span class="set-ic" style="--ic:#495057" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="8.5" r="3.6" fill="#fff"/><path d="M4.8 20c.6-4 3.6-6.2 7.2-6.2s6.6 2.2 7.2 6.2Z" fill="#fff"/></svg></span>
+        <span class="set-txt"><b>Konts un dati</b><small>Saglabāt kontu ar e-pastu, izrakstīties, dzēst kontu</small></span>
+        <svg class="set-chev" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
     </div>
+
     <p class="fine set-legal"><a href="terms.html" target="_blank" rel="noopener">Lietošanas noteikumi</a> · <a href="privacy.html" target="_blank" rel="noopener">Privātuma politika</a></p>
     <!-- F6: izstrādātāja iestatījumi (?dev=1 vai 7 pieskārieni virsrakstam) -->
     <div id="devBox" class="dev-box" hidden>
@@ -345,7 +374,10 @@
       </div>
       <button id="devOff" type="button" class="link-btn dev-off">Izslēgt izstrādātāja režīmu</button>
     </div>
-    <p class="fine">Dati: © OpenStreetMap līdzautori, © Mapillary, © OpenFreeMap. Maršruti: OSRM. Meklēšana: Photon, Nominatim. Laikapstākļi: Open-Meteo. Vietas: OpenStreetMap (Overpass).</p>
+    <details class="set-credits">
+      <summary>Datu avoti</summary>
+      <p class="fine">Dati: © OpenStreetMap līdzautori, © Mapillary, © OpenFreeMap. Maršruti: OSRM. Meklēšana: Photon, Nominatim. Laikapstākļi: Open-Meteo. Vietas: OpenStreetMap (Overpass).</p>
+    </details>
   </section>
 
   <!-- Piekrišana noteikumiem (pirmajā atvēršanā) -->
@@ -397,7 +429,7 @@
   <script src="rides-ui.js?v=123"></script>
   <script src="garage.js?v=125"></script>
   <script src="presence.js?v=124"></script>
-  <script src="app-gl.js?v=124"></script>
+  <script src="app-gl.js?v=126"></script>
   <script src="park-gl.js?v=116"></script>
   <script src="park-dest-gl.js?v=93"></script>
   <script src="traffic-gl.js?v=124"></script>
