@@ -2035,6 +2035,25 @@ test('v125: Garāža — 8 tēli × 10 dizaini (lapsām 8), „Mythic”, filtrs
   for (const f of ['index.html', 'index-gl.html']) ok(/id="garageChars"/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': filtrs');
 });
 
+
+test('v126: iestatījumi — grupas ar ikonām, segmentu pogas, paskaidrojumi atvērami', () => {
+  for (const f of ['index.html', 'index-gl.html']) {
+    const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    const set = h.slice(h.indexOf('id="settings"'), h.indexOf('id="devBox"'));
+    for (const g of ['Sastrēgumi un kopiena', 'Brīdinājumi', 'Izskats', 'Konts']) ok(set.includes('<div class="set-h">' + g + '</div>'), f + ': grupa ' + g);
+    for (const id of ['trafficShare', 'trafficShow', 'masterSwitch', 'catList', 'warnSwitch', 'basemapSelect', 'arrowColors', 'markerAnim', 'markerAnimTest', 'accountBtn', 'trHelpersSet'])
+      ok(set.includes('id="' + id + '"'), f + ': ' + id + ' saglabāts');
+    ok(/<details class="set-more">\s*<summary>Kas tiek sūtīts\?<\/summary>/.test(set), f + ': garais teksts atverams');
+    ok((set.match(/class="set-ic"/g) || []).length >= 8, f + ': ikonas');
+  }
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  ok(/segmentize\(sel\); segmentize\(\$\('markerAnim'\)\);/.test(app), 'kartes stils un animācija — segmentu pogas');
+  const seg = app.slice(app.indexOf('function segmentize('), app.indexOf('function toggleSettings('));
+  ok(/select\.dispatchEvent\(new Event\('change'/.test(seg) && /select\.addEventListener\('change', sync\)/.test(seg), 'sinhronizē abos virzienos');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'style-gl.css'), 'utf8');
+  ok(/\.set-group \{/.test(css) && /\.set-seg button\.on/.test(css), 'CSS');
+});
+
 // ---------- Coins: community reports, confirmations, Garāža (supabase/coins-1.sql) ----------
 test('Coins: SQL — report types config, validated confirmations, daily cap, atomic purchases, permissions', () => {
   const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'coins-1.sql'), 'utf8');
