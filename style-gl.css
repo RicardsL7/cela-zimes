@@ -1144,3 +1144,10 @@ a.set-row { color: var(--fg); }
 .search .set-open { position: relative; }
 .search .set-open.dot::after { content: ""; position: absolute; top: 8px; right: 8px; width: 9px; height: 9px; border-radius: 50%;
   background: var(--danger); box-shadow: 0 0 0 2px var(--panel); }
+
+/* v133: big 112 button in „Ārkārtas palīdzība” */
+.call-112 { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 56px; margin: 4px 4px 12px;
+  border-radius: 14px; background: #c92a2a; color: #fff; font: 700 20px/1 'Barlow Condensed', 'Barlow', sans-serif;
+  letter-spacing: .02em; text-decoration: none; }
+.call-112[hidden] { display: none; }
+.call-112:active { transform: scale(.98); }

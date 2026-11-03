@@ -18,3 +18,14 @@
 - Sarkanais punkts (brīdinājumi izslēgti) tagad ir uz iestatījumu pogas meklēšanas joslā.
 - Saglabātā vērtība cz.signsOn nemainās.
 - Versijas: style-gl.css v132, app-gl.js v132. Testi: 131/131.
+
+## v133 — vietu kontakti pēc kategorijām, poga „Zvanīt 112”
+
+- Īpašnieka lēmums (03.11.2026), places.js `PLACE_CONTACT_RULES`:
+  - nekā: degviela, kafija, pārtikas veikali, iepirkšanās, parki;
+  - tikai saite: stāvvieta;
+  - tālrunis + saite: elektroauto uzlāde, ēdiens, auto mazgātavas, aptiekas, medicīniskā palīdzība, viesnīcas;
+  - tikai tālrunis: ārkārtas palīdzība.
+- Lietotņu (App Store / Google Play) pogas vairs nerāda nevienā kategorijā. Meklēšanas rezultātiem (bez kategorijas) — tālrunis un saite.
+- „Ārkārtas palīdzība” sarakstā augšā liela sarkana poga „Zvanīt 112” (tel:112).
+- Versijas: places.js v133, style-gl.css v133, app-gl.js v133. Testi: 131/131.

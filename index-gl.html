@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=132">
+  <link rel="stylesheet" href="style-gl.css?v=133">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -247,6 +247,10 @@
     </div>
     <ul id="placeCats" class="place-cats"></ul>
     <div id="placeResults" hidden>
+      <a id="call112" class="call-112" href="tel:112" hidden>
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6.6 3.5 9 3l1.6 4.2-2 1.5a11 11 0 0 0 6.7 6.7l1.5-2L21 15l-.5 2.4a2 2 0 0 1-2 1.6A15.5 15.5 0 0 1 5 5.5a2 2 0 0 1 1.6-2Z" fill="currentColor"/></svg>
+        <span>Zvanīt 112</span>
+      </a>
       <p id="placeStatus" class="fine place-status"></p>
       <ul id="placeList" class="place-list"></ul>
     </div>
@@ -425,7 +429,7 @@
   <script src="reports.js?v=124"></script>
   <script src="skins-art.js?v=125"></script>
   <script src="skins.js?v=125"></script>
-  <script src="places.js?v=120c"></script>
+  <script src="places.js?v=133"></script>
   <script src="model.js?v=93"></script>
   <script src="rides-config.js?v=93"></script>
   <script src="auth.js?v=124"></script>
@@ -435,7 +439,7 @@
   <script src="rides-ui.js?v=123"></script>
   <script src="garage.js?v=125"></script>
   <script src="presence.js?v=124"></script>
-  <script src="app-gl.js?v=132"></script>
+  <script src="app-gl.js?v=133"></script>
   <script src="park-gl.js?v=116"></script>
   <script src="park-dest-gl.js?v=93"></script>
   <script src="traffic-gl.js?v=124"></script>

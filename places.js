@@ -251,7 +251,7 @@ function parsePlaces(elements, catId, lat, lng, now = new Date(), parse = null) 
       id: el.type + el.id, cat: catId, name, osmName: t.name || '', lat: plat, lng: plng,
       d: placeDistM(lat, lng, plat, plng),
       addr, extra, oh: t.opening_hours || '', open: placeOpenNow(t.opening_hours, now, parse),
-      ct: placeContacts(t, name),
+      ct: placeContacts(t, name, catId),
     });
   }
   return placeDedupe(out);
@@ -314,20 +314,34 @@ function placeWebsite(raw) {
   u.protocol = 'https:';
   return { url: u.href, host: h.replace(/^www\./, '') };
 }
-// { phone, web, brandWeb, app: { name, android, ios } } — tikai tas, kas zināms; null, ja nekā nav.
-function placeContacts(t, name) {
+// v133 (owner decision 03.11.2026): which categories show a call button / website. Store apps are not shown
+// in any category any more. Unknown category (e.g. a search result) → phone and website, no app.
+const PLACE_CONTACT_RULES = {
+  fuel:     { phone: false, web: false },
+  parking:  { phone: false, web: true },
+  ev:       { phone: true,  web: true },
+  food:     { phone: true,  web: true },
+  coffee:   { phone: false, web: false },
+  grocery:  { phone: false, web: false },
+  carwash:  { phone: true,  web: true },
+  pharmacy: { phone: true,  web: true },
+  medical:  { phone: true,  web: true },
+  crisis:   { phone: true,  web: false },
+  hotel:    { phone: true,  web: true },
+  shopping: { phone: false, web: false },
+  park:     { phone: false, web: false },
+};
+const PLACE_CONTACT_DEFAULT = { phone: true, web: true };
+// { phone, web, brandWeb, app } — tikai tas, kas zināms un atļauts kategorijā; null, ja nekā nav.
+function placeContacts(t, name, cat) {
   t = t || {};
-  const phone = placePhone(t.phone || t['contact:phone'] || t['contact:mobile'] || t.mobile);
-  let web = placeWebsite(t.website || t['contact:website'] || t.url);
-  const b = placeBrand(t.brand, t.name, t.operator, name);
+  const rule = PLACE_CONTACT_RULES[cat] || PLACE_CONTACT_DEFAULT;
+  const phone = rule.phone ? placePhone(t.phone || t['contact:phone'] || t['contact:mobile'] || t.mobile) : null;
+  let web = rule.web ? placeWebsite(t.website || t['contact:website'] || t.url) : null;
+  const b = rule.web ? placeBrand(t.brand, t.name, t.operator, name) : null;
   let brandWeb = false;
   if (!web && b) { web = placeWebsite(b[2]); brandWeb = true; }
-  const app = b && (b[3].android || b[3].ios) ? {
-    name: b[1],
-    android: b[3].android ? 'https://play.google.com/store/apps/details?id=' + b[3].android : null,
-    ios: b[3].ios ? 'https://apps.apple.com/lv/app/id' + b[3].ios : null,
-  } : null;
-  return phone || web || app ? { phone, web, brandWeb, app } : null;
+  return phone || web ? { phone, web, brandWeb, app: null } : null;
 }
 
 // Kartes flīžu POI → vietu saraksts (pēc attāluma, bez dublikātiem no blakus flīzēm).
@@ -342,7 +356,7 @@ function parseTilePlaces(features, catId, lat, lng) {
     if (!g) continue;
     out.push({ id: 'tile' + out.length, osmType: null, osmId: null, cat: catId, name: placeDisplayName({ name: p.name, 'name:lv': p['name:lv'] }, catId),
       osmName: p.name || '', lat: g[1], lng: g[0], d: placeDistM(lat, lng, g[1], g[0]), addr: '', extra: [], oh: '', open: null,
-      ct: placeContacts({}, p.name) });
+      ct: placeContacts({}, p.name, catId) });
   }
   return placeDedupe(out);
 }
@@ -391,7 +405,7 @@ function parsePhotonPlaces(features, catId, lat, lng) {
       id: type ? type + p.osm_id : 'ph' + out.length, osmType: type || null, osmId: p.osm_id || null,
       cat: catId, name: placeDisplayName({ name: p.name }, catId), osmName: p.name || '', lat: g[1], lng: g[0], d: placeDistM(lat, lng, g[1], g[0]),
       addr: [p.street, p.housenumber].filter(Boolean).join(' '), extra: [], oh: '', open: null,
-      ct: placeContacts({}, p.name),
+      ct: placeContacts({}, p.name, catId),
     });
   }
   return placeDedupe(out);
@@ -424,7 +438,7 @@ function mergePlaceDetails(places, elements, now = new Date(), parse = null) {
     if (p.cat === 'fuel' && t.brand && !q.name.toLowerCase().includes(t.brand.toLowerCase())) q.extra.push(t.brand);
     q.oh = t.opening_hours || '';
     q.open = placeOpenNow(q.oh, now, parse);
-    q.ct = placeContacts(t, q.name);
+    q.ct = placeContacts(t, q.name, p.cat);
     out.push(q);
   }
   return out;
@@ -433,6 +447,6 @@ function mergePlaceDetails(places, elements, now = new Date(), parse = null) {
 if (typeof module !== 'undefined') {
   module.exports = { PLACE_CATEGORIES, PLACE_PHOTON_TAGS, buildPlacesQuery, parsePlaces, placeOpenNow, placeIconSvg,
     buildPhotonPlacesUrl, parsePhotonPlaces, buildPlaceDetailsQuery, mergePlaceDetails, parseTilePlaces, resortPlaces, PLACE_TILE_SUBCLASS, placeStatus,
-    placeContacts, placePhone, placeWebsite, placeBrand, PLACE_BRANDS, PHOTON_LANG, photonLv, photonSearchItem,
+    placeContacts, PLACE_CONTACT_RULES, placePhone, placeWebsite, placeBrand, PLACE_BRANDS, PHOTON_LANG, photonLv, photonSearchItem,
     PLACE_GENERIC_WORDS, isGenericName, placeDisplayName, placeLabelOne, evInfo, placeDedupe };
 }

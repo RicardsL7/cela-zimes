@@ -3300,6 +3300,7 @@ async function showPlaces(catId) {
   clearPlaceMarkers();
   $('placesTitle').textContent = cat.label;
   $('placesBack').hidden = false;
+  $('call112').hidden = catId !== 'crisis';                 // v133: emergency → big 112 button on top
   $('placeCats').hidden = true;
   $('placeResults').hidden = false;
   $('placeList').textContent = '';
