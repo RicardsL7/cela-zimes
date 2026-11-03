@@ -1831,7 +1831,13 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
     ok(l.includes('fill="#2f7be0"') && !l.includes('fill="#e2303a"'), t + ': gaišajā — zilā acs');
     ok(/translate\(32 24\.5\)/.test(d) && /32 61/.test(d), t + ': centrs (32; 24,5) — riņķi ap aci; smaile (32, 61)');
   }
-  for (const f of ['index.html', 'index-gl.html']) ok(/alerts\.js\?v=138/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': alerts.js v138');
+  // v139: road works = worker with orange hard hat + sunglasses inside the round pin
+  for (const th of ['dark', 'light']) {
+    const r = A.alertSvg('roadworks', 64, th);
+    ok(/clip-path="url\(#rwc\)"/.test(r) && r.includes('M24 40C24 20 36 10 50 10') && r.includes('#ffa53a') && r.includes('M31 48h38'), th + ': ceļa darbi — strādnieks ar oranžu ķiveri un brillēm');
+    ok(/32 61/.test(r) && r.includes('cx="32" cy="25" r="21"'), th + ': spraudas galva un smaile vietā');
+  }
+  for (const f of ['index.html', 'index-gl.html']) ok(/alerts\.js\?v=139/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': alerts.js v139');
   for (const t of Object.keys(A.ALERT_SPECIAL)) ok(!/r="33"/.test(A.alertSvg(t, 64, 'dark')), t + ': attēlā nekustīgu gredzenu nav (tie kustas atsevišķā slānī)');
   ok(A.alertSvg('accident', 64, 'dark').includes('fill="#0a0f17"') && A.alertSvg('accident', 64, 'light').includes('<circle cx="32" cy="25" r="21" fill="#fff"'), 'T1 tumša mala, G1 balta mala');
   A.setAlertTheme('dark'); const ud = A.alertDataUrl('jam'); A.setAlertTheme('light'); const ul = A.alertDataUrl('jam');
