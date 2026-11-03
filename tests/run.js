@@ -1862,12 +1862,15 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
   for (const f of ['index.html', 'index-gl.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     ok(/signs-gl\.js\?v=141/.test(h) && /app-gl\.js\?v=14[1-9]/.test(h), f + ': v141');
-    ok(/app-gl\.js\?v=142/.test(h), f + ': v142');
+    ok(/app-gl\.js\?v=143/.test(h), f + ': v143');
   }
   // v142: icons ↔ dots — happens after about half the zoom-out, and the animation is twice as fast
-  ok(/const MARKER_IN_ZOOM = 14\.7;/.test(ap141) && /const MARKER_OUT_ZOOM = 14\.3;/.test(ap141), 'v142: punkti parādās agrāk (14,3 / 14,7, bija 12,6 / 13)');
+  ok(/const MARKER_IN_ZOOM = 15\.6;/.test(ap141) && /const MARKER_OUT_ZOOM = 15\.2;/.test(ap141), 'v143: punkti parādās vēl agrāk (15,2 / 15,6)');
+  ok(/zoom: driving \? \(v > 80 \? 15\.8/.test(ap141), 'v143: braucot ātri (15,8) — ikonas joprojām redzamas (slieksnis zemāk)');
+  ok(/2, 3 \* r, 12, 3\.8 \* r, 60, 4\.8 \* r/.test(ap141) && /9, \['case', \['has', 'point_count'\], cl, 2\.1 \* r\]/.test(ap141), 'v143: punkti mazāki');
+  ok(/'circle-radius': RZ\(9, \['case', cluster, \['interpolate', \['linear'\], \['get', 'point_count'\], 2, 7\.5, 10, 9, 40, 11\], aheadCase\(4\.6, 4\.2, 3\.6\)\]/.test(ap141), 'v143: radaru punkti — tāda paša izmēra');
   ok(/pop: \{ ms: 170,/.test(ap141) && /morph: \{ ms: 280,/.test(ap141), 'v142: pāreja 2× ātrāka (170 / 280 ms)');
-  ok(/const RADAR_ICON_FROM = 13\.9, RADAR_ICON_FULL = 15\.2;/.test(ap141) && /coreFade = v => RZ\(RADAR_ICON_FROM \+ 0\.7, v, RADAR_ICON_FULL \+ 0\.3, 0\)/.test(ap141), 'v142: radari pāriet tajā pašā attālumā');
+  ok(/const RADAR_ICON_FROM = 14\.6, RADAR_ICON_FULL = 15\.6;/.test(ap141) && /coreFade = v => RZ\(RADAR_ICON_FROM \+ 0\.7, v, RADAR_ICON_FULL \+ 0\.3, 0\)/.test(ap141), 'v142: radari pāriet tajā pašā attālumā');
   for (const t of Object.keys(A.ALERT_SPECIAL)) ok(!/r="33"/.test(A.alertSvg(t, 64, 'dark')), t + ': attēlā nekustīgu gredzenu nav (tie kustas atsevišķā slānī)');
   ok(A.alertSvg('accident', 64, 'dark').includes('fill="#0a0f17"') && A.alertSvg('accident', 64, 'light').includes('<circle cx="32" cy="25" r="21" fill="#fff"'), 'T1 tumša mala, G1 balta mala');
   A.setAlertTheme('dark'); const ud = A.alertDataUrl('jam'); A.setAlertTheme('light'); const ul = A.alertDataUrl('jam');
