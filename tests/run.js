@@ -1349,7 +1349,7 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
     eq(decideSpeedLimit({ living: true }).limit, 20);
   });
   test('F7: pārsniegšana — 75 pie 50 → brīdina; ātrums nav zināms → nē', () => {
-    eq(isOverspeed(75, { limit: 50 }), true); eq(isOverspeed(75, { limit: 50, approx: true }), true, 'arī aptuvenam');
+    eq(isOverspeed(75, { limit: 50 }), true); eq(isOverspeed(75, { limit: 50, approx: true }), false, 'v128: aptuvens (noklusējums) — nebrīdina');
     eq(isOverspeed(null, { limit: 50 }), false); eq(isOverspeed(53, { limit: 50 }), false, '+3 pielaide');
     eq(isOverspeed(75, { limit: 50 }, false), false, 'brīdinājums izslēgts'); eq(isOverspeed(75, null), false);
   });
@@ -2080,6 +2080,24 @@ test('v127: nobraucot no maršruta — pārrēķina no manas vietas uz priekšu 
   const rr = app.slice(app.indexOf('async function reroute('), app.indexOf('// Testa režīmā: simulēts brauciens'));
   ok(/requestRoute\(state\.me, state\.nav\.dest, \{ bearing:/.test(rr) && !/cachedRoute/.test(rr), 'pārrēķins ar virzienu, bez kešatmiņas');
   ok(/isOffRoute\(p\.loc\.off, state\.me\.accuracy, hd, state\.me\.speedKmh\)/.test(app) && /REROUTE_GAP_MS = 8000/.test(app), 'nobraukšanas pārbaude, ik 8 s');
+});
+
+
+test('v128: 50 → 70 bez 70 zīmes datos — OSM maxspeed uzvar atmiņu; aptuvens ierobežojums nekrāso sarkanu', () => {
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const fn = app.slice(app.indexOf('function resolveSpeedLimit('), app.indexOf('const speedHold'));
+  ok(/speedMemoOsm\.limit = explicitOsm \? explicitOsm\.limit : null/.test(fn), 'atceras OSM vērtību zīmes vietā');
+  ok(/if \(!\(explicitOsm && explicitOsm\.limit !== speedMemoOsm\.limit\)\) sign = mem\.limit;/.test(fn), 'OSM mainījies → zīmes atmiņu neizmanto');
+  // simulate: memory 50 from a sign; OSM on that stretch 50; later OSM says 70
+  const memo = { s: null, limit: null };
+  const pick = (mem, osm) => { if (memo.s !== mem.s) { memo.s = mem.s; memo.limit = osm; } return osm != null && osm !== memo.limit ? osm : mem.limit; };
+  const sign50 = { id: 'z' };
+  eq(pick({ s: sign50, limit: 50 }, 50), 50, 'pie zīmes — 50');
+  eq(pick({ s: sign50, limit: 50 }, 70), 70, 'OSM kļūst 70 → 70 (agrāk palika 50 un rādīja sarkanu pie 68)');
+  eq(pick({ s: sign50, limit: 50 }, null), 50, 'OSM nav zināms → paliek zīme');
+  const isOver = G('isOverspeed');
+  eq(isOver(68, { limit: 70 }), false); eq(isOver(68, { limit: 50 }), true, 'zināms 50 → brīdina');
+  eq(isOver(68, { limit: 50, approx: true }), false, 'minēts 50 → nebrīdina');
 });
 
 // ---------- Coins: community reports, confirmations, Garāža (supabase/coins-1.sql) ----------
