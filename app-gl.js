@@ -2066,9 +2066,10 @@ function readOsmAlert(el) {
 // ---------- Brīdinājumu marķieri: punkti attālinātā kartē ↔ pilnas ikonas tuvinātā ----------
 // Tālu: mazi, eleganti, viegli spīdoši punkti (identitātes krāsā); blīvās vietās tie saplūst vienā
 // nedaudz lielākā punktā (svarīgākā veida krāsā). Tuvu: pilni marķieri. Pāreja abos virzienos animēta.
-// v142 (owner): icons turn into dots after zooming out about half as far as before (was 13 / 12.6)
-const MARKER_IN_ZOOM = 14.7;   // tuvinot līdz šim — punkti pārvēršas ikonās
-const MARKER_OUT_ZOOM = 14.3;  // attālinot zem šī — ikonas atpakaļ punktos (histerēze: nav mirgošanas)
+// v143 (owner): icons turn into dots even sooner when zooming out (v142: 14.7 / 14.3, before: 13 / 12.6).
+// Must stay below the fast-driving camera zoom (15.8, followCamera), so icons are still shown while driving.
+const MARKER_IN_ZOOM = 15.6;   // tuvinot līdz šim — punkti pārvēršas ikonās
+const MARKER_OUT_ZOOM = 15.2;  // attālinot zem šī — ikonas atpakaļ punktos (histerēze: nav mirgošanas)
 const ALERT_DOTS_SRC = 'alert-dots';
 // v141: traffic lights at half size here too (TRAFFIC_LIGHT_SCALE, signs-gl.js)
 function alertIconSize(k) {
@@ -2101,10 +2102,11 @@ function installAlertLayer() {
 // Punktu slāņi (atsevišķs avots ar apvienošanu). r — rādiusa reizinātājs animācijai.
 function dotRadius(r) {
   // zoom drīkst būt tikai augšējā līmenī; apvienotie punkti — nedaudz lielāki pēc skaita
-  const cl = ['interpolate', ['linear'], ['get', 'point_count'], 2, 4.3 * r, 12, 5.6 * r, 60, 7 * r];
+  // v143: dots ~1/3 smaller (radar dots have their own layer and keep their size)
+  const cl = ['interpolate', ['linear'], ['get', 'point_count'], 2, 3 * r, 12, 3.8 * r, 60, 4.8 * r];
   return ['interpolate', ['linear'], ['zoom'],
-    9, ['case', ['has', 'point_count'], cl, 3.1 * r],
-    MARKER_IN_ZOOM, ['case', ['has', 'point_count'], cl, 4.4 * r]];
+    9, ['case', ['has', 'point_count'], cl, 2.1 * r],
+    MARKER_IN_ZOOM, ['case', ['has', 'point_count'], cl, 3 * r]];
 }
 function installAlertDots() {
   if (map.getSource(ALERT_DOTS_SRC)) return;
@@ -2248,7 +2250,7 @@ const RADAR_TYPES = ['camera-fixed', 'camera-mobile'];
 const RADAR_SRC = 'radar';
 const RADAR_PERIOD = 4.6;      // s — viens impulss + atpūta
 const RADAR_EMIT = 0.62;       // cikla daļa, kurā gredzens izplešas (pārējā — miers)
-const RADAR_ICON_FROM = 13.9, RADAR_ICON_FULL = 15.2;   // marķiera "izaugšana" pēc tuvinājuma (v142: +1,7 — kā pārējiem marķieriem)
+const RADAR_ICON_FROM = 14.6, RADAR_ICON_FULL = 15.6;   // marķiera "izaugšana" pēc tuvinājuma (v143: kopā ar pārējiem marķieriem; pilns līdz 15,8)
 let radarSignDots = [];
 const radar = { sel: null, raf: 0, last: 0, t0: performance.now(), on: false, dark: true, near: new Map() };
 
