@@ -1167,7 +1167,7 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
   });
   test('F15: iestatījumu slēdzis iestatījumu augšā, ar paskaidrojumu un skaitītāju', () => {
     const i = html.indexOf('id="settings"'), j = html.indexOf('id="trafficRows"'), k = html.indexOf('id="masterSwitch"');
-    ok(i > 0 && j > i && j < k, 'sastrēgumu karte iestatījumu augšā');
+    ok(i > 0 && k > i && j > k, 'v131: sastrēgumi — otrā grupa pēc „Braukšana” (svarīgākais pirmais)');
     ok(/id="trafficShare"/.test(html) && /id="trHelpersSet"/.test(html) && /id="routeHelpers"/.test(html));
   });
   test('F15: „Šobrīd palīdz” — RPC atdod tikai skaitli, lasīt var bez konta', () => {
@@ -2036,24 +2036,41 @@ test('v125: Garāža — 8 tēli × 10 dizaini (lapsām 8), „Mythic”, filtrs
 });
 
 
-test('v126: iestatījumi — grupas ar ikonām, segmentu pogas, paskaidrojumi atvērami', () => {
+test('v131: iestatījumi — Braukšana / Sastrēgumi / Izskats / Konts un privātums / Par lietotni, 1 pieskāriens, bottom sheet', () => {
   for (const f of ['index.html', 'index-gl.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    const set = h.slice(h.indexOf('id="settings"'), h.indexOf('id="devBox"'));
-    for (const g of ['Sastrēgumi un kopiena', 'Brīdinājumi', 'Izskats', 'Konts']) ok(set.includes('<div class="set-h">' + g + '</div>'), f + ': grupa ' + g);
-    for (const id of ['trafficShare', 'trafficShow', 'masterSwitch', 'catList', 'warnSwitch', 'basemapSelect', 'arrowColors', 'markerAnim', 'markerAnimTest', 'accountBtn', 'trHelpersSet'])
-      ok(set.includes('id="' + id + '"'), f + ': ' + id + ' saglabāts');
-    ok(/<details class="set-more">\s*<summary>Kas tiek sūtīts\?<\/summary>/.test(set), f + ': garais teksts atverams');
-    ok((set.match(/class="set-ic"/g) || []).length >= 8, f + ': ikonas');
+    const set = h.slice(h.indexOf('id="settings"'), h.indexOf('</section>', h.indexOf('id="settings"')));
+    const groups = ['Braukšana', 'Sastrēgumi', 'Izskats', 'Konts un privātums', 'Par lietotni'];
+    let at = 0;
+    for (const g of groups) { const x = set.indexOf('<h3 class="set-h">' + g + '</h3>'); ok(x > at, f + ': grupa ' + g + ' pareizā secībā'); at = x; }
+    for (const id of ['settingsTitle', 'closeSettings', 'trafficRows', 'trafficShare', 'trafficShow', 'trHelpersSet', 'masterSwitch', 'catList', 'warnSwitch',
+      'arrowColors', 'markerAnim', 'markerAnimTest', 'basemapSelect', 'accountBtn', 'devBox', 'testSwitch', 'testSpeedRow', 'testSpeed', 'testSpeedVal', 'mlyToken', 'mlySave', 'mlyNote', 'devOff'])
+      ok(h.includes('id="' + id + '"'), f + ': ' + id + ' saglabāts');
+    ok(set.indexOf('id="devBox"') > set.indexOf('<h3 class="set-h">Par lietotni</h3>'), f + ': izstrādātājam — pašā apakšā');
+    ok(/Dalīties ar ātrumu anonīmi<\/b><small>Tikai ātrums un aptuvenā vieta, bez vārda\. Glabājas 28 dienas\.<\/small>/.test(set) && /<summary>Vairāk<\/summary>/.test(set), f + ': īsa rinda + „Vairāk”');
+    ok(/href="terms\.html" target="_blank"/.test(set) && /href="privacy\.html" target="_blank"/.test(set) && /Lietošanas noteikumi/.test(set) && /Privātuma politika/.test(set), f + ': noteikumi un privātums — rindas');
+    ok(/<summary>.*Datu avoti/.test(set), f + ': datu avoti atverami');
+    ok((set.match(/class="set-ic"/g) || []).length >= 10, f + ': ikonas');
+    ok(/class="set-grab"/.test(set), f + ': vilkšanas rokturis');
+    const form = h.slice(h.indexOf('id="searchForm"'), h.indexOf('</form>'));
+    ok(/id="settingsBtn"/.test(form), f + ': iestatījumi ar 1 pieskārienu — meklēšanas joslā');
+    const more = h.slice(h.indexOf('id="fabMoreItems"'), h.indexOf('</nav>'));
+    ok(!/settingsBtn/.test(more) && /id="toggleSigns"/.test(more), f + ': ⋯ izvēlnē paliek „Zīmes”; FAB pogu nav vairāk');
+    ok(!/[A-Za-z]{4,} (settings|Settings)/.test(set.replace(/<[^>]+>/g, '')), f + ': bez angļu teksta');
   }
   const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
   ok(/segmentize\(sel\); segmentize\(\$\('markerAnim'\)\);/.test(app), 'kartes stils un animācija — segmentu pogas');
   const seg = app.slice(app.indexOf('function segmentize('), app.indexOf('function toggleSettings('));
-  ok(/select\.dispatchEvent\(new Event\('change'/.test(seg) && /select\.addEventListener\('change', sync\)/.test(seg), 'sinhronizē abos virzienos');
+  ok(/select\.dispatchEvent\(new Event\('change'/.test(seg) && /select\.addEventListener\('change', sync\)/.test(seg), 'sinhronizē abos virzienos (store un applyBasemap kā līdz šim)');
+  const ws = app.slice(app.indexOf('function wireSettingsSheet('), app.indexOf('\n}\n', app.indexOf('function wireSettingsSheet(')));
+  ok(/e\.key === 'Escape'/.test(ws) && /dy > 90\) toggleSettings\(false\)/.test(ws), 'aizveras ar Esc un velkot uz leju');
+  ok(/\$\('catList'\)\.hidden = alertsMode;/.test(app), 'zīmju saraksts brīdinājumu režīmā paslēpts (loģika nemainīta)');
   const css = fs.readFileSync(path.join(__dirname, '..', 'style-gl.css'), 'utf8');
-  ok(/\.set-group \{/.test(css) && /\.set-seg button\.on/.test(css), 'CSS');
+  ok(/\.set-sheet \.switch \{ width: 52px; height: 32px;/.test(css), 'slēdži 52 × 32');
+  ok(/\.set-seg button \{ min-height: 44px;/.test(css) && /\.set-seg button\.on \{ background: var\(--accent\); color: #fff;/.test(css), 'segmenti ≥ 44 px, aktīvais akcenta krāsā');
+  ok(/\.set-sheet \.color-swatch \{ position: relative; width: 42px; height: 42px; \}/.test(css) && /color-swatch\[aria-pressed="true"\]::after/.test(css), 'krāsas ≥ 40 px ar ķeksīti');
+  ok(/\.set-row \{ min-height: 56px;/.test(css), 'rindas ≥ 56 px');
 });
-
 
 test('v127: nobraucot no maršruta — pārrēķina no manas vietas uz priekšu (ar virzienu), arī ar vāju GPS', async () => {
   const off = G('isOffRoute'), rb = G('routeBearingAt'), req = G('requestRoute');
