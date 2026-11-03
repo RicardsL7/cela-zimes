@@ -1861,8 +1861,13 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
   eq(ev(afn(1)[6], { icon: 'alert:traffic-light' }), 0.5, 'alerts slānī luksofors arī uz pusi mazāks');
   for (const f of ['index.html', 'index-gl.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    ok(/signs-gl\.js\?v=141/.test(h) && /app-gl\.js\?v=141/.test(h), f + ': v141');
+    ok(/signs-gl\.js\?v=141/.test(h) && /app-gl\.js\?v=14[1-9]/.test(h), f + ': v141');
+    ok(/app-gl\.js\?v=142/.test(h), f + ': v142');
   }
+  // v142: icons ↔ dots — happens after about half the zoom-out, and the animation is twice as fast
+  ok(/const MARKER_IN_ZOOM = 14\.7;/.test(ap141) && /const MARKER_OUT_ZOOM = 14\.3;/.test(ap141), 'v142: punkti parādās agrāk (14,3 / 14,7, bija 12,6 / 13)');
+  ok(/pop: \{ ms: 170,/.test(ap141) && /morph: \{ ms: 280,/.test(ap141), 'v142: pāreja 2× ātrāka (170 / 280 ms)');
+  ok(/const RADAR_ICON_FROM = 13\.9, RADAR_ICON_FULL = 15\.2;/.test(ap141) && /coreFade = v => RZ\(RADAR_ICON_FROM \+ 0\.7, v, RADAR_ICON_FULL \+ 0\.3, 0\)/.test(ap141), 'v142: radari pāriet tajā pašā attālumā');
   for (const t of Object.keys(A.ALERT_SPECIAL)) ok(!/r="33"/.test(A.alertSvg(t, 64, 'dark')), t + ': attēlā nekustīgu gredzenu nav (tie kustas atsevišķā slānī)');
   ok(A.alertSvg('accident', 64, 'dark').includes('fill="#0a0f17"') && A.alertSvg('accident', 64, 'light').includes('<circle cx="32" cy="25" r="21" fill="#fff"'), 'T1 tumša mala, G1 balta mala');
   A.setAlertTheme('dark'); const ud = A.alertDataUrl('jam'); A.setAlertTheme('light'); const ul = A.alertDataUrl('jam');
