@@ -2066,8 +2066,9 @@ function readOsmAlert(el) {
 // ---------- Brīdinājumu marķieri: punkti attālinātā kartē ↔ pilnas ikonas tuvinātā ----------
 // Tālu: mazi, eleganti, viegli spīdoši punkti (identitātes krāsā); blīvās vietās tie saplūst vienā
 // nedaudz lielākā punktā (svarīgākā veida krāsā). Tuvu: pilni marķieri. Pāreja abos virzienos animēta.
-const MARKER_IN_ZOOM = 13;     // tuvinot līdz šim — punkti pārvēršas ikonās
-const MARKER_OUT_ZOOM = 12.6;  // attālinot zem šī — ikonas atpakaļ punktos (histerēze: nav mirgošanas)
+// v142 (owner): icons turn into dots after zooming out about half as far as before (was 13 / 12.6)
+const MARKER_IN_ZOOM = 14.7;   // tuvinot līdz šim — punkti pārvēršas ikonās
+const MARKER_OUT_ZOOM = 14.3;  // attālinot zem šī — ikonas atpakaļ punktos (histerēze: nav mirgošanas)
 const ALERT_DOTS_SRC = 'alert-dots';
 // v141: traffic lights at half size here too (TRAFFIC_LIGHT_SCALE, signs-gl.js)
 function alertIconSize(k) {
@@ -2142,13 +2143,13 @@ const smooth = x => { x = clamp01(x); return x * x * (3 - 2 * x); };
 const backOut = (x, c) => { x = clamp01(x); const u = x - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
 const MARKER_VARIANTS = {
   // Uzlēciens (pop): punkts nedaudz palielinās → ikona parādās ar fade + scale un nelielu atsitienu
-  pop: { ms: 340, frame: t => ({
+  pop: { ms: 170, frame: t => ({
     dotR: 1 + 0.35 * smooth(t / 0.35), dotOp: 1 - smooth((t - 0.28) / 0.32),
     glow: 1 + 0.7 * smooth(t / 0.3) * (1 - smooth((t - 0.35) / 0.35)),
     iconOp: smooth((t - 0.2) / 0.32), iconS: 0.55 + 0.45 * backOut((t - 0.2) / 0.8, 1.6),
   }) },
   // Pārveidošanās (morph): punkts "ieelpo", paplašinās ar mirdzumu, no tā izaug ikona ar mazu atlēcienu
-  morph: { ms: 560, frame: t => {
+  morph: { ms: 280, frame: t => {
     const inhale = 1 - 0.24 * Math.sin(Math.PI * clamp01(t / 0.36));
     const grow = 1 + 0.95 * smooth((t - 0.16) / 0.32);
     const u = clamp01((t - 0.3) / 0.7);
@@ -2219,7 +2220,7 @@ function runMarkerMorph() {
 }
 // Priekšskatījums iestatījumos: punkti → ikonas (ja karte ir pietiekami tuvu)
 function previewMarkerMorph() {
-  if (map.getZoom() < MARKER_IN_ZOOM) { map.easeTo({ zoom: 15, duration: 700 }); return; }
+  if (map.getZoom() < MARKER_IN_ZOOM) { map.easeTo({ zoom: 16, duration: 700 }); return; }
   cancelAnimationFrame(markerMorph.raf);
   markerMorph.pos = 0; applyMarkerFrame(markerFrame(0));
   setTimeout(() => setMarkerTarget(1, true), 450);
@@ -2247,7 +2248,7 @@ const RADAR_TYPES = ['camera-fixed', 'camera-mobile'];
 const RADAR_SRC = 'radar';
 const RADAR_PERIOD = 4.6;      // s — viens impulss + atpūta
 const RADAR_EMIT = 0.62;       // cikla daļa, kurā gredzens izplešas (pārējā — miers)
-const RADAR_ICON_FROM = 12.2, RADAR_ICON_FULL = 13.5;   // marķiera "izaugšana" pēc tuvinājuma
+const RADAR_ICON_FROM = 13.9, RADAR_ICON_FULL = 15.2;   // marķiera "izaugšana" pēc tuvinājuma (v142: +1,7 — kā pārējiem marķieriem)
 let radarSignDots = [];
 const radar = { sel: null, raf: 0, last: 0, t0: performance.now(), on: false, dark: true, near: new Map() };
 
@@ -2414,15 +2415,15 @@ function installRadarLayer() {
     'circle-stroke-color': P.ring, 'circle-stroke-width': RZ(9, 1, 14, 1.5),
     'circle-radius': radarRingRadius(T), 'circle-stroke-opacity': radarRingOpacity(T) } }, base), below);
   // 3) kodols — skaidrs violets punkts ar gaišu malu; tuvinot (12,9…13,8) maigi izzūd, jo no tā izaug marķieris
-  const coreFade = v => RZ(12.9, v, 13.8, 0);
-  map.addLayer(Object.assign({ id: 'radar-core', type: 'circle', maxzoom: 14, paint: {
+  const coreFade = v => RZ(RADAR_ICON_FROM + 0.7, v, RADAR_ICON_FULL + 0.3, 0);
+  map.addLayer(Object.assign({ id: 'radar-core', type: 'circle', maxzoom: RADAR_ICON_FULL + 0.5, paint: {
     'circle-color': P.core, 'circle-pitch-alignment': 'map',
     'circle-radius': RZ(9, ['case', cluster, ['interpolate', ['linear'], ['get', 'point_count'], 2, 7.5, 10, 9, 40, 11], aheadCase(4.6, 4.2, 3.6)],
-      12.2, ['case', cluster, 9, aheadCase(5.8, 5.4, 4.8)], 13.6, aheadCase(5, 4.6, 4)),
+      RADAR_ICON_FROM, ['case', cluster, 9, aheadCase(5.8, 5.4, 4.8)], RADAR_ICON_FULL + 0.1, aheadCase(5, 4.6, 4)),
     'circle-stroke-color': P.edge, 'circle-stroke-width': RZ(9, 1.2, 13, 1.6), 'circle-stroke-opacity': coreFade(0.95),
     'circle-opacity': coreFade(1) } }, base), above);
   // mazs iekšējais atspīdums (tikai atsevišķiem punktiem) — "dārgakmens" sajūta
-  map.addLayer(Object.assign({ id: 'radar-core-shine', type: 'circle', maxzoom: 14, filter: ['!', cluster], paint: {
+  map.addLayer(Object.assign({ id: 'radar-core-shine', type: 'circle', maxzoom: RADAR_ICON_FULL + 0.5, filter: ['!', cluster], paint: {
     'circle-color': '#ffffff', 'circle-radius': RZ(9, 1.1, 13, 1.6), 'circle-translate': [-1, -1.1],
     'circle-opacity': coreFade(0.75) } }, base), above);
   // 4) apvienoto radaru skaits

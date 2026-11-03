@@ -57,3 +57,10 @@
 - Iemesls, kāpēc v135–v137 neko nemainīja: brīdinājumu režīmā visām zīmēm ir `pin`, un izmēra izteiksmē `['has', 'pin']` tika pārbaudīts pirms luksofora. Tagad luksofora pārbaude ir pirmā.
 - `TRAFFIC_LIGHT_SCALE = 0.5` (signs-gl.js `signsIconSize`, app-gl.js `alertIconSize`). Citas zīmes un spraudas nemainītas.
 - Versijas: signs-gl.js v141, app-gl.js v141. Testi: 132/132.
+
+## v142 — punkti ↔ ikonas: agrāk un 2× ātrāk
+
+- Attālinot ikonas pārvēršas punktos jau pie tuvinājuma 14,3 (bija 12,6), tuvinot atpakaļ — 14,7 (bija 13). Tas ir apmēram uz pusi mazāk attālināšanas no parastā braukšanas tuvinājuma.
+- Pārejas animācija 2× ātrāka: „Uzlēciens” 170 ms (bija 340), „Pārveidošanās” 280 ms (bija 560).
+- Radaru punkti/marķieri pāriet tajā pašā attālumā (RADAR_ICON_FROM/FULL +1,7).
+- Versija: app-gl.js v142. Testi: 132/132.
