@@ -666,14 +666,27 @@ test('R. Vietu kontakti: droši tālruņi, tikai https mājaslapas, pārbaudīta
   const els = [{ type: 'node', id: 1, lat: 56.95, lon: 24.1, tags: { amenity: 'fuel', brand: 'Neste', name: 'Neste Brīvības', phone: '+371 67 000 000', website: 'https://www.neste.lv/' } },
                { type: 'node', id: 2, lat: 56.951, lon: 24.1, tags: { amenity: 'fuel', name: 'Mazā DUS' } }];
   const ps = P.parsePlaces(els, 'fuel', 56.95, 24.1);
-  eq(ps[0].ct.phone.tel, 'tel:+37167000000');
-  eq(ps[0].ct.app.ios, 'https://apps.apple.com/lv/app/id535050119');
+  eq(ps[0].ct, null, 'v133: degvielai ne tālruņa, ne saites');
   eq(ps[1].ct, null, 'nav kontaktu → nav pogu');
   const lidl = P.placeContacts({}, 'Lidl');
-  ok(lidl.brandWeb && lidl.web.host === 'lidl.lv' && /lidlplus/.test(lidl.app.android));
+  ok(lidl.brandWeb && lidl.web.host === 'lidl.lv' && lidl.app === null, 'meklēšanā: zīmola vietne, bez lietotnes');
+  // v133: owner's per-category table
+  const tags = { phone: '+371 67 000 000', website: 'https://x.lv/' };
+  const want = { fuel: '--', parking: '-w', ev: 'pw', food: 'pw', coffee: '--', grocery: '--', carwash: 'pw', pharmacy: 'pw',
+    medical: 'pw', crisis: 'p-', hotel: 'pw', shopping: '--', park: '--' };
+  for (const [cat, w] of Object.entries(want)) {
+    const ct = P.placeContacts(tags, 'Vieta', cat);
+    const got = (ct && ct.phone ? 'p' : '-') + (ct && ct.web ? 'w' : '-');
+    eq(got, w, cat + ' kontakti');
+    ok(!ct || ct.app === null, cat + ': bez lietotnes');
+  }
+  eq(Object.keys(P.PLACE_CONTACT_RULES).length, 13, 'visām 13 kategorijām ir noteikums');
+  ok(P.placeContacts({ phone: '20000000' }, 'Elektrum', 'ev').app === null, 'EV — bez lietotnes');
   for (const b of P.PLACE_BRANDS) { ok(P.placeWebsite(b[2]), b[1] + ' vietne'); for (const v of Object.values(b[3])) ok(/^[\w.]+$/.test(v), b[1] + ' id'); }
   const m = P.mergePlaceDetails([{ id: 'node5', cat: 'coffee', name: 'Kafija', extra: [] }], [{ type: 'node', id: 5, tags: { 'contact:website': 'kafija.lv', 'contact:phone': '20000000' } }]);
-  eq(m[0].ct.web.url, 'https://kafija.lv/'); eq(m[0].ct.phone.label, '+371 2000 0000');
+  eq(m[0].ct, null, 'v133: kafijai kontaktus nerāda');
+  const m2 = P.mergePlaceDetails([{ id: 'node6', cat: 'food', name: 'Ēstuve', extra: [] }], [{ type: 'node', id: 6, tags: { 'contact:website': 'estuve.lv', 'contact:phone': '20000000' } }]);
+  eq(m2[0].ct.web.url, 'https://estuve.lv/'); eq(m2[0].ct.phone.label, '+371 2000 0000');
 });
 
 test('S. Vai drīkstu stāvēt: zīmes, laiki, noteikumi, OSM, atgādinājums', () => {
@@ -2055,10 +2068,12 @@ test('v131: iestatījumi — Braukšana / Sastrēgumi / Izskats / Konts un priv�
     const form = h.slice(h.indexOf('id="searchForm"'), h.indexOf('</form>'));
     ok(/id="settingsBtn"/.test(form), f + ': iestatījumi ar 1 pieskārienu — meklēšanas joslā');
     ok(!/id="fabMore"|id="toggleSigns"/.test(h), f + ': v132 — ⋯ un „Zīmes/Brīdin.” poga noņemta (dublēja galveno slēdzi)');
-    ok(/style-gl\.css\?v=132/.test(h) && /app-gl\.js\?v=132/.test(h), f + ': v132 versijas');
+    ok(/style-gl\.css\?v=13[2-9]/.test(h) && /app-gl\.js\?v=13[2-9]/.test(h), f + ': versijas ≥ v132');
+    ok(/<a id="call112" class="call-112" href="tel:112" hidden>/.test(h) && /Zvanīt 112/.test(h) && /places\.js\?v=133/.test(h), f + ': v133 — poga „Zvanīt 112”');
     ok(!/[A-Za-z]{4,} (settings|Settings)/.test(set.replace(/<[^>]+>/g, '')), f + ': bez angļu teksta');
   }
   const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  ok(/\$\('call112'\)\.hidden = catId !== 'crisis'/.test(app), 'v133: 112 rāda tikai ārkārtas kategorijā');
   ok(!/toggleSigns|fabMore/.test(app) && /setBtn\.classList\.toggle\('dot', !state\.signsOn\)/.test(app), 'v132: sarkanais punkts uz iestatījumu pogas, kad brīdinājumi izslēgti');
   ok(/segmentize\(sel\); segmentize\(\$\('markerAnim'\)\);/.test(app), 'kartes stils un animācija — segmentu pogas');
   const seg = app.slice(app.indexOf('function segmentize('), app.indexOf('function toggleSettings('));
