@@ -51,3 +51,9 @@
 ## v140 — remontdarbu spraude: lielāks aplis, mazāka adata
 
 - Aplis r 21 → 23 (centrs 32;28), adata īsāka un šaurāka; smaile tajā pašā vietā (32, 61). alerts.js v140. Testi: 132/132.
+
+## v141 — luksofori uz pusi mazāki (šoreiz arī brīdinājumu režīmā)
+
+- Iemesls, kāpēc v135–v137 neko nemainīja: brīdinājumu režīmā visām zīmēm ir `pin`, un izmēra izteiksmē `['has', 'pin']` tika pārbaudīts pirms luksofora. Tagad luksofora pārbaude ir pirmā.
+- `TRAFFIC_LIGHT_SCALE = 0.5` (signs-gl.js `signsIconSize`, app-gl.js `alertIconSize`). Citas zīmes un spraudas nemainītas.
+- Versijas: signs-gl.js v141, app-gl.js v141. Testi: 132/132.

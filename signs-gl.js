@@ -726,9 +726,15 @@ function signsIconOpacity(op) {
   const rel = ['match', ['get', 'rel'], 'mine', 1, 'other', 0.4, 1];
   return ['case', ['has', 'pin'], op, ['boolean', ['get', 'off'], false], 0.45, rel];
 }
+// v141: traffic lights at half size (owner, 03.11.2026). Checked FIRST — in alerts mode every sign has 'pin',
+// so a check after ['has', 'pin'] would never be reached.
+const TRAFFIC_LIGHT_SCALE = 0.5;
 function signsIconSize(k) {
   // Brīdinājumu marķieri (pin) — kā ziņojumu marķieri (k — pārejas animācijai); pārējās zīmes pēc piederības ceļam.
-  const relCase = (pin, mine, other, unknown) => ['case', ['has', 'pin'], pin * k,
+  const S = TRAFFIC_LIGHT_SCALE;
+  const relCase = (pin, mine, other, unknown) => ['case',
+    ['==', ['get', 'icon'], 'alert:traffic-light'], ['case', ['has', 'pin'], pin * k * S, ['match', ['get', 'rel'], 'mine', mine * S, 'other', other * S, unknown * S]],
+    ['has', 'pin'], pin * k,
     ['match', ['get', 'rel'], 'mine', mine, 'other', other, unknown]];
   return ['interpolate', ['linear'], ['zoom'],
     13, relCase(0.68, 0.62, 0.42, 0.55),

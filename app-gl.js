@@ -2069,7 +2069,12 @@ function readOsmAlert(el) {
 const MARKER_IN_ZOOM = 13;     // tuvinot līdz šim — punkti pārvēršas ikonās
 const MARKER_OUT_ZOOM = 12.6;  // attālinot zem šī — ikonas atpakaļ punktos (histerēze: nav mirgošanas)
 const ALERT_DOTS_SRC = 'alert-dots';
-function alertIconSize(k) { return ['interpolate', ['linear'], ['zoom'], 12, 0.62 * k, 16, 1 * k, 18.5, 1.22 * k]; }
+// v141: traffic lights at half size here too (TRAFFIC_LIGHT_SCALE, signs-gl.js)
+function alertIconSize(k) {
+  const S = typeof TRAFFIC_LIGHT_SCALE === 'number' ? TRAFFIC_LIGHT_SCALE : 1;
+  const v = x => ['case', ['==', ['get', 'icon'], 'alert:traffic-light'], x * S, x];
+  return ['interpolate', ['linear'], ['zoom'], 12, v(0.62 * k), 16, v(1 * k), 18.5, v(1.22 * k)];
+}
 function installAlertLayer() {
   if (map.getSource('alerts')) return;
   map.addSource('alerts', { type: 'geojson', data: EMPTY_FC });
