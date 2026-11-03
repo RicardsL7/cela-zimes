@@ -2953,8 +2953,35 @@ function segmentize(select) {
 }
 
 function toggleSettings(open) {
-  $('settings').hidden = !open;
+  const el = $('settings');
+  el.hidden = !open;
+  el.style.transform = '';
   $('settingsBtn').setAttribute('aria-expanded', String(open));
+}
+// v131: iestatījumu panelis kā „bottom sheet” — aizveras ar Esc vai velkot aiz roktura / virsraksta uz leju (> 90 px)
+function wireSettingsSheet() {
+  const el = $('settings');
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !el.hidden) toggleSettings(false); });
+  let y0 = null, dy = 0;
+  const start = e => {
+    if (e.target.closest('button, a, input, select')) return;
+    if (el.scrollTop > 0 && !e.target.closest('.set-grab')) return;     // ritinot saturu — nevelk paneli
+    y0 = e.clientY; dy = 0; el.style.transition = 'none';
+  };
+  const move = e => {
+    if (y0 == null) return;
+    dy = Math.max(0, e.clientY - y0);
+    el.style.transform = dy ? `translateY(${dy}px)` : '';
+  };
+  const end = () => {
+    if (y0 == null) return;
+    y0 = null; el.style.transition = '';
+    if (dy > 90) toggleSettings(false); else el.style.transform = '';
+  };
+  for (const h of [el.querySelector('.set-grab'), el.querySelector('.sheet-head')]) if (h) h.addEventListener('pointerdown', start);
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', end);
+  window.addEventListener('pointercancel', end);
 }
 
 async function applyBasemap(choice) {
@@ -3011,6 +3038,7 @@ function wireUi() {
   $('gpsRetry').addEventListener('click', gpsRetry);
   $('settingsBtn').addEventListener('click', () => { if ($('settings').hidden) closePlaces(); toggleSettings($('settings').hidden); });
   $('closeSettings').addEventListener('click', () => toggleSettings(false));
+  wireSettingsSheet();
 
   // Galamērķis
   const input = $('searchInput');
