@@ -2054,11 +2054,12 @@ test('v131: iestatījumi — Braukšana / Sastrēgumi / Izskats / Konts un priv�
     ok(/class="set-grab"/.test(set), f + ': vilkšanas rokturis');
     const form = h.slice(h.indexOf('id="searchForm"'), h.indexOf('</form>'));
     ok(/id="settingsBtn"/.test(form), f + ': iestatījumi ar 1 pieskārienu — meklēšanas joslā');
-    const more = h.slice(h.indexOf('id="fabMoreItems"'), h.indexOf('</nav>'));
-    ok(!/settingsBtn/.test(more) && /id="toggleSigns"/.test(more), f + ': ⋯ izvēlnē paliek „Zīmes”; FAB pogu nav vairāk');
+    ok(!/id="fabMore"|id="toggleSigns"/.test(h), f + ': v132 — ⋯ un „Zīmes/Brīdin.” poga noņemta (dublēja galveno slēdzi)');
+    ok(/style-gl\.css\?v=132/.test(h) && /app-gl\.js\?v=132/.test(h), f + ': v132 versijas');
     ok(!/[A-Za-z]{4,} (settings|Settings)/.test(set.replace(/<[^>]+>/g, '')), f + ': bez angļu teksta');
   }
   const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  ok(!/toggleSigns|fabMore/.test(app) && /setBtn\.classList\.toggle\('dot', !state\.signsOn\)/.test(app), 'v132: sarkanais punkts uz iestatījumu pogas, kad brīdinājumi izslēgti');
   ok(/segmentize\(sel\); segmentize\(\$\('markerAnim'\)\);/.test(app), 'kartes stils un animācija — segmentu pogas');
   const seg = app.slice(app.indexOf('function segmentize('), app.indexOf('function toggleSettings('));
   ok(/select\.dispatchEvent\(new Event\('change'/.test(seg) && /select\.addEventListener\('change', sync\)/.test(seg), 'sinhronizē abos virzienos (store un applyBasemap kā līdz šim)');
