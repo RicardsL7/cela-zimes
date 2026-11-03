@@ -204,11 +204,12 @@ function radarEyeSvg(dark, needle) {
 // Same head (32, 25) r 21 and tip (32, 61) as the other pins.
 const ROAD_WORKER_ART = '<defs> <linearGradient id="rwh" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffa53a"/><stop offset="1" stop-color="#e9600a"/></linearGradient> <radialGradient id="rws" cx=".45" cy=".35" r=".75"><stop offset="0" stop-color="#a8714a"/><stop offset="1" stop-color="#7d4f30"/></radialGradient> </defs><g><path d="M18 100c0-14 12-22 32-22s32 8 32 22Z" fill="#2f6fd6"/><path d="M30 81l8 19h-14q-2-12 6-19ZM70 81l-8 19h14q2-12-6-19Z" fill="#ff8a1f"/><path d="M27 92h12M61 92h12" stroke="#e8f0ff" stroke-width="3"/><rect x="42" y="68" width="16" height="12" rx="4" fill="#7d4f30"/><circle cx="27" cy="54" r="6" fill="#7d4f30"/><circle cx="73" cy="54" r="6" fill="#7d4f30"/><ellipse cx="50" cy="53" rx="23" ry="24" fill="url(#rws)"/><path d="M31 48h38v3q0 8-8 8h-5q-5 0-6-6-1 6-6 6h-5q-8 0-8-8Z" fill="#1d242e"/><path d="M36 51l4-2" stroke="#fff" stroke-width="1.8" stroke-linecap="round" opacity=".7"/><circle cx="35" cy="60" r="4" fill="#ff7a7a" opacity=".35"/><circle cx="65" cy="60" r="4" fill="#ff7a7a" opacity=".35"/><path d="M43 66q7 6 14 0" stroke="#7a2e22" stroke-width="2.6" fill="#fff" stroke-linecap="round"/><path d="M24 40C24 20 36 10 50 10s26 10 26 30Z" fill="url(#rwh)"/><path d="M43 11h14v29H43Z" fill="#e9600a" opacity=".35"/><rect x="18" y="36" width="64" height="8" rx="4" fill="url(#rwh)"/><path d="M32 30q2-12 12-16" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" opacity=".55"/></g>';
 function roadWorkerPin(dark, rim) {
-  return `<path d="M28.2 42L32 61 35.8 42z" fill="${dark ? '#d9640c' : '#e9600a'}"/>` +
-    `<circle cx="32" cy="25" r="21" ${rim}/><circle cx="32" cy="25" r="18.4" fill="${dark ? '#ffe9d2' : '#fff1e2'}"/>` +
-    `<clipPath id="rwc"><circle cx="32" cy="25" r="18.4"/></clipPath>` +
-    `<g clip-path="url(#rwc)"><g transform="translate(32 27.5) scale(.43) translate(-50 -50)">${ROAD_WORKER_ART}</g></g>` +
-    `<circle cx="32" cy="25" r="18.4" fill="none" stroke="#e9600a" stroke-width="2.2"/>`;
+  // v140: bigger head (r 23, centre 32,28) and a shorter, thinner needle; tip still at (32, 61)
+  return `<path d="M29.8 48L32 61 34.2 48z" fill="${dark ? '#d9640c' : '#e9600a'}"/>` +
+    `<circle cx="32" cy="28" r="23" ${rim}/><circle cx="32" cy="28" r="20.2" fill="${dark ? '#ffe9d2' : '#fff1e2'}"/>` +
+    `<clipPath id="rwc"><circle cx="32" cy="28" r="20.2"/></clipPath>` +
+    `<g clip-path="url(#rwc)"><g transform="translate(32 30.8) scale(.47) translate(-50 -50)">${ROAD_WORKER_ART}</g></g>` +
+    `<circle cx="32" cy="28" r="20.2" fill="none" stroke="#e9600a" stroke-width="2.4"/>`;
 }
 let ALERT_THEME = 'light';                 // 'dark' | 'light' — iestata app-gl.js pēc kartes stila
 function setAlertTheme(theme) { ALERT_THEME = theme === 'dark' ? 'dark' : 'light'; }

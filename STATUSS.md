@@ -47,3 +47,7 @@
 
 - „Ceļa remontdarbi” marķieris kartē tagad ir strādnieks ar oranžu ķiveri un saulesbrillēm apaļajā spraudē (īpašnieka izvēle 03.11.2026). Spraudas galva un smaile tajā pašā vietā kā citiem brīdinājumiem.
 - alerts.js `roadWorkerPin`; versija alerts.js v139. Testi: 132/132.
+
+## v140 — remontdarbu spraude: lielāks aplis, mazāka adata
+
+- Aplis r 21 → 23 (centrs 32;28), adata īsāka un šaurāka; smaile tajā pašā vietā (32, 61). alerts.js v140. Testi: 132/132.
