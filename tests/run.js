@@ -2054,6 +2054,34 @@ test('v126: iestatījumi — grupas ar ikonām, segmentu pogas, paskaidrojumi at
   ok(/\.set-group \{/.test(css) && /\.set-seg button\.on/.test(css), 'CSS');
 });
 
+
+test('v127: nobraucot no maršruta — pārrēķina no manas vietas uz priekšu (ar virzienu), arī ar vāju GPS', async () => {
+  const off = G('isOffRoute'), rb = G('routeBearingAt'), req = G('requestRoute');
+  ok(off(60, 10, 0, 50), '60 m prom ar labu GPS — nobraucis');
+  ok(!off(30, 10, 5, 50), '30 m, tas pats virziens — vēl uz maršruta (GPS kļūda)');
+  ok(off(30, 10, 90, 40), 'blakus ielā citā virzienā — nobraucis');
+  ok(!off(30, 10, 90, 5), 'stāvot virziens neskaitās');
+  ok(off(80, 50, null, 30), 'vājš GPS (50 m) — 80 m prom skaitās (agrāk neskaitījās nemaz)');
+  ok(!off(60, 50, null, 30), 'vājš GPS — 60 m vēl var būt kļūda');
+  ok(!off(300, 150, null, 30), 'ļoti neprecīzs GPS — nevērtē');
+  const route = { coords: [[24.1, 56.95], [24.1, 56.96]], cum: [0, 1113] };
+  ok(Math.abs(rb(route, { idx: 0 }) - 0) < 1, 'maršruta virziens uz ziemeļiem');
+  const urls = [];
+  const old = vm.runInContext('typeof fetch', ctx);
+  ctx.fetch = async u => { urls.push(u); return { ok: true, json: async () => ({ code: 'Ok', routes: [{ distance: 100, duration: 10, legs: [{ steps: [
+    { geometry: { coordinates: [[24.1, 56.95], [24.1, 56.951]] }, maneuver: { type: 'depart' } },
+    { geometry: { coordinates: [[24.1, 56.951], [24.1, 56.951]] }, maneuver: { type: 'arrive' } }] }] }] }) }; };
+  await req({ lat: 56.95, lng: 24.1 }, { lat: 56.96, lng: 24.1 }, { bearing: 371.4 });
+  ok(/&bearings=11,60;/.test(urls[0]), 'pieprasījumā braukšanas virziens (normalizēts)');
+  await req({ lat: 56.95, lng: 24.1 }, { lat: 56.96, lng: 24.1 });
+  ok(!/bearings/.test(urls[1]), 'bez virziena — parasts maršruts');
+  delete ctx.fetch;
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const rr = app.slice(app.indexOf('async function reroute('), app.indexOf('// Testa režīmā: simulēts brauciens'));
+  ok(/requestRoute\(state\.me, state\.nav\.dest, \{ bearing:/.test(rr) && !/cachedRoute/.test(rr), 'pārrēķins ar virzienu, bez kešatmiņas');
+  ok(/isOffRoute\(p\.loc\.off, state\.me\.accuracy, hd, state\.me\.speedKmh\)/.test(app) && /REROUTE_GAP_MS = 8000/.test(app), 'nobraukšanas pārbaude, ik 8 s');
+});
+
 // ---------- Coins: community reports, confirmations, Garāža (supabase/coins-1.sql) ----------
 test('Coins: SQL — report types config, validated confirmations, daily cap, atomic purchases, permissions', () => {
   const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'coins-1.sql'), 'utf8');
