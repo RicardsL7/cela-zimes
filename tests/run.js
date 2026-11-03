@@ -2105,8 +2105,9 @@ test('v129: spidometrs — aplis līdz atļautajam, sarkanā svītra pārsniedzo
   const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
   const src = app.slice(app.indexOf('function renderSpeedo('), app.indexOf('// ---------- Laika ierobežojumi'));
   const els = {}; const mk = id => els[id] || (els[id] = { id, textContent: '', hidden: false, title: '', attrs: {}, cls: new Set(),
-    setAttribute(k, v) { this.attrs[k] = v; }, classList: { toggle: (c, on) => { const e = els[id]; on ? e.cls.add(c) : e.cls.delete(c); } } });
-  const render = new Function('$', src + '\nreturn renderSpeedo;')(mk);
+    setAttribute(k, v) { this.attrs[k] = v; }, classList: { toggle: (c, on) => { const e = els[id]; on ? e.cls.add(c) : e.cls.delete(c); },
+      add: c => els[id].cls.add(c), remove: c => els[id].cls.delete(c), contains: c => els[id].cls.has(c) } });
+  const render = new Function('$', 'const SPEEDO_PARK_MS = 3000;\n' + src + '\nreturn renderSpeedo;')(mk);
   render(38, { limit: 50 }, false);
   eq(els.speedValue.textContent, '38'); eq(els.speedoArc.attrs['stroke-dasharray'], '76.0 100', '38/50 = 76 %');
   eq(els.speedoOver.attrs['stroke-dasharray'], '0.0 100'); eq(els.limitSign.hidden, false); eq(els.limitSignValue.textContent, '50');
@@ -2114,6 +2115,9 @@ test('v129: spidometrs — aplis līdz atļautajam, sarkanā svītra pārsniedzo
   eq(els.speedoOver.attrs['stroke-dasharray'], '43.3 100', '+13 no 30 → 43 % sarkanā'); eq(els.limitSignValue.textContent, '70');
   render(130, { limit: 90 }, true); eq(els.speedoOver.attrs['stroke-dasharray'], '100.0 100', 'vairāk par +30 — pilna');
   render(1.2, { limit: 50 }, false); eq(els.speedValue.textContent, '0', 'stāvot — 0'); ok(els.limitBadge.cls.has('stopped'));
+  ok(/SPEEDO_PARK_MS = 3000/.test(app) && /badge\.classList\.add\('parked'\)/.test(src) && /badge\.classList\.remove\('parked'\)/.test(src), 'v130: stāvot 3 s — zīme izgaist, braucot atgriežas');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'style-gl.css'), 'utf8');
+  ok(/\.limit-badge\.parked \.speedo-limit \{ opacity: 0/.test(css) && /\.speedo-limit, \.speedo-ring \{ transition: opacity/.test(css), 'v130: maiga pāreja');
   render(null, null, false); eq(els.speedValue.textContent, '–'); eq(els.limitSign.hidden, true, 'nezināms ierobežojums — zīmes nav');
   render(45, { limit: 50, approx: true }, false); ok(els.limitSign.cls.has('approx'), 'minēts — pelēka zīme');
   for (const f of ['index.html', 'index-gl.html']) {
