@@ -452,7 +452,7 @@ test('v134: nobrauktā daļa — blāva līnija; griezums seko bultai arī pie v
   ok(/loc\.off <= ROUTE_CUT_M/.test(app) && /const ROUTE_CUT_M = 70;/.test(app), 'griezums arī tad, kad bulta nav piesaistīta');
   for (const f of ['index.html', 'index-gl.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    ok(/nav\.js\?v=134/.test(h) && /app-gl\.js\?v=134/.test(h), f + ': v134');
+    ok(/nav\.js\?v=134/.test(h) && /app-gl\.js\?v=1[34]\d/.test(h), f + ': v134');
   }
 });
 
@@ -1838,6 +1838,31 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
     ok(/32 61/.test(r) && r.includes('cx="32" cy="28" r="23"') && r.includes('M29.8 48L32 61'), th + ': v140 — lielāks aplis, īsāka adata; smaile vietā');
   }
   for (const f of ['index.html', 'index-gl.html']) ok(/alerts\.js\?v=140/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': alerts.js v140');
+  // v141: traffic lights half size — the traffic-light check must come BEFORE ['has', 'pin'] (alerts mode: all signs have pin)
+  const sg141 = fs.readFileSync(path.join(__dirname, '..', 'signs-gl.js'), 'utf8');
+  const sfn = new Function(sg141.slice(sg141.indexOf('const TRAFFIC_LIGHT_SCALE'), sg141.indexOf('\n}', sg141.indexOf('function signsIconSize')) + 2) + '; return signsIconSize;')();
+  const ev = (e, props) => {           // tiny evaluator for case / == / get / has / match
+    if (!Array.isArray(e)) return e;
+    const [op, ...a] = e;
+    if (op === 'get') return props[a[0]];
+    if (op === 'has') return a[0] in props;
+    if (op === '==') return ev(a[0], props) === ev(a[1], props);
+    if (op === 'case') { for (let i = 0; i + 1 < a.length; i += 2) if (ev(a[i], props)) return ev(a[i + 1], props); return ev(a[a.length - 1], props); }
+    if (op === 'match') { const v = ev(a[0], props); for (let i = 1; i + 1 < a.length; i += 2) if (a[i] === v) return ev(a[i + 1], props); return ev(a[a.length - 1], props); }
+    throw new Error(op);
+  };
+  const e16 = sfn(1)[6];              // stop at zoom 16
+  eq(ev(e16, { icon: 'alert:traffic-light', pin: 1 }), 0.5, 'brīdinājumu režīmā luksofors — puse no spraudas izmēra');
+  eq(ev(e16, { icon: 'alert:police', pin: 1 }), 1, 'citas spraudas — nemainītas');
+  eq(ev(e16, { icon: 'alert:traffic-light', rel: 'mine' }), 0.475, 'zīmju režīmā luksofors — uz pusi mazāks');
+  eq(ev(e16, { icon: 'x', rel: 'mine' }), 0.95, 'citas zīmes — nemainītas');
+  const ap141 = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const afn = new Function('const TRAFFIC_LIGHT_SCALE = 0.5;' + ap141.slice(ap141.indexOf('function alertIconSize'), ap141.indexOf('\n}', ap141.indexOf('function alertIconSize')) + 2) + '; return alertIconSize;')();
+  eq(ev(afn(1)[6], { icon: 'alert:traffic-light' }), 0.5, 'alerts slānī luksofors arī uz pusi mazāks');
+  for (const f of ['index.html', 'index-gl.html']) {
+    const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    ok(/signs-gl\.js\?v=141/.test(h) && /app-gl\.js\?v=141/.test(h), f + ': v141');
+  }
   for (const t of Object.keys(A.ALERT_SPECIAL)) ok(!/r="33"/.test(A.alertSvg(t, 64, 'dark')), t + ': attēlā nekustīgu gredzenu nav (tie kustas atsevišķā slānī)');
   ok(A.alertSvg('accident', 64, 'dark').includes('fill="#0a0f17"') && A.alertSvg('accident', 64, 'light').includes('<circle cx="32" cy="25" r="21" fill="#fff"'), 'T1 tumša mala, G1 balta mala');
   A.setAlertTheme('dark'); const ud = A.alertDataUrl('jam'); A.setAlertTheme('light'); const ul = A.alertDataUrl('jam');
@@ -2099,7 +2124,7 @@ test('v131: iestatījumi — Braukšana / Sastrēgumi / Izskats / Konts un priv�
     const form = h.slice(h.indexOf('id="searchForm"'), h.indexOf('</form>'));
     ok(/id="settingsBtn"/.test(form), f + ': iestatījumi ar 1 pieskārienu — meklēšanas joslā');
     ok(!/id="fabMore"|id="toggleSigns"/.test(h), f + ': v132 — ⋯ un „Zīmes/Brīdin.” poga noņemta (dublēja galveno slēdzi)');
-    ok(/style-gl\.css\?v=13[2-9]/.test(h) && /app-gl\.js\?v=13[2-9]/.test(h), f + ': versijas ≥ v132');
+    ok(/style-gl\.css\?v=13[2-9]/.test(h) && /app-gl\.js\?v=1[34]\d/.test(h), f + ': versijas ≥ v132');
     ok(/<a id="call112" class="call-112" href="tel:112" hidden>/.test(h) && /Zvanīt 112/.test(h) && /places\.js\?v=133/.test(h), f + ': v133 — poga „Zvanīt 112”');
     ok(!/[A-Za-z]{4,} (settings|Settings)/.test(set.replace(/<[^>]+>/g, '')), f + ': bez angļu teksta');
   }
