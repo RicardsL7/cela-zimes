@@ -47,10 +47,39 @@ function parseOsrmRoute(r) {
   return { coords, cum, steps, distance: r.distance, duration: r.duration, lastIdx: 0 };
 }
 
-async function requestRoute(from, to) {
+// opts.bearing — driving direction at the start (degrees). Used when re-routing while driving, so the new
+// route continues forward instead of sending the driver back to the road they just left (U-turn).
+async function requestRoute(from, to, opts = {}) {
+  const b = opts.bearing;
+  if (b != null && isFinite(b)) {
+    try {
+      const data = await osrmFetch([from, to], `&bearings=${Math.round(((b % 360) + 360) % 360)},60;`);
+      if (data.routes && data.routes.length) return parseOsrmRoute(data.routes[0]);
+    } catch { /* no road in that direction nearby — fall back to a route without the direction */ }
+  }
   const data = await osrmFetch([from, to]);
   if (!data.routes || !data.routes.length) throw new Error('Maršruts nav atrasts');
   return parseOsrmRoute(data.routes[0]);
+}
+
+// v127: is this GPS fix off the route?
+//   off        — metres from the route line;  accuracy — GPS accuracy (m)
+//   headingDiff — angle between my driving direction and the route there (deg, null if unknown)
+// Off when clearly farther than the GPS error (≥ 45 m), or when driving in another direction on a road
+// right next to the route (parallel street, turned off at a junction, driving the wrong way).
+function isOffRoute(off, accuracy, headingDiff, speedKmh) {
+  const acc = accuracy == null || !isFinite(accuracy) ? 10 : accuracy;
+  if (acc > 100) return false;                                  // too vague to judge
+  if (off > Math.max(45, acc * 1.5)) return true;
+  return off > 25 && (speedKmh || 0) >= 10 && headingDiff != null && headingDiff > 70;
+}
+// Direction of the route at a located point (from locateOnRoute), degrees.
+function routeBearingAt(route, loc) {
+  const c = route.coords, i = Math.min(Math.max(0, loc.idx || 0), c.length - 2);
+  if (i < 0 || !c[i + 1]) return null;
+  const lat1 = c[i][1] * Math.PI / 180, lat2 = c[i + 1][1] * Math.PI / 180, dl = (c[i + 1][0] - c[i][0]) * Math.PI / 180;
+  const y = Math.sin(dl) * Math.cos(lat2), x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dl);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
 // ---------- Alternatīvie maršruti ----------
@@ -466,5 +495,5 @@ function smoothProgress(prev, next, maxBack = 30) {
   return prev - next <= maxBack ? prev : next;
 }
 
-if (typeof module !== 'undefined') module.exports = { routeBarriers, barrierNodeBlocks, barrierWayBlocks, barrierQuery, routeAroundLine, routeCheckParts,
+if (typeof module !== 'undefined') module.exports = { isOffRoute, routeBearingAt, requestRoute, routeBarriers, barrierNodeBlocks, barrierWayBlocks, barrierQuery, routeAroundLine, routeCheckParts,
   barrierDetourPoints, barrierAtDestination, barrierEntryPoint, routeTruncate, nearestOnRoute, routeEta, labelRoutes, routeLabelPoint, parseOsrmRoute, pickAlternatives, routeOverlap, detourPoints, routePointAt, routeRemaining, smoothProgress, locateOnRoute, routeProgress };

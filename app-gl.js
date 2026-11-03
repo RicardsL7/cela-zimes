@@ -1860,10 +1860,14 @@ function updateNav() {
     signs.setRouteProgress(p.loc.along);
   }
   updateNextSign();
-  // Nobrauci no maršruta: pēc diviem mērījumiem pārrēķina (ne biežāk kā reizi 15 s).
-  if (goodFix) { if (p.loc.off > 50) state.nav.offCount++; else state.nav.offCount = 0; }
-  if (state.nav.offCount >= 2 && Date.now() - state.nav.lastReroute > 15000) reroute();
+  // Nobrauci no maršruta (v127): tālāk par GPS kļūdu vai brauc citā virzienā blakus ielā → pēc diviem
+  // mērījumiem pēc kārtas maršrutu pārrēķina no tavas vietas līdz galamērķim (ne biežāk kā reizi 8 s).
+  const rb = routeBearingAt(route, p.loc);
+  const hd = state.heading != null && rb != null ? angleDiff(state.heading, rb) : null;
+  if (isOffRoute(p.loc.off, state.me.accuracy, hd, state.me.speedKmh)) state.nav.offCount++; else state.nav.offCount = 0;
+  if (state.nav.offCount >= 2 && !state.nav.rerouting && Date.now() - state.nav.lastReroute > REROUTE_GAP_MS) reroute();
 }
+const REROUTE_GAP_MS = 8000;
 
 // Zīmes, par kurām brīdina "nākamā zīme" kartītē: ātrums, prioritāte, aizliegumi,
 // brīdinājumi (bez informatīvajām un papildzīmēm).
@@ -1936,17 +1940,24 @@ function updateRouteSummary() {
 async function reroute() {
   state.nav.lastReroute = Date.now();
   state.nav.offCount = 0;
+  state.nav.rerouting = true;
   setBusy('route', 'Pārrēķina maršrutu…');
   try {
-    const route = await cachedRoute(state.me, state.nav.dest);
+    // v127: no tavas vietas uz priekšu (ar braukšanas virzienu), nevis atpakaļ uz pamesto ceļu; bez kešatmiņas
+    const moving = state.heading != null && (state.me.speedKmh ?? 0) >= 5;
+    const route = await requestRoute(state.me, state.nav.dest, { bearing: moving ? state.heading : null });
+    if (!state.nav.active) return;                       // navigācija pa to laiku beigta
     state.nav.route = route;
     state.nav.along = null;
     resetNavProgress();              // jauns maršruts sākas no manis — līnija no jauna
     drawRoute(route);
     signs.setRoute(route);
     prepareRoute(route);
-  } catch (err) { console.warn('Pārrēķins neizdevās', err); }
-  finally { setBusy('route', null); }
+    czToast('Maršruts pārrēķināts no tavas vietas.');
+  } catch (err) {
+    console.warn('Pārrēķins neizdevās', err);
+    state.nav.lastReroute = Date.now() - REROUTE_GAP_MS + 4000;   // nav interneta u.c. — mēģina vēlreiz pēc ~4 s
+  } finally { state.nav.rerouting = false; setBusy('route', null); }
 }
 
 // Testa režīmā: simulēts brauciens pa maršrutu (50 km/h), lai var izmēģināt mājās.
