@@ -538,8 +538,9 @@ class SignStore {
         'icon-image': ['get', 'icon'],
         'icon-size': signsIconSize(this.pinScale),
         // Marķiera burbuļa aste (apakšā pa kreisi) rāda precīzo vietu; luksofors un pārējās zīmes — centrā.
-        'icon-anchor': ['case', ['==', ['get', 'icon'], 'alert:traffic-light'], 'center', ['has', 'pin'], 'bottom', 'center'],   // v121: spraudas smaile
-        'icon-offset': ['case', ['==', ['get', 'icon'], 'alert:traffic-light'], ['literal', [0, 0]], ['has', 'pin'], ['literal', [0, 0.5]], ['literal', [0, 0]]],
+        // v144: traffic light and railway crossing (St Andrew's cross) have no pin — centred on the spot
+        'icon-anchor': ['case', ['in', ['get', 'icon'], ['literal', ['alert:traffic-light', 'alert:rail']]], 'center', ['has', 'pin'], 'bottom', 'center'],   // v121: spraudas smaile
+        'icon-offset': ['case', ['in', ['get', 'icon'], ['literal', ['alert:traffic-light', 'alert:rail']]], ['literal', [0, 0]], ['has', 'pin'], ['literal', [0, 0.5]], ['literal', [0, 0]]],
         'symbol-sort-key': ['get', 'prio'],
         'icon-padding': 1,
         'icon-pitch-alignment': 'viewport',

@@ -70,3 +70,9 @@
 - Ikonas → punkti attālinot pie 15,2 (v142: 14,3), atpakaļ ikonās pie 15,6. Zemāk par ātras braukšanas kameras tuvinājumu (15,8), tāpēc braucot ikonas paliek redzamas.
 - Brīdinājumu punkti ~1/3 mazāki (`dotRadius`); radaru punktiem savs slānis — izmērs nemainīts. Radari pāriet pie 14,6–15,6.
 - Versija: app-gl.js v143. Testi: 132/132.
+
+## v144 — dzelzceļa pārbrauktuve: Andreja krusts
+
+- Pārbrauktuves marķieris tagad ir sarkanbaltais Andreja krusts (īpašnieka izvēle 04.11.2026), bez spraudas — kā luksofors, novietots tieši uz vietas (enkurs centrā) gan zīmju, gan brīdinājumu slānī.
+- alerts.js `railCrossSvg`, `ALERT_STANDALONE` (+ 'rail'); signs-gl.js un app-gl.js — enkurs centrā luksoforam un pārbrauktuvei.
+- Versijas: alerts.js v144, signs-gl.js v144, app-gl.js v144. Testi: 132/132.

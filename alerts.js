@@ -181,7 +181,8 @@ const ALERT_GLYPH_FIT = {
 const ALERT_BOX = '-4 -10 72 72';
 const ALERT_ICON_ANCHOR = 'bottom';
 const ALERT_ICON_OFFSET = [0, 0.5];
-const ALERT_STANDALONE = new Set(['traffic-light']);   // bez spraudas — pats objekts uz ceļa (enkurs centrā)
+const ALERT_STANDALONE = new Set(['traffic-light', 'rail']);   // v144: + pārbrauktuve (Andreja krusts)
+const ALERT_STANDALONE_ICONS = [...ALERT_STANDALONE].map(t => 'alert:' + t);   // bez spraudas — pats objekts uz ceļa (enkurs centrā)
 const ALERT_SPECIAL = { 'police': 'shield', 'police-hidden': 'shield', 'camera-fixed': 'square', 'camera-mobile': 'square' };
 const ALERT_SPECIAL_COLOR = { 'police': '#2F6BFF', 'police-hidden': '#1C2740', 'camera-fixed': '#1F5FCF', 'camera-mobile': '#7B4CE6' };
 const ALERT_SPECIAL_WAVE = { 'police': '#2F6BFF', 'police-hidden': '#2F6BFF', 'camera-fixed': '#1F5FCF', 'camera-mobile': '#7B4CE6' };
@@ -210,6 +211,12 @@ function roadWorkerPin(dark, rim) {
     `<clipPath id="rwc"><circle cx="32" cy="28" r="20.2"/></clipPath>` +
     `<g clip-path="url(#rwc)"><g transform="translate(32 30.8) scale(.47) translate(-50 -50)">${ROAD_WORKER_ART}</g></g>` +
     `<circle cx="32" cy="28" r="20.2" fill="none" stroke="#e9600a" stroke-width="2.4"/>`;
+}
+// v144 (owner, 04.11.2026): railway crossing = St Andrew's cross (red/white X), standalone like the traffic light —
+// no pin, centred on the spot (image centre = (32, 26) of ALERT_BOX).
+const RAIL_CROSS_ART = '<g transform="rotate(35 50 50)"><rect x="6" y="42.519999999999996" width="88" height="14.96" rx="1.76" fill="#e2303a"/><rect x="8.64" y="45.16" width="82.72" height="9.68" fill="#fff"/><rect x="17.880000000000003" y="45.16" width="11.440000000000001" height="9.68" fill="#e2303a"/><rect x="44.28" y="45.16" width="11.440000000000001" height="9.68" fill="#e2303a"/><rect x="70.68" y="45.16" width="11.440000000000001" height="9.68" fill="#e2303a"/></g><g transform="rotate(-35 50 50)"><rect x="6" y="42.519999999999996" width="88" height="14.96" rx="1.76" fill="#e2303a"/><rect x="8.64" y="45.16" width="82.72" height="9.68" fill="#fff"/><rect x="17.880000000000003" y="45.16" width="11.440000000000001" height="9.68" fill="#e2303a"/><rect x="44.28" y="45.16" width="11.440000000000001" height="9.68" fill="#e2303a"/><rect x="70.68" y="45.16" width="11.440000000000001" height="9.68" fill="#e2303a"/></g>';
+function railCrossSvg(dark) {
+  return `<g ${dark ? '' : 'filter="url(#s)" '}transform="translate(32 26) scale(.6) translate(-50 -50)">${RAIL_CROSS_ART}</g>`;
 }
 let ALERT_THEME = 'light';                 // 'dark' | 'light' — iestata app-gl.js pēc kartes stila
 function setAlertTheme(theme) { ALERT_THEME = theme === 'dark' ? 'dark' : 'light'; }
@@ -260,6 +267,7 @@ function alertSvg(type, size = 64, theme = ALERT_THEME) {
       alertGlyph(type, f, 32, 24.5, 0.74) + `</svg>`;
   }
   if (type === 'roadworks') return open + `</defs>` + roadWorkerPin(dark, rim) + `</svg>`;
+  if (type === 'rail') return open + `</defs>` + railCrossSvg(dark) + `</svg>`;
   // Parastās zīmes: apaļa galva (32,25) ar malu, krāsains disks, balts simbols, asa smaile līdz (32, 61)
   const c = alertColor(type), hi = alertMix(c, 'w', 0.14), lo = alertMix(c, 'k', 0.12);
   return open +
@@ -383,5 +391,5 @@ function alertInfo(it, now = Date.now()) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { roadWorkerPin, RADAR_EYE_TYPES, RADAR_EYE_IRIS, radarEyeSvg, ALERT_TYPES, REPORT_TYPE_CONFIG, REPORT_PICKER, REPORT_GROUPS, alertSvg, alertDataUrl, setAlertTheme, ALERT_SPECIAL, ALERT_ICON_ANCHOR, ALERT_ICON_OFFSET, ALERT_STANDALONE, alertDotColor, alertCode, alertCodeColorExpr, ALERT_ORDER, alertTypeForSign, signNeedsDirection, alertTypeForOsm, weatherAlerts, AlertStore, makeReport, alertInfo };
+  module.exports = { railCrossSvg, ALERT_STANDALONE_ICONS, roadWorkerPin, RADAR_EYE_TYPES, RADAR_EYE_IRIS, radarEyeSvg, ALERT_TYPES, REPORT_TYPE_CONFIG, REPORT_PICKER, REPORT_GROUPS, alertSvg, alertDataUrl, setAlertTheme, ALERT_SPECIAL, ALERT_ICON_ANCHOR, ALERT_ICON_OFFSET, ALERT_STANDALONE, alertDotColor, alertCode, alertCodeColorExpr, ALERT_ORDER, alertTypeForSign, signNeedsDirection, alertTypeForOsm, weatherAlerts, AlertStore, makeReport, alertInfo };
 }

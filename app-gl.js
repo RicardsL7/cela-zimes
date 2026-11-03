@@ -2088,7 +2088,9 @@ function installAlertLayer() {
     layout: {
       'icon-image': ['get', 'icon'],
       'icon-size': alertIconSize(markerMorph.pos ? 1 : 0.3),
-      'icon-anchor': ALERT_ICON_ANCHOR, 'icon-offset': ALERT_ICON_OFFSET,   // spraudas smailes gals — tieši notikuma vietā
+      // spraudas smailes gals — tieši notikuma vietā; v144: luksofors un pārbrauktuve — bez spraudas, centrā
+      'icon-anchor': ['case', ['in', ['get', 'icon'], ['literal', ALERT_STANDALONE_ICONS]], 'center', ALERT_ICON_ANCHOR],
+      'icon-offset': ['case', ['in', ['get', 'icon'], ['literal', ALERT_STANDALONE_ICONS]], ['literal', [0, 0]], ['literal', ALERT_ICON_OFFSET]],
       'icon-allow-overlap': true,
       'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
       'symbol-sort-key': ['get', 'prio'],
