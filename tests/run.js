@@ -437,6 +437,23 @@ test('K. Maršruta līnija: paliek tikai nenobrauktā daļa (arī līkumos), bez
   // GPS svārstības atpakaļ līniju neatjauno; liels solis atpakaļ (pārrēķins) — jā
   eq(smoothProgress(150, 140), 150); eq(smoothProgress(150, 160), 160); eq(smoothProgress(150, 60), 60); eq(smoothProgress(null, 20), 20);
   eq(Math.round(routePointAt(R, 250).bearing), 270, 'virziens pēdējā posmā');
+  // v134: driven part — from start to the arrow, ends exactly where the remaining part starts
+  const routeDone = G('routeDone');
+  const done = routeDone(R, 150);
+  eq(done.length, 3); eq(done[0], R.coords[0]); eq(done[1], R.coords[1]); eq(JSON.stringify(done[2]), JSON.stringify(rest[0]), 'saskaras ar atlikušo daļu');
+  eq(routeDone(R, 0).length, 0, 'pirms brauciena — nekā'); eq(routeDone(R, null).length, 0);
+});
+
+test('v134: nobrauktā daļa — blāva līnija; griezums seko bultai arī pie vāja GPS', () => {
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  ok(/id: 'route-done-line'[\s\S]{0,200}'line-opacity': 0\.2\d/.test(app), 'blāva, caurspīdīga līnija');
+  ok(app.indexOf("id: 'route-done-line'") < app.indexOf("id: 'route-casing'"), 'zem galvenā maršruta');
+  ok(/routeDone\(route, along\)/.test(app), 'drawRoute zīmē arī nobraukto daļu');
+  ok(/loc\.off <= ROUTE_CUT_M/.test(app) && /const ROUTE_CUT_M = 70;/.test(app), 'griezums arī tad, kad bulta nav piesaistīta');
+  for (const f of ['index.html', 'index-gl.html']) {
+    const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    ok(/nav\.js\?v=134/.test(h) && /app-gl\.js\?v=134/.test(h), f + ': v134');
+  }
 });
 
 test('T. Virzienus nosaka tikai vajadzīgajām zīmēm', () => {
@@ -2224,7 +2241,7 @@ test('F20: getLocationState un „Ziņot” logs — liegts / meklē / nav pieej
   ok(app.includes("'Atrašanās vieta nav atļauta — ieslēdz to, lai varētu ziņot.', 'Kā ieslēgt?'") && app.includes("'Meklē tavu atrašanās vietu…'") &&
      app.includes("'Mēģināt vēlreiz'"), 'teksti un pogas');
   ok(/b\.disabled = !ok/.test(app), 'tipu pogas pelēkas, kamēr vietas nav');
-  ok(/reportSheet'\)\.hidden\) reportGpsRefresh\(\)/.test(app.slice(app.indexOf('function onFix'), app.indexOf('function onFix') + 2500)), 'vieta pienāk — logs atjaunojas');
+  ok(/reportSheet'\)\.hidden\) reportGpsRefresh\(\)/.test(app.slice(app.indexOf('function onFix'), app.indexOf('function onFix') + 3500)), 'vieta pienāk — logs atjaunojas');
   ok(/id="reportGps"/.test(html) && /id="reportGpsBtn"/.test(html), 'ziņa logā, ne statusa joslā');
   ok(!/pagaidi, kamēr GPS/.test(app + rep + html), 'maldinošais teksts izņemts');
   const fn = app.slice(app.indexOf('function reportGpsRefresh'), app.indexOf('function reportPlace'));
