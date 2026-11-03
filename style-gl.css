@@ -746,16 +746,6 @@ html:not(.navigating):not(.previewing) .loader { top: calc(env(safe-area-inset-t
 html.navigating .alt-bubble { display: none; }
 
 /* "Vairāk" poga: zīmes/brīdinājumi un iestatījumi izslīd pa kreisi */
-.fab-more { position: relative; }
-.fab-more-btn { padding: 4px 0; border-radius: 12px; color: var(--muted); }
-.fab-more-btn svg { width: 22px; height: 22px; }
-.fab-more-btn[aria-expanded="true"] { color: var(--accent); }
-.fab-more-btn.dot::after { content: ""; position: absolute; top: 3px; right: 5px; width: 8px; height: 8px; border-radius: 50%;
-  background: var(--danger); box-shadow: 0 0 0 2px var(--panel); }
-.fab-more-items { position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%);
-  display: flex; gap: 8px; animation: fabMoreIn .18s ease-out; }
-.fab-more-items[hidden] { display: none; }
-@keyframes fabMoreIn { from { opacity: 0; transform: translate(14px, -50%); } to { opacity: 1; transform: translate(0, -50%); } }
 
 /* Ziņa kopbrauciena kartītē */
 .r-msg { margin: 8px 0 0; padding: 7px 10px; border-radius: 10px; font: 600 13.5px/1.35 var(--font-body);
@@ -1149,3 +1139,8 @@ a.set-row { color: var(--fg); }
 @media (prefers-reduced-motion: reduce) { .set-sheet { animation: none; transition: none; } }
 /* Tumšajā tēmā akcents ir gaišs — aktīvajai segmenta pogai tumšāks zils, lai balts teksts atbilst WCAG AA */
 @media (prefers-color-scheme: dark) { .set-seg button.on { background: #2f6fd6; } }
+
+/* v132: ⋯ removed; red dot on the settings button while warnings are off */
+.search .set-open { position: relative; }
+.search .set-open.dot::after { content: ""; position: absolute; top: 8px; right: 8px; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--danger); box-shadow: 0 0 0 2px var(--panel); }

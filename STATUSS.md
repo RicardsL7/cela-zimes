@@ -11,3 +11,10 @@
 - Versijas: `style-gl.css?v=131`, `app-gl.js?v=131` abos index failos.
 
 **Pārbaude:** `node tests/run.js` — 131/131. Iestatījumu panelis pārbaudīts 320, 375 un 430 px platumā, gaišajā un tumšajā tēmā, ar un bez izstrādātāja bloka: nekas neiziet ārpus ekrāna, visas rindas ≥ 56 px. Kontrasts (WCAG AA): teksts 14,5 / 15,4; paskaidrojumi 5,0 / 6,9; aktīvā segmenta poga 6,5 / 4,8.
+
+## v132 — noņemta ⋯ poga
+
+- Kartes labajā pusē vairs nav ⋯ un „Zīmes / Brīdin.” pogas — tā dublēja slēdzi „Rādīt brīdinājumus kartē” iestatījumos (Braukšana).
+- Sarkanais punkts (brīdinājumi izslēgti) tagad ir uz iestatījumu pogas meklēšanas joslā.
+- Saglabātā vērtība cz.signsOn nemainās.
+- Versijas: style-gl.css v132, app-gl.js v132. Testi: 131/131.

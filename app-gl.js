@@ -2877,12 +2877,10 @@ function applySignVisibility() {
   }
   signs.refresh();
   refreshAlerts();
-  const btn = $('toggleSigns');
-  btn.setAttribute('aria-pressed', String(state.signsOn));
-  btn.classList.toggle('off', !state.signsOn);
-  $('toggleSignsLabel').textContent = !state.signsOn ? 'Izslēgts' : alertsMode ? 'Brīdin.' : 'Zīmes';
-  const more = $('fabMoreBtn');
-  if (more) more.classList.toggle('dot', !state.signsOn);     // sarkans punkts — zīmes izslēgtas
+  // v132: the ⋯ / „Zīmes” button is gone — the master switch lives in settings only.
+  // Red dot on the settings button while warnings/signs are off.
+  const setBtn = $('settingsBtn');
+  if (setBtn) setBtn.classList.toggle('dot', !state.signsOn);
   $('masterSwitch').checked = state.signsOn;
   $('catList').classList.toggle('disabled', !state.signsOn);
   $('catList').hidden = alertsMode;
@@ -2907,22 +2905,6 @@ function buildCategoryList() {
     });
     list.appendChild(row);
   }
-}
-
-// "Vairāk" poga: atver / aizver zīmju un iestatījumu pogas
-function fabMore(open) {
-  const items = $('fabMoreItems'), btn = $('fabMoreBtn');
-  if (!items) return;
-  items.hidden = !open;
-  btn.setAttribute('aria-expanded', String(open));
-}
-function wireFabMore() {
-  const btn = $('fabMoreBtn');
-  if (!btn) return;
-  btn.addEventListener('click', e => { e.stopPropagation(); fabMore($('fabMoreItems').hidden); });
-  $('settingsBtn').addEventListener('click', () => fabMore(false));
-  $('toggleSigns').addEventListener('click', () => setTimeout(() => fabMore(false), 700));   // lai redz, kas mainījās
-  document.addEventListener('pointerdown', e => { if (!e.target.closest('#fabMore')) fabMore(false); });
 }
 
 // v126: segmented control for a short <select>: one button per option, kept in sync both ways.
@@ -2993,9 +2975,6 @@ async function applyBasemap(choice) {
 
 function wireUi() {
   wireArrowColors();
-  $('toggleSigns').addEventListener('click', () => {
-    state.signsOn = !state.signsOn; store.set('signsOn', state.signsOn); applySignVisibility();
-  });
   $('masterSwitch').addEventListener('change', e => {
     state.signsOn = e.target.checked; store.set('signsOn', state.signsOn); applySignVisibility();
   });
@@ -3032,7 +3011,6 @@ function wireUi() {
   });
   $('recenterBtn').addEventListener('click', () => { state.follow = true; if (state.me) followCamera(800); });   // v122
   $('recenterPill').addEventListener('click', () => { state.follow = true; if (state.me) followCamera(800); });  // v123
-  wireFabMore();
   $('gpsHelpBtn').addEventListener('click', openGpsHelp);       // F2
   $('closeGpsHelp').addEventListener('click', () => { $('gpsSheet').hidden = true; });
   $('gpsRetry').addEventListener('click', gpsRetry);
