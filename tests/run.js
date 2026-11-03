@@ -1817,7 +1817,12 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
   for (const type of Object.keys(A.ALERT_TYPES)) {
     const d = A.alertSvg(type, 144, 'dark'), l = A.alertSvg(type, 144, 'light');
     ok(d !== l, type + ': tumšais un gaišais atšķiras');
-    if (type !== 'traffic-light') {
+    if (type === 'rail') {   // v144: St Andrew's cross, standalone (no pin), centred at (32, 26)
+      ok(/viewBox="-4 -10 72 72"/.test(d) && /translate\(32 26\)/.test(d) && !/32 61/.test(d), 'rail: Andreja krusts bez spraudas, centrā');
+      ok(A.ALERT_STANDALONE.has('rail') && A.ALERT_STANDALONE_ICONS.includes('alert:rail'), 'rail: enkurs centrā (standalone)');
+      const sgr = fs.readFileSync(path.join(__dirname, '..', 'signs-gl.js'), 'utf8');
+      ok(/'icon-anchor': \['case', \['in', \['get', 'icon'\], \['literal', \['alert:traffic-light', 'alert:rail'\]\]\], 'center'/.test(sgr), 'rail: zīmju slānī enkurs centrā');
+    } else if (type !== 'traffic-light') {
       ok(/viewBox="-4 -10 72 72"/.test(d) && /viewBox="-4 -10 72 72"/.test(l), type + ': vienāds laukums');
       ok(/32 61/.test(d) && /32 61/.test(l), type + ': smaile līdz (32, 61)');
     }
@@ -1837,7 +1842,7 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
     ok(/clip-path="url\(#rwc\)"/.test(r) && r.includes('M24 40C24 20 36 10 50 10') && r.includes('#ffa53a') && r.includes('M31 48h38'), th + ': ceļa darbi — strādnieks ar oranžu ķiveri un brillēm');
     ok(/32 61/.test(r) && r.includes('cx="32" cy="28" r="23"') && r.includes('M29.8 48L32 61'), th + ': v140 — lielāks aplis, īsāka adata; smaile vietā');
   }
-  for (const f of ['index.html', 'index-gl.html']) ok(/alerts\.js\?v=140/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': alerts.js v140');
+  for (const f of ['index.html', 'index-gl.html']) ok(/alerts\.js\?v=14\d/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': alerts.js ≥ v140');
   // v141: traffic lights half size — the traffic-light check must come BEFORE ['has', 'pin'] (alerts mode: all signs have pin)
   const sg141 = fs.readFileSync(path.join(__dirname, '..', 'signs-gl.js'), 'utf8');
   const sfn = new Function(sg141.slice(sg141.indexOf('const TRAFFIC_LIGHT_SCALE'), sg141.indexOf('\n}', sg141.indexOf('function signsIconSize')) + 2) + '; return signsIconSize;')();
@@ -1861,8 +1866,9 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
   eq(ev(afn(1)[6], { icon: 'alert:traffic-light' }), 0.5, 'alerts slānī luksofors arī uz pusi mazāks');
   for (const f of ['index.html', 'index-gl.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    ok(/signs-gl\.js\?v=141/.test(h) && /app-gl\.js\?v=14[1-9]/.test(h), f + ': v141');
-    ok(/app-gl\.js\?v=143/.test(h), f + ': v143');
+    ok(/signs-gl\.js\?v=14[1-9]/.test(h) && /app-gl\.js\?v=14[1-9]/.test(h), f + ': v141');
+    ok(/app-gl\.js\?v=14[3-9]/.test(h), f + ': v143');
+    ok(/alerts\.js\?v=144/.test(h) && /signs-gl\.js\?v=144/.test(h) && /app-gl\.js\?v=144/.test(h), f + ': v144');
   }
   // v142: icons ↔ dots — happens after about half the zoom-out, and the animation is twice as fast
   ok(/const MARKER_IN_ZOOM = 15\.6;/.test(ap141) && /const MARKER_OUT_ZOOM = 15\.2;/.test(ap141), 'v143: punkti parādās vēl agrāk (15,2 / 15,6)');
