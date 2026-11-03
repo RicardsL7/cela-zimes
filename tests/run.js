@@ -456,6 +456,18 @@ test('v134: nobrauktā daļa — blāva līnija; griezums seko bultai arī pie v
   }
 });
 
+test('v135: luksofori kartē mazāki', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'signs-gl.js'), 'utf8');
+  ok(/const TRAFFIC_LIGHT_SCALE = 0\.65;/.test(src) && /\['==', \['get', 'icon'\], 'alert:traffic-light'\], rel\(mine \* S/.test(src), 'luksoforam mazāks izmērs');
+  const fn = new Function(src.slice(src.indexOf('const TRAFFIC_LIGHT_SCALE'), src.indexOf('\n}', src.indexOf('function signsIconSize')) + 2) + '; return signsIconSize;')();
+  const e = fn(1);
+  eq(e[0], 'interpolate', 'zoom paliek augšējā līmenī (MapLibre prasība)');
+  const tl = e[6][4];
+  ok(Math.abs(tl[3] - 0.95 * 0.65) < 1e-9, 'pie zoom 16 sava ceļa luksofors 0,62 (bija 0,95)');
+  for (const f of ['index.html', 'index-gl.html'])
+    ok(/signs-gl\.js\?v=135/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': v135');
+});
+
 test('T. Virzienus nosaka tikai vajadzīgajām zīmēm', () => {
   const f = G('signNeedsDirection');
   eq(f({ cat: 'speed', value: 'regulatory--maximum-speed-limit-50--g1' }), true);
