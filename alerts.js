@@ -187,6 +187,19 @@ const ALERT_SPECIAL_COLOR = { 'police': '#2F6BFF', 'police-hidden': '#1C2740', '
 const ALERT_SPECIAL_WAVE = { 'police': '#2F6BFF', 'police-hidden': '#2F6BFF', 'camera-fixed': '#1F5FCF', 'camera-mobile': '#7B4CE6' };
 const ALERT_SHIELD = 'M32 2.5l20 6.8v12.2c0 12.6-8.4 21.6-20 25.6-11.6-4-20-13-20-25.6V9.3z';
 const ALERT_SQUARE = 'M18 3h28a8 8 0 0 1 8 8v27a8 8 0 0 1-8 8H18a8 8 0 0 1-8-8V11a8 8 0 0 1 8-8z';
+// v138 (owner, 03.11.2026): radars are an eye — RED iris on the dark map, BLUE on the light map.
+// Centre stays at (32, 24.5) and the tip at (32, 61), so the moving rings (app-gl.js pulse layers) stay around it.
+const RADAR_EYE_TYPES = new Set(['camera-fixed', 'camera-mobile']);
+const RADAR_EYE_IRIS = { dark: '#e2303a', light: '#2f7be0' };
+function radarEyeSvg(dark, needle) {
+  const eye = 'M8 52Q50 10 92 52Q50 94 8 52Z', ink = '#2c3542';
+  const halo = dark ? `<path d="${eye}" fill="none" stroke="#fff" stroke-opacity=".85" stroke-width="12" stroke-linejoin="round"/>` : '';
+  return `<path d="M29.4 37L32 61 34.6 37z" fill="${needle}"/>` +
+    `<g ${dark ? '' : 'filter="url(#s)" '}transform="translate(32 24.5) scale(.7) translate(-50 -52)">${halo}` +
+    `<path d="${eye}" fill="#fff" stroke="${ink}" stroke-width="6.5" stroke-linejoin="round"/>` +
+    `<circle cx="50" cy="52" r="17" fill="${RADAR_EYE_IRIS[dark ? 'dark' : 'light']}"/><circle cx="50" cy="52" r="8" fill="#1d242e"/>` +
+    `<circle cx="45" cy="47" r="3.6" fill="#fff"/></g>`;
+}
 let ALERT_THEME = 'light';                 // 'dark' | 'light' — iestata app-gl.js pēc kartes stila
 function setAlertTheme(theme) { ALERT_THEME = theme === 'dark' ? 'dark' : 'light'; }
 
@@ -229,6 +242,7 @@ function alertSvg(type, size = 64, theme = ALERT_THEME) {
         `<path d="${ALERT_SHIELD}" ${rim}/><path d="${ALERT_SHIELD}" fill="${f}" ${sc(0.86)}/>` +
         alertGlyph(type, f, 32, 23.5, 0.8) + `</svg>`;
     }
+    if (RADAR_EYE_TYPES.has(type)) return open + `</defs>` + radarEyeSvg(dark, needle) + `</svg>`;
     return open + `</defs>${rings}<path d="M28.6 45L32 61 35.4 45z" fill="${needle}"/>` +
       `<path d="${ALERT_SQUARE}" ${rim}/><path d="${ALERT_SQUARE}" fill="${f}" ${sc(0.87)}/>` +
       `<path d="${ALERT_SQUARE}" fill="none" stroke="#fff" stroke-opacity="${dark ? .7 : .9}" stroke-width="1.5" ${sc(0.73)}/>` +
@@ -357,5 +371,5 @@ function alertInfo(it, now = Date.now()) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { ALERT_TYPES, REPORT_TYPE_CONFIG, REPORT_PICKER, REPORT_GROUPS, alertSvg, alertDataUrl, setAlertTheme, ALERT_SPECIAL, ALERT_ICON_ANCHOR, ALERT_ICON_OFFSET, ALERT_STANDALONE, alertDotColor, alertCode, alertCodeColorExpr, ALERT_ORDER, alertTypeForSign, signNeedsDirection, alertTypeForOsm, weatherAlerts, AlertStore, makeReport, alertInfo };
+  module.exports = { RADAR_EYE_TYPES, RADAR_EYE_IRIS, radarEyeSvg, ALERT_TYPES, REPORT_TYPE_CONFIG, REPORT_PICKER, REPORT_GROUPS, alertSvg, alertDataUrl, setAlertTheme, ALERT_SPECIAL, ALERT_ICON_ANCHOR, ALERT_ICON_OFFSET, ALERT_STANDALONE, alertDotColor, alertCode, alertCodeColorExpr, ALERT_ORDER, alertTypeForSign, signNeedsDirection, alertTypeForOsm, weatherAlerts, AlertStore, makeReport, alertInfo };
 }

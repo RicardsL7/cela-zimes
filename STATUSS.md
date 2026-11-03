@@ -36,3 +36,9 @@
 - Griezums seko bultai arī tad, kad GPS ir vājš vai bulta nav piesaistīta maršrutam (līdz 70 m no tā) — spilgtā līnija vairs neizlien aiz bultas.
 - nav.js: `routeDone(route, along)`.
 - Versijas: nav.js v134, app-gl.js v134. Testi: 132/132.
+
+## v138 — radari ir acs
+
+- Radaru (stacionāro un mobilo) marķieris tagad ir acs: tumšajā kartē sarkana varavīksnene, gaišajā — zila. Tumšajā kartei acij ir gaiša apmale, lai neizplūst.
+- Kustīgie riņķi ap marķieri (pulse slāņi) nemainīti — acs centrs tajā pašā vietā (32; 24,5), smaile (32, 61).
+- alerts.js `radarEyeSvg`; versija alerts.js v138. Testi: 132/132.
