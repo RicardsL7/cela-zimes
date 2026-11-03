@@ -452,31 +452,8 @@ test('v134: nobrauktā daļa — blāva līnija; griezums seko bultai arī pie v
   ok(/loc\.off <= ROUTE_CUT_M/.test(app) && /const ROUTE_CUT_M = 70;/.test(app), 'griezums arī tad, kad bulta nav piesaistīta');
   for (const f of ['index.html', 'index-gl.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    ok(/nav\.js\?v=134/.test(h) && /app-gl\.js\?v=13[4-9]/.test(h), f + ': v134');
+    ok(/nav\.js\?v=134/.test(h) && /app-gl\.js\?v=134/.test(h), f + ': v134');
   }
-});
-
-test('v135: luksofori kartē mazāki', () => {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'signs-gl.js'), 'utf8');
-  ok(/const TRAFFIC_LIGHT_SCALE = 0\.45;/.test(src) && /\['==', \['get', 'icon'\], 'alert:traffic-light'\], rel\(mine \* S/.test(src), 'luksoforam mazāks izmērs');
-  const fn = new Function(src.slice(src.indexOf('const TRAFFIC_LIGHT_SCALE'), src.indexOf('\n}', src.indexOf('function signsIconSize')) + 2) + '; return signsIconSize;')();
-  const e = fn(1);
-  eq(e[0], 'interpolate', 'zoom paliek augšējā līmenī (MapLibre prasība)');
-  const tl = e[6][4];
-  ok(Math.abs(tl[3] - 0.95 * 0.45) < 1e-9, 'pie zoom 16 sava ceļa luksofors 0,43 (bija 0,95)');
-  for (const f of ['index.html', 'index-gl.html'])
-    ok(/signs-gl\.js\?v=136/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': v135');
-});
-
-test('v137: luksofori mazāki arī brīdinājumu režīmā (alerts slānis)', () => {
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
-  const src = app.slice(app.indexOf('function alertIconSize'), app.indexOf('\n}', app.indexOf('function alertIconSize')) + 2);
-  const fn = new Function('const TRAFFIC_LIGHT_SCALE = 0.45;' + src + '; return alertIconSize;')();
-  const e = fn(1);
-  eq(e[0], 'interpolate', 'zoom augšējā līmenī');
-  eq(e[6][1][2], 'alert:traffic-light'); ok(Math.abs(e[6][2] - 0.45) < 1e-9 && e[6][3] === 1, 'pie zoom 16: luksofors 0,45, pārējie 1');
-  for (const f of ['index.html', 'index-gl.html'])
-    ok(/app-gl\.js\?v=137/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': v137');
 });
 
 test('T. Virzienus nosaka tikai vajadzīgajām zīmēm', () => {
