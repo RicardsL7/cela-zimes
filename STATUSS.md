@@ -36,3 +36,8 @@
 - Griezums seko bultai arī tad, kad GPS ir vājš vai bulta nav piesaistīta maršrutam (līdz 70 m no tā) — spilgtā līnija vairs neizlien aiz bultas.
 - nav.js: `routeDone(route, along)`.
 - Versijas: nav.js v134, app-gl.js v134. Testi: 132/132.
+
+## v135 — mazāki luksofori kartē
+
+- Luksoforu ikonas kartē ~35 % mazākas (`TRAFFIC_LIGHT_SCALE = 0.65` signs-gl.js `signsIconSize`); pārējās zīmes nemainītas.
+- Versijas: signs-gl.js v135. Testi: 133/133.
