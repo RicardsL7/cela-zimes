@@ -29,3 +29,10 @@
 - Lietotņu (App Store / Google Play) pogas vairs nerāda nevienā kategorijā. Meklēšanas rezultātiem (bez kategorijas) — tālrunis un saite.
 - „Ārkārtas palīdzība” sarakstā augšā liela sarkana poga „Zvanīt 112” (tel:112).
 - Versijas: places.js v133, style-gl.css v133, app-gl.js v133. Testi: 131/131.
+
+## v134 — nobrauktā maršruta daļa kļūst blāva (kā Waze)
+
+- Nobrauktā daļa aiz bultas vairs nav spilgta: to zīmē kā blāvu, caurspīdīgu līniju (`route-done-line`, necaurredzamība 0,22) zem galvenā maršruta, tā saplūst ar ceļu.
+- Griezums seko bultai arī tad, kad GPS ir vājš vai bulta nav piesaistīta maršrutam (līdz 70 m no tā) — spilgtā līnija vairs neizlien aiz bultas.
+- nav.js: `routeDone(route, along)`.
+- Versijas: nav.js v134, app-gl.js v134. Testi: 132/132.

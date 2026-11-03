@@ -477,6 +477,15 @@ function routePointAt(route, along) {
   return { lng: p[0] + (q[0] - p[0]) * t, lat: p[1] + (q[1] - p[1]) * t, idx: i, t, bearing };
 }
 
+// v134: already driven part — from the start to "along" (drawn faded under the route, like Waze).
+function routeDone(route, along) {
+  if (along == null || along <= 0) return [];
+  const p = routePointAt(route, along);
+  const out = route.coords.slice(0, p.idx + 1);
+  out.push([p.lng, p.lat]);
+  return out.length >= 2 ? out : [];
+}
+
 // Vēl nenobrauktā maršruta daļa: no punkta "along" līdz galamērķim (ar visiem līkumiem).
 function routeRemaining(route, along) {
   if (along == null || along <= 0) return route.coords;
@@ -496,4 +505,4 @@ function smoothProgress(prev, next, maxBack = 30) {
 }
 
 if (typeof module !== 'undefined') module.exports = { isOffRoute, routeBearingAt, requestRoute, routeBarriers, barrierNodeBlocks, barrierWayBlocks, barrierQuery, routeAroundLine, routeCheckParts,
-  barrierDetourPoints, barrierAtDestination, barrierEntryPoint, routeTruncate, nearestOnRoute, routeEta, labelRoutes, routeLabelPoint, parseOsrmRoute, pickAlternatives, routeOverlap, detourPoints, routePointAt, routeRemaining, smoothProgress, locateOnRoute, routeProgress };
+  barrierDetourPoints, barrierAtDestination, barrierEntryPoint, routeTruncate, nearestOnRoute, routeEta, labelRoutes, routeLabelPoint, parseOsrmRoute, pickAlternatives, routeOverlap, detourPoints, routePointAt, routeRemaining, routeDone, smoothProgress, locateOnRoute, routeProgress };

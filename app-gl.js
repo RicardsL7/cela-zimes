@@ -1213,6 +1213,16 @@ function onFix(lat, lng, speedKmh, gpsHeading, dur = 900, accuracy = null) {
   }
   state.nav.onRoute = onRoute;
   if (!onRoute) moveMeMarker(lng, lat, state.follow ? dur : 300);
+  // v134: arrow not snapped (weak GPS / slightly off) but still near the route → move the cut to it anyway,
+  // so the bright line never sticks out behind the arrow; the driven part turns faint.
+  if (!onRoute && state.nav.active && state.nav.route) {
+    const loc = locateOnRoute(state.nav.route, lat, lng);
+    if (loc.off <= ROUTE_CUT_M) {
+      state.nav.target = smoothProgress(state.nav.target, loc.along);
+      state.nav.shown = state.nav.target;
+      drawRoute(state.nav.route, state.nav.target);
+    }
+  }
   if (first0) syncRecenter();
   // Vājš signāls: neatjauno braukšanas virzienu (tas lēkātu) un brīdina.
   setBusy('gps', state.gpsQuality === 'poor' ? `Vājš GPS signāls (±${Math.round(accuracy)} m) — zīmes var būt neprecīzas` : null);
@@ -1399,6 +1409,11 @@ function installRouteLayers() {
   map.addLayer({ id: 'route-alt-hit', type: 'line', source: 'route-alt',      // plats, neredzams — vieglāk uzspiest
     layout: { 'line-join': 'round', 'line-cap': 'round' },
     paint: { 'line-color': '#000', 'line-opacity': 0, 'line-width': 28 } });
+  // v134: driven part stays as a faint line that blends with the road (not bright, not gone)
+  map.addSource('route-done', { type: 'geojson', data: EMPTY_FC });
+  map.addLayer({ id: 'route-done-line', type: 'line', source: 'route-done',
+    layout: { 'line-join': 'round', 'line-cap': 'round' },
+    paint: { 'line-color': '#5a8fd6', 'line-opacity': 0.22, 'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 10, 3, 15, 7, 18, 18] } });
   map.addLayer({ id: 'route-casing', type: 'line', source: 'route',
     layout: { 'line-join': 'round', 'line-cap': 'round' },
     paint: { 'line-color': '#0b4fb8', 'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 10, 5, 15, 11, 18, 26] } });
@@ -1411,12 +1426,15 @@ function installRouteLayers() {
 function drawRoute(route, along = null) {
   const src = map.getSource('route');
   if (src) src.setData(route ? { type: 'Feature', geometry: { type: 'LineString', coordinates: routeRemaining(route, along) }, properties: {} } : EMPTY_FC);
+  const done = map.getSource('route-done'), dc = route ? routeDone(route, along) : [];
+  if (done) done.setData(dc.length ? { type: 'Feature', geometry: { type: 'LineString', coordinates: dc }, properties: {} } : EMPTY_FC);
 }
 
 // ---------- Bulta uz maršruta; nobrauktā daļa pazūd aiz tās ----------
 // Navigācijā bultu novieto uz maršruta (kartes piesaiste maršrutam) un kopā ar to
 // vienmērīgi (pa maršruta līkumiem) pārvieto līnijas sākumu. GPS svārstības atpakaļ
 // neņem vērā (smoothProgress), tāpēc līnija nelēkā un nobrauktā daļa neatgriežas.
+const ROUTE_CUT_M = 70;      // v134: cut the line at the arrow's projection up to this far from the route
 const ROUTE_SNAP_M = 30;     // tālāk par šo no maršruta — bulta rāda GPS vietu, līnija netiek griezta
 let navAnim = 0, lastRouteDraw = 0;
 function navShow(target, dur) {
