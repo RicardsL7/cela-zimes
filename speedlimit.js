@@ -2,7 +2,7 @@
 //   • speedSignKind: vai zīme maina ierobežojumu (ātruma zīme / beigas / apdzīvotas vietas sākums vai beigas);
 //   • decideSpeedLimit: prioritāte — garām pabraukta zīme → OSM maxspeed → Latvijas noklusējums (aptuveni);
 //   • SpeedLimitHold: aizture pret mirgošanu (ja uz brīdi nav zināms — rāda pēdējo vēl ~5 s / ~100 m);
-//   • isOverspeed: brīdinājums (ātrums > ierobežojums + 3; ja ātrums nav zināms — nav brīdinājuma).
+//   • isOverspeed: brīdinājums (ātrums > ierobežojums + 3; ja ātrums nav zināms vai ierobežojums tikai aptuvens — nav).
 
 // Latvijas noklusētie ātrumi (CSN): apdzīvotā vietā 50, ārpus — 90, dzīvojamā zonā 20 km/h.
 const SL_DEFAULT = { urban: 50, rural: 90, living: 20 };
@@ -41,8 +41,10 @@ function decideSpeedLimit({ sign = null, osm = null, urban = null, cls = null, l
   return null;
 }
 
+// v128: only a KNOWN limit (passed sign or OSM maxspeed) turns the dial red. A guessed default
+// ("apdzīvotā vietā 50", approx: true) does not — a missing 70 sign in the data must not raise a false alarm.
 function isOverspeed(speedKmh, res, warn = true) {
-  return !!(warn && res && res.limit != null && speedKmh != null && !isNaN(speedKmh) && speedKmh > res.limit + SL_OVER_MARGIN);
+  return !!(warn && res && res.limit != null && !res.approx && speedKmh != null && !isNaN(speedKmh) && speedKmh > res.limit + SL_OVER_MARGIN);
 }
 
 // Aizture: jauns null nenomaina rādīto vērtību uzreiz — tikai pēc ~5 s vai ~100 m.

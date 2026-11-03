@@ -592,6 +592,7 @@ function placeUrban(lat, lng) {
 //   b) OSM maxspeed ceļam, uz kura esmu;
 //   c) Latvijas noklusējums (aptuveni): apdzīvotā vietā 50, ārpus 90, dzīvojamā zonā 20.
 // Navigācijā kā līdz šim: vispirms OSM, tad pēdējā maršruta zīme (lastRouteSignBefore), tad noklusējums.
+const speedMemoOsm = { s: null, limit: null };   // v128: OSM limit at the moment the remembered sign was passed
 function resolveSpeedLimit() {
   if (!state.me) return null;
   const pos = signs.pos && !signs.pos.uncertain ? signs.pos : null;
@@ -605,7 +606,12 @@ function resolveSpeedLimit() {
     }
   } else {
     const mem = signs.speedMemory && signs.speedMemory();
-    if (mem) sign = mem.limit;
+    if (mem) {
+      // v128: remember what OSM said where the sign was passed. If OSM later shows a DIFFERENT explicit limit
+      // on my road (e.g. 50 → 70 where the 70 sign is missing from the sign data), the zone has changed — OSM wins.
+      if (speedMemoOsm.s !== mem.s) { speedMemoOsm.s = mem.s; speedMemoOsm.limit = explicitOsm ? explicitOsm.limit : null; }
+      if (!(explicitOsm && explicitOsm.limit !== speedMemoOsm.limit)) sign = mem.limit;
+    }
   }
   if (state.nav.active && explicitOsm) return { limit: explicitOsm.limit, source: 'osm', approx: false };
   let urban = null;
