@@ -41,3 +41,7 @@
 
 - Luksoforu ikonas kartē ~35 % mazākas (`TRAFFIC_LIGHT_SCALE = 0.65` signs-gl.js `signsIconSize`); pārējās zīmes nemainītas.
 - Versijas: signs-gl.js v135. Testi: 133/133.
+
+## v136 — luksofori vēl mazāki
+
+- `TRAFFIC_LIGHT_SCALE` 0.65 → 0.45 (≈ puse no sākotnējā izmēra). signs-gl.js v136. Testi: 133/133.

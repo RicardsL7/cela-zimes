@@ -726,7 +726,7 @@ function signsIconOpacity(op) {
   const rel = ['match', ['get', 'rel'], 'mine', 1, 'other', 0.4, 1];
   return ['case', ['has', 'pin'], op, ['boolean', ['get', 'off'], false], 0.45, rel];
 }
-const TRAFFIC_LIGHT_SCALE = 0.65;   // v135: traffic lights ~35 % smaller (owner: they were too big on the route)
+const TRAFFIC_LIGHT_SCALE = 0.45;   // v136: traffic lights ~55 % smaller (owner: still too big at 0.65)
 function signsIconSize(k) {
   // Brīdinājumu marķieri (pin) — kā ziņojumu marķieri (k — pārejas animācijai); pārējās zīmes pēc piederības ceļam.
   const rel = (mine, other, unknown) => ['match', ['get', 'rel'], 'mine', mine, 'other', other, unknown];
