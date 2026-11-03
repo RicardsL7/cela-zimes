@@ -1826,9 +1826,9 @@ test('v122: apaļajā aplī mans ātrums (pārsniedzot — sarkans, pulsē), iel
     ok(/id="recenterBtn"/.test(bar) && /Centrēt/.test(bar) && /id="recenterMeta"/.test(bar), f + ': „Centrēt” + laiks/attālums');
   }
   const ul = fn('updateLimit');
-  ok(/classList\.toggle\('over', over\)/.test(ul) && !/limitValue/.test(ul), 'pārsniedzot — klase over (nevis limita skaitlis)');
-  ok(/\.limit-badge\.over \{[^}]*animation: speedo-warn/.test(css) && /@keyframes speedo-warn/.test(css), 'sarkans + pulsējoša animācija');
-  ok(/prefers-reduced-motion: reduce\) \{ \.limit-badge\.over \{ animation: none/.test(css), 'samazināta kustība — bez animācijas');
+  ok(/classList\.toggle\('over', over\)/.test(ul) && /renderSpeedo\(state\.me\.speedKmh, res, over\)/.test(ul), 'pārsniedzot — klase over + spidometrs');
+  ok(/\.limit-badge\.over \.speedo-limit \{ animation: speedo-warn/.test(css) && /@keyframes speedo-warn/.test(css), 'v129: zīme pulsē');
+  ok(/prefers-reduced-motion: reduce\) \{ \.limit-badge\.over \.speedo-limit \{ animation: none/.test(css), 'samazināta kustība — bez animācijas');
   // iela: pašreizējais maršruta posms
   ok(/let cur = route\.steps\[0\]/.test(fs.readFileSync(path.join(__dirname, '..', 'nav.js'), 'utf8')), 'routeProgress atdod pašreizējo posmu (cur)');
   ok(/\$\('streetName'\)\.textContent = navStreetName\(p\.cur\)/.test(app), 'iela atjaunojas braucot');
@@ -2098,6 +2098,28 @@ test('v128: 50 → 70 bez 70 zīmes datos — OSM maxspeed uzvar atmiņu; aptuve
   const isOver = G('isOverspeed');
   eq(isOver(68, { limit: 70 }), false); eq(isOver(68, { limit: 50 }), true, 'zināms 50 → brīdina');
   eq(isOver(68, { limit: 50, approx: true }), false, 'minēts 50 → nebrīdina');
+});
+
+
+test('v129: spidometrs — aplis līdz atļautajam, sarkanā svītra pārsniedzot, zīme blakus, stāvot 0', () => {
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const src = app.slice(app.indexOf('function renderSpeedo('), app.indexOf('// ---------- Laika ierobežojumi'));
+  const els = {}; const mk = id => els[id] || (els[id] = { id, textContent: '', hidden: false, title: '', attrs: {}, cls: new Set(),
+    setAttribute(k, v) { this.attrs[k] = v; }, classList: { toggle: (c, on) => { const e = els[id]; on ? e.cls.add(c) : e.cls.delete(c); } } });
+  const render = new Function('$', src + '\nreturn renderSpeedo;')(mk);
+  render(38, { limit: 50 }, false);
+  eq(els.speedValue.textContent, '38'); eq(els.speedoArc.attrs['stroke-dasharray'], '76.0 100', '38/50 = 76 %');
+  eq(els.speedoOver.attrs['stroke-dasharray'], '0.0 100'); eq(els.limitSign.hidden, false); eq(els.limitSignValue.textContent, '50');
+  render(83, { limit: 70 }, true);
+  eq(els.speedoOver.attrs['stroke-dasharray'], '43.3 100', '+13 no 30 → 43 % sarkanā'); eq(els.limitSignValue.textContent, '70');
+  render(130, { limit: 90 }, true); eq(els.speedoOver.attrs['stroke-dasharray'], '100.0 100', 'vairāk par +30 — pilna');
+  render(1.2, { limit: 50 }, false); eq(els.speedValue.textContent, '0', 'stāvot — 0'); ok(els.limitBadge.cls.has('stopped'));
+  render(null, null, false); eq(els.speedValue.textContent, '–'); eq(els.limitSign.hidden, true, 'nezināms ierobežojums — zīmes nav');
+  render(45, { limit: 50, approx: true }, false); ok(els.limitSign.cls.has('approx'), 'minēts — pelēka zīme');
+  for (const f of ['index.html', 'index-gl.html']) {
+    const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    ok(/id="limitSign"/.test(h) && /id="speedoArc"/.test(h) && /id="speedoOver"/.test(h), f + ': aplis un zīme');
+  }
 });
 
 // ---------- Coins: community reports, confirmations, Garāža (supabase/coins-1.sql) ----------
