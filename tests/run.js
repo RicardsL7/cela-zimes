@@ -1823,7 +1823,15 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
     }
   }
   for (const t of ['police', 'police-hidden']) ok(A.alertSvg(t, 64, 'light').includes('M32 2.5l20 6.8'), t + ': vairogs');
-  for (const t of ['camera-fixed', 'camera-mobile']) ok(A.alertSvg(t, 64, 'dark').includes('M18 3h28'), t + ': ceļazīme');
+  // v138: radars are an eye — red iris on the dark map, blue on the light map; tip still at (32, 61)
+  for (const t of ['camera-fixed', 'camera-mobile']) {
+    const d = A.alertSvg(t, 64, 'dark'), l = A.alertSvg(t, 64, 'light');
+    ok(d.includes('M8 52Q50 10 92 52Q50 94 8 52Z') && !d.includes('M18 3h28'), t + ': acs, ne ceļazīme');
+    ok(d.includes('fill="#e2303a"') && !d.includes('fill="#2f7be0"'), t + ': tumšajā — sarkanā acs');
+    ok(l.includes('fill="#2f7be0"') && !l.includes('fill="#e2303a"'), t + ': gaišajā — zilā acs');
+    ok(/translate\(32 24\.5\)/.test(d) && /32 61/.test(d), t + ': centrs (32; 24,5) — riņķi ap aci; smaile (32, 61)');
+  }
+  for (const f of ['index.html', 'index-gl.html']) ok(/alerts\.js\?v=138/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': alerts.js v138');
   for (const t of Object.keys(A.ALERT_SPECIAL)) ok(!/r="33"/.test(A.alertSvg(t, 64, 'dark')), t + ': attēlā nekustīgu gredzenu nav (tie kustas atsevišķā slānī)');
   ok(A.alertSvg('accident', 64, 'dark').includes('fill="#0a0f17"') && A.alertSvg('accident', 64, 'light').includes('<circle cx="32" cy="25" r="21" fill="#fff"'), 'T1 tumša mala, G1 balta mala');
   A.setAlertTheme('dark'); const ud = A.alertDataUrl('jam'); A.setAlertTheme('light'); const ul = A.alertDataUrl('jam');
