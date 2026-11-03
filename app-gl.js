@@ -653,10 +653,20 @@ function updateLimit() {
 // v129: spidometra zīmējums — skaitlis, aplis un atļautā ātruma zīme.
 //   aplis: cik tuvu atļautajam (bez zināma ierobežojuma — skala līdz 130); sarkanā svītra: cik pārsniegts (pilna pie +30)
 //   zīme: rāda, ja ierobežojums zināms; minēts (aptuvens) — pelēka svītrota mala; stāvot (< 3 km/h) — „0”, aplis tukšs
+const SPEEDO_PARK_MS = 3000;
 function renderSpeedo(kmh, res, over) {
   const badge = $('limitBadge'), known = kmh != null && !isNaN(kmh), stopped = known && kmh < 3;
   $('speedValue').textContent = !known ? '–' : stopped ? '0' : String(Math.round(kmh));
   badge.classList.toggle('stopped', !known || stopped);
+  // v130: stāvot ~3 s — zīme un iedaļas maigi pazūd (tīrs aplis ar 0); sākot braukt — parādās atpakaļ
+  if (stopped) {
+    if (!renderSpeedo.parkT && !badge.classList.contains('parked')) {
+      renderSpeedo.parkT = setTimeout(() => { renderSpeedo.parkT = 0; badge.classList.add('parked'); }, SPEEDO_PARK_MS);
+    }
+  } else {
+    clearTimeout(renderSpeedo.parkT); renderSpeedo.parkT = 0;
+    badge.classList.remove('parked');
+  }
   const lim = res && res.limit ? res.limit : null;
   const pct = !known ? 0 : Math.max(0, Math.min(100, kmh / (lim || 130) * 100));
   const ex = over && lim ? Math.max(4, Math.min(100, (kmh - lim) / 30 * 100)) : 0;

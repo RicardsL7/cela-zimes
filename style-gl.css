@@ -185,6 +185,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .speedo-limit.approx { border-color: #9aa6b5; color: #5b6878; }
 .limit-badge.over .speedo-limit { animation: speedo-warn 1s ease-out infinite; }
+/* v130: stāvot ~3 s — atļautā ātruma zīme un iedaļas maigi izgaist (tīrs aplis ar 0) */
+.speedo-limit, .speedo-ring { transition: opacity .6s ease, transform .6s ease; }
+.limit-badge.parked .speedo-limit { opacity: 0; transform: scale(.5) translate(-10px, 10px); pointer-events: none; }
+.limit-badge.parked .speedo-ring { opacity: 0; }
 @keyframes speedo-warn {
   0% { box-shadow: 0 2px 6px rgba(0, 0, 0, .3), 0 0 0 0 rgba(229, 56, 59, .75); }
   60% { transform: scale(1.08); }
