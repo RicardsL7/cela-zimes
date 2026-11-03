@@ -42,3 +42,8 @@
 - Radaru (stacionāro un mobilo) marķieris tagad ir acs: tumšajā kartē sarkana varavīksnene, gaišajā — zila. Tumšajā kartei acij ir gaiša apmale, lai neizplūst.
 - Kustīgie riņķi ap marķieri (pulse slāņi) nemainīti — acs centrs tajā pašā vietā (32; 24,5), smaile (32, 61).
 - alerts.js `radarEyeSvg`; versija alerts.js v138. Testi: 132/132.
+
+## v139 — ceļa remontdarbi: strādnieks
+
+- „Ceļa remontdarbi” marķieris kartē tagad ir strādnieks ar oranžu ķiveri un saulesbrillēm apaļajā spraudē (īpašnieka izvēle 03.11.2026). Spraudas galva un smaile tajā pašā vietā kā citiem brīdinājumiem.
+- alerts.js `roadWorkerPin`; versija alerts.js v139. Testi: 132/132.
