@@ -45,3 +45,8 @@
 ## v136 — luksofori vēl mazāki
 
 - `TRAFFIC_LIGHT_SCALE` 0.65 → 0.45 (≈ puse no sākotnējā izmēra). signs-gl.js v136. Testi: 133/133.
+
+## v137 — luksofori mazāki arī brīdinājumu režīmā
+
+- v135/v136 mainīja tikai „Zīmes” režīma slāni (signs-gl.js). Brīdinājumu režīmā luksoforus zīmē `alerts` slānis (app-gl.js `alertIconSize`) — tagad arī tur tiek lietots `TRAFFIC_LIGHT_SCALE` (0,45).
+- Versijas: app-gl.js v137. Testi: 134/134.
