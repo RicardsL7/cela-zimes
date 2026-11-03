@@ -153,28 +153,45 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ---- v122: apaļais spidometrs (mans ātrums). Pārsniedzot atļauto — sarkans + pulsējošs brīdinājuma vilnis ---- */
+/* ---- v129: spidometrs. Tumšs aplis ar iedaļām: gaišā daļa — cik tuvu atļautajam; pārsniedzot — skaitlis
+   sarkans, sarkanā svītra uzpildās (pilna pie +30 km/h), atļautā ātruma zīme blakus pulsē. Stāvot — 0 un pelēks. ---- */
 .limit-badge {
   position: fixed; z-index: 10; left: 14px;
   top: calc(env(safe-area-inset-top, 0px) + 84px);
-  width: 72px; height: 72px; border-radius: 50%;
-  background: var(--panel); color: var(--fg); box-shadow: var(--shadow);
-  border: 3px solid color-mix(in srgb, var(--fg) 14%, transparent);
-  display: grid; place-content: center; text-align: center; gap: 1px;
+  width: 80px; height: 80px; border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, #3a414c, #1d2128 70%); color: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .35), inset 0 0 0 1px rgba(255, 255, 255, .06);
+  display: grid; place-content: center; text-align: center; gap: 0;
   font-variant-numeric: tabular-nums;
-  transition: top .3s ease, background .2s, color .2s, border-color .2s;
+  transition: top .3s ease;
 }
-.speedo-num { font: 700 30px/1 var(--font-sign); }
-.speedo-unit { font: 600 11px/1 var(--font-body); color: var(--muted); }
-.navigating .limit-badge { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 120px); }
-.limit-badge.over { background: var(--danger); color: #fff; border-color: #fff; animation: speedo-warn 1s ease-out infinite; }
-.limit-badge.over .speedo-unit { color: #fff; }
+.speedo-num { position: relative; z-index: 1; font: 700 34px/0.95 var(--font-sign); letter-spacing: -.01em; transition: color .2s; }
+.speedo-unit { position: relative; z-index: 1; font: 600 11px/1.2 var(--font-body); color: rgba(255, 255, 255, .7); }
+.speedo-ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(90deg); pointer-events: none; }
+.speedo-ring circle { fill: none; stroke-width: 6; }
+.sr-ticks { stroke: rgba(255, 255, 255, .28); stroke-dasharray: .3 1.7; stroke-width: 6; }
+.sr-arc { stroke: #9fb7c9; stroke-linecap: butt; transition: stroke-dasharray .4s ease; }
+.sr-over { stroke: var(--danger); transition: stroke-dasharray .4s ease; }
+.limit-badge.stopped .sr-arc { stroke-dasharray: 0 100; }
+.limit-badge.stopped .speedo-num { color: rgba(255, 255, 255, .85); }
+.limit-badge.over .speedo-num { color: #ff5a5f; }
+.limit-badge.over .speedo-unit { color: #ff8a8e; }
+.limit-badge.over .sr-arc { stroke: rgba(255, 255, 255, .3); }
+/* Atļautā ātruma zīme (balta ar sarkanu malu) */
+.speedo-limit {
+  position: absolute; z-index: 2; top: -8px; right: -18px; width: 38px; height: 38px; border-radius: 50%;
+  background: #fff; border: 4.5px solid #e5383b; box-shadow: 0 2px 6px rgba(0, 0, 0, .3);
+  display: grid; place-items: center; color: #111; font: 700 17px/1 var(--font-sign);
+}
+.speedo-limit.approx { border-color: #9aa6b5; color: #5b6878; }
+.limit-badge.over .speedo-limit { animation: speedo-warn 1s ease-out infinite; }
 @keyframes speedo-warn {
-  0% { transform: scale(1); box-shadow: var(--shadow), 0 0 0 0 color-mix(in srgb, var(--danger) 70%, transparent); }
-  45% { transform: scale(1.1); }
-  100% { transform: scale(1); box-shadow: var(--shadow), 0 0 0 18px color-mix(in srgb, var(--danger) 0%, transparent); }
+  0% { box-shadow: 0 2px 6px rgba(0, 0, 0, .3), 0 0 0 0 rgba(229, 56, 59, .75); }
+  60% { transform: scale(1.08); }
+  100% { box-shadow: 0 2px 6px rgba(0, 0, 0, .3), 0 0 0 14px rgba(229, 56, 59, 0); }
 }
-@media (prefers-reduced-motion: reduce) { .limit-badge.over { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .limit-badge.over .speedo-limit { animation: none; } .sr-arc, .sr-over { transition: none; } }
+.navigating .limit-badge { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 120px); }
 .test-speed { display: flex; align-items: center; gap: 8px; }
 .test-speed input { width: 140px; }
 .test-speed b { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -402,7 +419,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 html:not(.navigating):not(.previewing) .fab-stack,
 html:not(.navigating):not(.previewing) .limit-badge { top: calc(env(safe-area-inset-top, 0px) + 140px); }
 html:not(.navigating):not(.previewing) .next-sign { top: calc(env(safe-area-inset-top, 0px) + 140px); }
-html.has-limit:not(.navigating):not(.previewing) .next-sign { left: 96px; max-width: min(330px, calc(100vw - 176px)); }   /* F7 */
+html.has-limit:not(.navigating):not(.previewing) .next-sign { left: 118px; max-width: min(330px, calc(100vw - 198px)); }   /* F7 */
 html:not(.navigating):not(.previewing) .loader { top: calc(env(safe-area-inset-top, 0px) + 132px); }
 
 .places-sheet .sheet-head { gap: 6px; }

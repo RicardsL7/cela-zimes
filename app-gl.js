@@ -637,6 +637,7 @@ function updateLimit() {
   badge.title = label;
   badge.setAttribute('aria-label', label);
   badge.classList.toggle('over', over);
+  renderSpeedo(state.me.speedKmh, res, over);
   // F8 sagatavošanai: notikumi tikai pie maiņas (balss vēl nav)
   const key = speedLimitKey(res);
   if (key !== limitKey) {
@@ -646,6 +647,27 @@ function updateLimit() {
   if (over !== overNow) {
     overNow = over;
     document.dispatchEvent(new CustomEvent('overspeed', { detail: { active: over, speed: state.me.speedKmh, limit: res ? res.limit : null } }));
+  }
+}
+
+// v129: spidometra zīmējums — skaitlis, aplis un atļautā ātruma zīme.
+//   aplis: cik tuvu atļautajam (bez zināma ierobežojuma — skala līdz 130); sarkanā svītra: cik pārsniegts (pilna pie +30)
+//   zīme: rāda, ja ierobežojums zināms; minēts (aptuvens) — pelēka svītrota mala; stāvot (< 3 km/h) — „0”, aplis tukšs
+function renderSpeedo(kmh, res, over) {
+  const badge = $('limitBadge'), known = kmh != null && !isNaN(kmh), stopped = known && kmh < 3;
+  $('speedValue').textContent = !known ? '–' : stopped ? '0' : String(Math.round(kmh));
+  badge.classList.toggle('stopped', !known || stopped);
+  const lim = res && res.limit ? res.limit : null;
+  const pct = !known ? 0 : Math.max(0, Math.min(100, kmh / (lim || 130) * 100));
+  const ex = over && lim ? Math.max(4, Math.min(100, (kmh - lim) / 30 * 100)) : 0;
+  $('speedoArc').setAttribute('stroke-dasharray', `${pct.toFixed(1)} 100`);
+  $('speedoOver').setAttribute('stroke-dasharray', `${ex.toFixed(1)} 100`);
+  const sign = $('limitSign');
+  sign.hidden = !lim;
+  if (lim) {
+    $('limitSignValue').textContent = String(lim);
+    sign.classList.toggle('approx', !!res.approx);
+    sign.title = res.approx ? `Aptuveni ${lim} km/h (zīme nav zināma)` : `Atļauts ${lim} km/h`;
   }
 }
 
@@ -1181,7 +1203,6 @@ function onFix(lat, lng, speedKmh, gpsHeading, dur = 900, accuracy = null) {
   }
   state.nav.onRoute = onRoute;
   if (!onRoute) moveMeMarker(lng, lat, state.follow ? dur : 300);
-  $('speedValue').textContent = speedKmh == null ? '–' : Math.round(speedKmh);   // v122: apaļajā rādītājā
   if (first0) syncRecenter();
   // Vājš signāls: neatjauno braukšanas virzienu (tas lēkātu) un brīdina.
   setBusy('gps', state.gpsQuality === 'poor' ? `Vājš GPS signāls (±${Math.round(accuracy)} m) — zīmes var būt neprecīzas` : null);

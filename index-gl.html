@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=126">
+  <link rel="stylesheet" href="style-gl.css?v=129">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -60,10 +60,16 @@
     <span id="loaderText">Ielādē zīmes…</span>
   </div>
 
-  <!-- v122: apaļais spidometrs — mans ātrums; pārsniedzot atļauto, kļūst sarkans un pulsē (id limitBadge — vēsturisks) -->
-  <div id="limitBadge" class="limit-badge speedo" hidden aria-live="off">
-    <span id="speedValue" class="speedo-num">–</span>
+  <!-- v129: spidometrs — mans ātrums, aplis (cik tuvu atļautajam), atļautā ātruma zīme blakus.
+       Pārsniedzot: skaitlis sarkans, sarkanā svītra uzpildās (+30 km/h = pilna), zīme pulsē. (id limitBadge — vēsturisks) -->
+  <div id="limitBadge" class="limit-badge speedo" hidden aria-live="off"><span id="speedValue" class="speedo-num">–</span>
     <small class="speedo-unit" aria-hidden="true">km/h</small>
+    <svg class="speedo-ring" viewBox="0 0 100 100" aria-hidden="true">
+      <circle class="sr-ticks" cx="50" cy="50" r="45.5" pathLength="120"/>
+      <circle id="speedoArc" class="sr-arc" cx="50" cy="50" r="45.5" pathLength="100" stroke-dasharray="0 100"/>
+      <circle id="speedoOver" class="sr-over" cx="50" cy="50" r="45.5" pathLength="100" stroke-dasharray="0 100"/>
+    </svg>
+    <span id="limitSign" class="speedo-limit" hidden><b id="limitSignValue"></b></span>
   </div>
 
   <!-- Pogas labajā pusē -->
@@ -429,7 +435,7 @@
   <script src="rides-ui.js?v=123"></script>
   <script src="garage.js?v=125"></script>
   <script src="presence.js?v=124"></script>
-  <script src="app-gl.js?v=128"></script>
+  <script src="app-gl.js?v=129"></script>
   <script src="park-gl.js?v=116"></script>
   <script src="park-dest-gl.js?v=93"></script>
   <script src="traffic-gl.js?v=124"></script>
