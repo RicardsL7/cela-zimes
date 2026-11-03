@@ -1835,9 +1835,9 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
   for (const th of ['dark', 'light']) {
     const r = A.alertSvg('roadworks', 64, th);
     ok(/clip-path="url\(#rwc\)"/.test(r) && r.includes('M24 40C24 20 36 10 50 10') && r.includes('#ffa53a') && r.includes('M31 48h38'), th + ': ceļa darbi — strādnieks ar oranžu ķiveri un brillēm');
-    ok(/32 61/.test(r) && r.includes('cx="32" cy="25" r="21"'), th + ': spraudas galva un smaile vietā');
+    ok(/32 61/.test(r) && r.includes('cx="32" cy="28" r="23"') && r.includes('M29.8 48L32 61'), th + ': v140 — lielāks aplis, īsāka adata; smaile vietā');
   }
-  for (const f of ['index.html', 'index-gl.html']) ok(/alerts\.js\?v=139/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': alerts.js v139');
+  for (const f of ['index.html', 'index-gl.html']) ok(/alerts\.js\?v=140/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': alerts.js v140');
   for (const t of Object.keys(A.ALERT_SPECIAL)) ok(!/r="33"/.test(A.alertSvg(t, 64, 'dark')), t + ': attēlā nekustīgu gredzenu nav (tie kustas atsevišķā slānī)');
   ok(A.alertSvg('accident', 64, 'dark').includes('fill="#0a0f17"') && A.alertSvg('accident', 64, 'light').includes('<circle cx="32" cy="25" r="21" fill="#fff"'), 'T1 tumša mala, G1 balta mala');
   A.setAlertTheme('dark'); const ud = A.alertDataUrl('jam'); A.setAlertTheme('light'); const ul = A.alertDataUrl('jam');
