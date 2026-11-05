@@ -82,3 +82,12 @@
 - Brīdinājumu režīmā zīmes ar tipu „Satiksmes ierobežojums” (laika ierobežojumi, piem. „P–Pk 7–10, 16–20”) kartē vairs nezīmē — ne ikonas, ne punktus (īpašnieka lēmums 05.11.2026).
 - Dati paliek: kartīte „Pēc N m …” braucot tos joprojām rāda ar attālumu un aprakstu.
 - signs-gl.js `hideOnMap`; app-gl.js `signs.hideOnMap`. Versijas: signs-gl.js v145, app-gl.js v145. Testi: 132/132.
+
+## v146 — Android izmēģinājuma lietotne (GPS arī ar izslēgtu ekrānu)
+
+- `mobile/` — Capacitor 7 apvalks ap https://growlab.cc (appId `cc.growlab.celazimes`), spraudnis `@capacitor-community/background-geolocation` (priekšplāna serviss ar paziņojumu, `useLegacyBridge`, lai fonā neapstājas pēc 5 min).
+- app-gl.js: `nativeGeo()` / `startNativeGps()` — Android lietotnē vieta nāk no telefona (darbojas arī ar izslēgtu ekrānu); pārlūkā viss kā līdz šim.
+- `.github/workflows/android.yml` — GitHub pats uzbūvē APK pēc katras izmaiņas `mobile/` un ieliek to izlaidumā `android-test`:
+  https://github.com/RicardsL7/cela-zimes/releases/download/android-test/cela-zimes.apk
+- Nav pārbaudīts telefonā. Zināmi ierobežojumi: pieteikšanās ar Google lietotnē var nestrādāt (Google aizliedz iebūvētos pārlūkus), e-pasta saite atveras pārlūkā; ikona — Capacitor noklusējuma.
+- Versija: app-gl.js v146. Testi: 132/132.

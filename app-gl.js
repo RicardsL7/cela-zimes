@@ -1311,8 +1311,38 @@ function gpsWatchPermission() {
     };
   }).catch(() => { gpsPermWatch = false; });
 }
+// v146: inside the Android app (Capacitor shell, folder mobile/) the position comes from the phone itself
+// (plugin BackgroundGeolocation) — it keeps working with the screen off; a notification shows while it runs.
+// In a normal browser window.Capacitor does not exist and nothing here changes.
+function nativeGeo() {
+  const C = typeof window !== 'undefined' ? window.Capacitor : null;
+  if (!C || typeof C.isNativePlatform !== 'function' || !C.isNativePlatform() || typeof C.registerPlugin !== 'function') return null;
+  return nativeGeo._p || (nativeGeo._p = C.registerPlugin('BackgroundGeolocation'));
+}
+let nativeWatchId = null;
+function nativeLocToPos(loc) {
+  return { coords: { latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy, speed: loc.speed,
+    heading: loc.bearing, altitude: loc.altitude }, timestamp: loc.time || Date.now() };
+}
+function startNativeGps(BG, onDenied) {
+  if (nativeWatchId != null) { const old = nativeWatchId; nativeWatchId = null; BG.removeWatcher({ id: old }).catch(() => {}); }
+  BG.addWatcher({
+    backgroundTitle: 'Ceļa Zīmes',
+    backgroundMessage: 'Navigācija un brīdinājumi darbojas arī ar izslēgtu ekrānu.',
+    requestPermissions: true, stale: false, distanceFilter: 0,
+  }, (loc, err) => {
+    if (err) {
+      if (err.code === 'NOT_AUTHORIZED') { gpsShow('denied'); if (onDenied) onDenied(); }
+      else onGpsError({ code: 2 });
+      return;
+    }
+    if (loc) onPosition(nativeLocToPos(loc));
+  }).then(id => { nativeWatchId = id; }).catch(() => onGpsError({ code: 2 }));
+}
 // onDenied — izsauc, ja atļauja joprojām liegta (poga „Mēģināt vēlreiz”)
 function startGps(onDenied) {
+  const BG = nativeGeo();
+  if (BG) return startNativeGps(BG, onDenied);
   if (!('geolocation' in navigator) || !window.isSecureContext) { gpsShow('unsupported'); return; }
   gpsWatchPermission();
   navigator.geolocation.getCurrentPosition(onPosition, err => { if (err.code === 1) { gpsShow('denied'); if (onDenied) onDenied(); } },
