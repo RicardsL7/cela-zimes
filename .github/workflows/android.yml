@@ -1,0 +1,64 @@
+# Builds the Android test app (APK) for Ceļa Zīmes and puts it on the release page "android-test".
+# Download on the phone: https://github.com/RicardsL7/cela-zimes/releases/download/android-test/cela-zimes.apk
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install Capacitor
+        run: npm install --no-audit --no-fund --legacy-peer-deps
+
+      - name: Create Android project
+        run: npx cap add android
+
+      - name: Permissions for background GPS
+        run: node scripts/patch-android.js
+
+      - name: Sync
+        run: npx cap sync android
+
+      - name: Build APK
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../cela-zimes.apk
+
+      - name: Publish on the release page
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-test
+          name: Android izmēģinājuma versija
+          prerelease: true
+          files: mobile/cela-zimes.apk
+          body: |
+            Ceļa Zīmes — Android izmēģinājuma versija (nav no Google Play).
+            Lejupielādē cela-zimes.apk telefonā, atļauj instalēt no šī avota un uzinstalē.
+            Atrašanās vietai izvēlies „Atļaut, kamēr lieto lietotni” un paziņojumiem — „Atļaut”.
+            Uzbūvēts no commit ${{ github.sha }}.
