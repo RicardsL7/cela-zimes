@@ -692,6 +692,8 @@ class SignStore {
         list.push({ s, pos, rel });
       });
     }
+    // v145: some signs are not drawn on the map at all, but stay in the data (e.g. the "next ahead" card still sees them).
+    if (this.hideOnMap) for (let i = list.length - 1; i >= 0; i--) if (this.hideOnMap(list[i].s)) list.splice(i, 1);
     // Ja zīmju ir ļoti daudz, ņem tās, kas tuvāk centram.
     if (list.length > 5000) {
       list.sort((a, d) => Math.hypot(a.pos.lat - c.lat, a.pos.lng - c.lng) - Math.hypot(d.pos.lat - c.lat, d.pos.lng - c.lng));

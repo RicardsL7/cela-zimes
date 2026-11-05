@@ -76,3 +76,9 @@
 - Pārbrauktuves marķieris tagad ir sarkanbaltais Andreja krusts (īpašnieka izvēle 04.11.2026), bez spraudas — kā luksofors, novietots tieši uz vietas (enkurs centrā) gan zīmju, gan brīdinājumu slānī.
 - alerts.js `railCrossSvg`, `ALERT_STANDALONE` (+ 'rail'); signs-gl.js un app-gl.js — enkurs centrā luksoforam un pārbrauktuvei.
 - Versijas: alerts.js v144, signs-gl.js v144, app-gl.js v144. Testi: 132/132.
+
+## v145 — satiksmes ierobežojumi vairs nerādās kartē
+
+- Brīdinājumu režīmā zīmes ar tipu „Satiksmes ierobežojums” (laika ierobežojumi, piem. „P–Pk 7–10, 16–20”) kartē vairs nezīmē — ne ikonas, ne punktus (īpašnieka lēmums 05.11.2026).
+- Dati paliek: kartīte „Pēc N m …” braucot tos joprojām rāda ar attālumu un aprakstu.
+- signs-gl.js `hideOnMap`; app-gl.js `signs.hideOnMap`. Versijas: signs-gl.js v145, app-gl.js v145. Testi: 132/132.

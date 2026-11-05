@@ -2895,12 +2895,15 @@ function applySignVisibility() {
     signs.iconFor = s => 'alert:' + (alertTypeForSign(s) || 'hazard');
     signs.titleFor = s => { const t = alertTypeForSign(s); return t ? ALERT_TYPES[t].label : s.title; };
     signs.dotFor = s => alertCode(alertTypeForSign(s) || 'hazard');
+    // v145 (owner): traffic restrictions are NOT drawn on the map — only the "next ahead" card (distance) shows them
+    signs.hideOnMap = s => alertTypeForSign(s) === 'restriction';
     signs.onPinsShown = onSignPinsShown;
   } else {
     signs.setFilter(s => state.cats[s.cat] && signFitsProfile(s, state.profile));
     signs.iconFor = null;
     signs.titleFor = null;
     signs.dotFor = null;
+    signs.hideOnMap = null;
     signs.onPinsShown = null;
   }
   signs.refresh();
