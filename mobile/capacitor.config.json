@@ -1,0 +1,12 @@
+{
+  "appId": "cc.growlab.celazimes",
+  "appName": "Ceļa Zīmes",
+  "webDir": "www",
+  "server": {
+    "url": "https://growlab.cc",
+    "androidScheme": "https"
+  },
+  "android": {
+    "useLegacyBridge": true
+  }
+}
