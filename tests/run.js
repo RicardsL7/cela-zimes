@@ -1869,7 +1869,7 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
     ok(/signs-gl\.js\?v=14[1-9]/.test(h) && /app-gl\.js\?v=14[1-9]/.test(h), f + ': v141');
     ok(/app-gl\.js\?v=14[3-9]/.test(h), f + ': v143');
     ok(/alerts\.js\?v=144/.test(h) && /signs-gl\.js\?v=14[4-9]/.test(h) && /app-gl\.js\?v=14[4-9]/.test(h), f + ': v144');
-    ok(/signs-gl\.js\?v=145/.test(h) && /app-gl\.js\?v=145/.test(h), f + ': v145');
+    ok(/signs-gl\.js\?v=145/.test(h) && /app-gl\.js\?v=14[5-9]/.test(h), f + ': v145');
   }
   {
     // v145: traffic restrictions hidden from the map (alerts mode), still in the data for the "next ahead" card
@@ -1879,6 +1879,30 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
     const ap145 = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
     ok(/signs\.hideOnMap = s => alertTypeForSign\(s\) === 'restriction';/.test(ap145) && /signs\.hideOnMap = null;/.test(ap145), 'v145: brīdinājumu režīmā ierobežojumi kartē nerādās');
     ok(/t === 'restriction' \? describeRestriction/.test(ap145), 'v145: kartīte „pēc N m” ierobežojumu joprojām rāda');
+  }
+  {
+    // v146: Android app (Capacitor) — native background GPS; in the browser nothing changes
+    const ap146 = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+    const grab = name => ap146.slice(ap146.indexOf('function ' + name), ap146.indexOf('\n}', ap146.indexOf('function ' + name)) + 2);
+    const nativeGeo = new Function('window', grab('nativeGeo') + '; return nativeGeo;');
+    eq(nativeGeo(undefined)(), null, 'pārlūkā (nav Capacitor) — parastais GPS');
+    eq(nativeGeo({ Capacitor: { isNativePlatform: () => false, registerPlugin: () => ({}) } })(), null, 'Capacitor tīmeklī — parastais GPS');
+    const plug = {}; let asked = null;
+    eq(nativeGeo({ Capacitor: { isNativePlatform: () => true, registerPlugin: n => { asked = n; return plug; } } })(), plug, 'Android lietotnē — telefona GPS');
+    eq(asked, 'BackgroundGeolocation');
+    const toPos = new Function(grab('nativeLocToPos') + '; return nativeLocToPos;')();
+    const p = toPos({ latitude: 56.95, longitude: 24.1, accuracy: 6, speed: 13.9, bearing: 270, altitude: 10, time: 123 });
+    ok(p.coords.latitude === 56.95 && p.coords.longitude === 24.1 && p.coords.speed === 13.9 && p.coords.heading === 270 && p.coords.accuracy === 6 && p.timestamp === 123, 'telefona vieta → tas pats formāts kā pārlūkā');
+    ok(/const BG = nativeGeo\(\);\n  if \(BG\) return startNativeGps\(BG, onDenied\);/.test(ap146), 'startGps lieto telefona GPS, ja ir');
+    ok(/backgroundMessage: 'Navigācija un brīdinājumi darbojas arī ar izslēgtu ekrānu\.'/.test(ap146), 'GPS arī ar izslēgtu ekrānu (paziņojums latviski)');
+    const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'mobile', 'capacitor.config.json'), 'utf8'));
+    ok(cfg.server.url === 'https://growlab.cc' && cfg.android.useLegacyBridge === true && cfg.appId === 'cc.growlab.celazimes', 'Android lietotne atver growlab.cc; fonā neapstājas pēc 5 min');
+    const wf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'android.yml'), 'utf8');
+    ok(/tag_name: android-test/.test(wf) && /files: mobile\/cela-zimes\.apk/.test(wf) && /assembleDebug/.test(wf), 'GitHub pats uzbūvē APK un ieliek to lapā android-test');
+    const ps = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'scripts', 'patch-android.js'), 'utf8');
+    ok(/FOREGROUND_SERVICE_LOCATION/.test(ps) && /POST_NOTIFICATIONS/.test(ps) && !/ACCESS_BACKGROUND_LOCATION/.test(ps), 'atļaujas: priekšplāna serviss ar atrašanās vietu, bez „vienmēr” atļaujas');
+    for (const f of ['index.html', 'index-gl.html'])
+      ok(/app-gl\.js\?v=146/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': v146');
   }
   // v142: icons ↔ dots — happens after about half the zoom-out, and the animation is twice as fast
   ok(/const MARKER_IN_ZOOM = 15\.6;/.test(ap141) && /const MARKER_OUT_ZOOM = 15\.2;/.test(ap141), 'v143: punkti parādās vēl agrāk (15,2 / 15,6)');
