@@ -1868,7 +1868,17 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     ok(/signs-gl\.js\?v=14[1-9]/.test(h) && /app-gl\.js\?v=14[1-9]/.test(h), f + ': v141');
     ok(/app-gl\.js\?v=14[3-9]/.test(h), f + ': v143');
-    ok(/alerts\.js\?v=144/.test(h) && /signs-gl\.js\?v=144/.test(h) && /app-gl\.js\?v=144/.test(h), f + ': v144');
+    ok(/alerts\.js\?v=144/.test(h) && /signs-gl\.js\?v=14[4-9]/.test(h) && /app-gl\.js\?v=14[4-9]/.test(h), f + ': v144');
+    ok(/signs-gl\.js\?v=145/.test(h) && /app-gl\.js\?v=145/.test(h), f + ': v145');
+  }
+  {
+    // v145: traffic restrictions hidden from the map (alerts mode), still in the data for the "next ahead" card
+    const sg145 = fs.readFileSync(path.join(__dirname, '..', 'signs-gl.js'), 'utf8');
+    ok(/if \(this\.hideOnMap\) for \(let i = list\.length - 1; i >= 0; i--\) if \(this\.hideOnMap\(list\[i\]\.s\)\) list\.splice\(i, 1\);/.test(sg145) &&
+       sg145.indexOf('this.hideOnMap(list[i].s)') < sg145.indexOf('src.setData({\n      type: \'FeatureCollection\',\n      features: list.map'), 'v145: paslēptās zīmes nenonāk kartes slānī (arī punktos)');
+    const ap145 = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+    ok(/signs\.hideOnMap = s => alertTypeForSign\(s\) === 'restriction';/.test(ap145) && /signs\.hideOnMap = null;/.test(ap145), 'v145: brīdinājumu režīmā ierobežojumi kartē nerādās');
+    ok(/t === 'restriction' \? describeRestriction/.test(ap145), 'v145: kartīte „pēc N m” ierobežojumu joprojām rāda');
   }
   // v142: icons ↔ dots — happens after about half the zoom-out, and the animation is twice as fast
   ok(/const MARKER_IN_ZOOM = 15\.6;/.test(ap141) && /const MARKER_OUT_ZOOM = 15\.2;/.test(ap141), 'v143: punkti parādās vēl agrāk (15,2 / 15,6)');
