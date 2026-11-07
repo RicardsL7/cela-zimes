@@ -12,7 +12,7 @@
 ## Vēl jāizdara īpašniekam
 
 ### 1. Vārds un e-pasts noteikumos
-`terms.html` un `privacy.html` — aizstāt visus **[AIZPILDĪT]** (vārds, uzvārds, kontakta e-pasts). Ieteicams noteikumus parādīt juristam.
+✅ Izdarīts (audits A06, 07.11.2026): `terms.html` un `privacy.html` — pakalpojuma sniedzējs / pārzinis un atbalsta e-pasts aizpildīts. Personīgo e-pastu publiski neliek. Pirms komercijas (īsta nauda) noteikumus ieteicams parādīt juristam.
 
 ### 2. E-pasta sūtīšana visiem lietotājiem (pirms publiskošanas)
 Supabase iebūvētais e-pasts sūta tikai projekta komandas adresēm un tikai dažas vēstules stundā — derīgs testiem.

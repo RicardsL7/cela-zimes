@@ -151,3 +151,10 @@
 - Pārbaude: JS 152/152 (refundState visi stāvokļi; abu funkciju bloki vienādi; vecās kļūdas imitācija); TypeScript stingrā pārbaude abām funkcijām bez kļūdām. Stripe testa vidē nav pārbaudīts.
 - Produkcijā (ar īpašnieka atļauju): izvietot `ride-pay` un `stripe-webhook` (webhook — ar `--no-verify-jwt`, kā līdz šim). Ieteicams Stripe webhook iestatījumos pievienot notikumus refund.updated un refund.failed (bez tiem gaidošas atmaksas stāvokli atjauno lietotne, atverot braucienu).
 - Ja datubāzē jau ir maksājumi, kas kļūdas dēļ atzīmēti „refunded”, bet atmaksāti daļēji, — tos jāpārbauda Stripe panelī (atpakaļ uz „paid” statuss automātiski nemainās).
+
+## A06 — noteikumos aizpildīts pakalpojuma sniedzējs un kontakts (audits 07.11.2026)
+
+- `terms.html` un `privacy.html`: sniedzējs / pārzinis — Ričards Liepa, privātpersona, Latvija; kontakts — support.travel24@gmail.com (saite mailto:) visās 4 vietās; noņemtas piezīmes „vēl jāpapildina”; e-pasta sūtītājs — Supabase (kā šobrīd iestatīts).
+- Personīgais e-pasts publiski netiek rādīts (tests pārbauda, ka lapās ir tikai atbalsta adrese).
+- Dokumentu versijas nemainītas (2026-10-23 / 2026-11-01): aizpildīta tikai identitāte, lietotājiem atkārtoti piekrist nav jāprasa.
+- Pārbaude: JS 153/153. Juridiski nav pārbaudīts — pirms īstas naudas ieteicams parādīt juristam; ja Supabase iestatīs citu e-pasta sūtītāju (piem. Resend/Brevo SMTP), tas jāpieraksta privātuma politikas 7. punktā.
