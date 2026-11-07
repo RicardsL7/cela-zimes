@@ -179,24 +179,62 @@ async function driverAccount(acct: string): Promise<{ owner: string | null; read
 }
 const short = (s: string) => (s || '').split(',')[0].slice(0, 40) || '—';
 
-// Maksājuma stāvoklis no Stripe: Checkout sesija → PaymentIntent → maksājums (charge) → atmaksas
-type PayInfo = { ok: boolean; paid: boolean; amount: number | null; pi: string | null;
-  refundedCents: number; refundId: string | null; refundReason: string | null };
+// <refund-state> — A05: VIENA atmaksas stāvokļa loģika abām servera funkcijām (ride-pay un stripe-webhook).
+// Šis bloks abos failos ir burtiski vienāds (to pārbauda tests/run.js) un testi to izpilda tieši no faila.
+// Stripe atmaksas statusi: succeeded — nauda atdota; pending / requires_action — vēl apstrādē (var arī neizdoties);
+// failed / canceled — nav atdots. Agrāk jebkura atmaksa (arī daļēja vai vēl gaidoša) tika uzskatīta par pilnu.
+type RfRefund = { id?: string; amount?: number; status?: string; created?: number; metadata?: { cz_reason?: string } | null };
+type RefundState = {
+  amount: number;          // samaksātā summa (centi)
+  refunded: number;        // jau atdots (tikai succeeded)
+  pending: number;         // vēl apstrādē
+  failed: number;          // neizdevušos / atcelto atmaksu skaits
+  remaining: number;       // vēl atmaksājams (amount − refunded − pending)
+  full: boolean;           // atdota visa summa — tikai tad datubāzē „refunded”
+  state: 'none' | 'partial' | 'pending' | 'full';
+  refundId: string | null; // jaunākā izdevusies atmaksa (pierakstam datubāzē)
+  reason: string | null;
+};
+function refundState(amount: number, refunds: RfRefund[]): RefundState {
+  const amt = Math.max(0, Math.round(Number(amount) || 0));
+  const list = (refunds || []).filter((r) => r && typeof r === 'object');
+  const sum = (xs: RfRefund[]) => xs.reduce((a, r) => a + Math.max(0, Math.round(Number(r.amount) || 0)), 0);
+  const ok = list.filter((r) => r.status === 'succeeded');
+  const pend = list.filter((r) => r.status === 'pending' || r.status === 'requires_action');
+  const failed = list.filter((r) => r.status === 'failed' || r.status === 'canceled').length;
+  const refunded = sum(ok), pending = sum(pend);
+  const full = amt > 0 && refunded >= amt;
+  const last = ok.slice().sort((a, b) => (Number(b.created) || 0) - (Number(a.created) || 0))[0];
+  return {
+    amount: amt, refunded, pending, failed, remaining: Math.max(0, amt - refunded - pending), full,
+    state: full ? 'full' : pending > 0 ? 'pending' : refunded > 0 ? 'partial' : 'none',
+    refundId: last && typeof last.id === 'string' ? last.id : null,
+    reason: (last && last.metadata && typeof last.metadata.cz_reason === 'string') ? last.metadata.cz_reason : null,
+  };
+}
+// Stripe Idempotency-Key atmaksai: vienāds vienlaicīgiem klikšķiem, jauns pēc katras izmaiņas (daļēja atmaksa vai neizdevusies)
+const refundKey = (oid: string, st: RefundState) => `refund-${oid}-${st.refunded}-${st.failed}`;
+// </refund-state>
+
+// Maksājuma stāvoklis no Stripe: Checkout sesija → PaymentIntent → maksājums (charge) → atmaksas (A05: refundState)
+type PayInfo = { ok: boolean; paid: boolean; amount: number | null; pi: string | null; rs: RefundState };
 async function payInfo(sessionId: string, oid: string): Promise<PayInfo | null> {
   const s = await stripe('checkout/sessions/' + sessionId + '?expand[]=payment_intent.latest_charge.refunds').catch(() => null);
   if (!s) return null;
   const ok = s.metadata?.offer_id === oid;
   const pi = s.payment_intent && typeof s.payment_intent === 'object' ? s.payment_intent : null;
   const ch = pi && pi.latest_charge && typeof pi.latest_charge === 'object' ? pi.latest_charge : null;
-  // deno-lint-ignore no-explicit-any
-  const refunds: any[] = ch?.refunds?.data ?? [];
-  const okRefunds = refunds.filter((r) => r.status === 'succeeded' || r.status === 'pending');
+  let refunds: RfRefund[] = ch?.refunds?.data ?? [];
+  if (ch && ch.refunds?.has_more) {                              // vairāk par 10 atmaksām — nolasa visas
+    const all = await stripe('refunds?charge=' + ch.id + '&limit=100').catch(() => null);
+    if (!all) return null;
+    refunds = all.data ?? refunds;
+  }
+  const paid = ok && s.payment_status === 'paid';
   return {
-    ok, paid: ok && s.payment_status === 'paid', amount: ok ? s.amount_total : null,
+    ok, paid, amount: ok ? s.amount_total : null,
     pi: pi ? pi.id : (typeof s.payment_intent === 'string' ? s.payment_intent : null),
-    refundedCents: ok ? Number(ch?.amount_refunded ?? 0) || okRefunds.reduce((a, r) => a + (r.amount || 0), 0) : 0,
-    refundId: okRefunds[0]?.id ?? null,
-    refundReason: okRefunds[0]?.metadata?.cz_reason ?? null,
+    rs: refundState(paid ? Number(ch?.amount ?? s.amount_total) : 0, ok ? refunds : []),
   };
 }
 const REASONS = ['cancelled_before_pickup', 'driver_refund', 'stripe_dashboard'];
@@ -302,26 +340,43 @@ Deno.serve(async (req) => {
       const info = await payInfo(p.session_id, oid);
       if (!info) throw new Fail('Neizdevās sazināties ar Stripe — mēģini vēlreiz.', 502);
       if (!info.ok || !info.paid || !info.pi) throw new Fail('Šis brauciens nav samaksāts ar karti.', 409);
-      if (info.refundedCents > 0) {                          // jau atmaksāts (arī, ja to izdarīja Stripe panelī)
-        if (p.status !== 'refunded' && info.refundId) await mark(oid, 'refunded', info.refundId, info.refundReason, info.refundedCents);
+      const st = info.rs;
+      const result = (x: RefundState, already: boolean, extra: Record<string, unknown> = {}) => ({
+        refunded: x.full, pending: !x.full && x.pending > 0, partial: !x.full && x.pending === 0 && x.refunded > 0, already,
+        amount: x.full ? x.refunded : (x.pending > 0 ? x.pending : x.refunded), refunded_cents: x.refunded, pending_cents: x.pending,
+        reason: x.reason || reason, ...extra });
+      if (st.full) {                                          // jau atmaksāts pilnībā (arī, ja to izdarīja Stripe panelī)
+        if (p.status !== 'refunded' && st.refundId) await mark(oid, 'refunded', st.refundId, st.reason, st.refunded);
         if (mode === 'driver') throw new Fail('Šis brauciens jau ir atmaksāts.', 409);
-        return { refunded: true, already: true, amount: info.refundedCents, reason: info.refundReason || reason };
+        return result(st, true);
       }
+      if (st.pending > 0) return result(st, true);            // atmaksa jau tiek apstrādāta — otru neveido
+      // Nav atmaksāts vai atmaksāts daļēji → atmaksā ATLIKUMU (Stripe bez summas atmaksā visu, kas vēl nav atmaksāts)
       let r;
       try {
         r = await stripe('refunds', {
           payment_intent: info.pi, reverse_transfer: 'true', refund_application_fee: 'true', reason: 'requested_by_customer',
           metadata: { offer_id: oid, cz_reason: reason, cz_by: uid },
-        }, 'refund-' + oid);
+        }, refundKey(oid, st));
       } catch (e) {
         console.error('refund', oid, e);
+        // Varbūt otrs dalībnieks tieši tagad atmaksāja (tā pati atslēga ar citiem datiem) — pārbauda vēlreiz
+        const again = await payInfo(p.session_id, oid);
+        if (again && (again.rs.full || again.rs.pending > 0)) {
+          if (again.rs.full && again.rs.refundId) await mark(oid, 'refunded', again.rs.refundId, again.rs.reason, again.rs.refunded);
+          return result(again.rs, true);
+        }
         throw new Fail('Atmaksa neizdevās — Stripe to noraidīja. Mēģini vēlāk vai sazinies ar lietotnes īpašnieku.', 502);
       }
       if (r.status === 'failed' || r.status === 'canceled') {
         throw new Fail('Atmaksa neizdevās — Stripe to noraidīja. Mēģini vēlāk vai sazinies ar lietotnes īpašnieku.', 502);
       }
-      await mark(oid, 'refunded', r.id, reason, r.amount);
-      return { refunded: true, already: false, amount: r.amount, reason, status: r.status };
+      // Jaunais stāvoklis = iepriekšējās atmaksas + šī (tā pati funkcija, kas visur citur)
+      const prev: RfRefund[] = [];
+      if (st.refunded > 0) prev.push({ id: st.refundId ?? undefined, amount: st.refunded, status: 'succeeded', created: 0 });
+      const st2 = refundState(st.amount, [...prev, { id: r.id, amount: r.amount, status: r.status, created: r.created ?? 1, metadata: { cz_reason: reason } }]);
+      if (st2.full) await mark(oid, 'refunded', r.id, reason, st2.refunded);   // „refunded” — tikai, kad visa nauda atdota
+      return result(st2, false, { status: r.status });
     };
 
     const body = await req.json().catch(() => ({}));
@@ -449,16 +504,19 @@ Deno.serve(async (req) => {
       // Abiem: vai braucieni samaksāti (patiesība — no Stripe)
       case 'status': {
         const ids = (Array.isArray(body.offer_ids) ? body.offer_ids : []).map(String).filter((x: string) => UUID.test(x)).slice(0, 20);
-        const out: Record<string, { paid: boolean; amount: number | null; refunded: boolean; refund_cents: number }> = {};
+        const out: Record<string, { paid: boolean; amount: number | null; refunded: boolean; refund_cents: number;
+          refund_pending_cents: number; refund_state: string }> = {};
         if (ids.length) {
           const rows = await db(`ride_payments?offer_id=in.(${ids.join(',')})&select=offer_id,session_id,status`);
           for (const r of rows ?? []) {
             const i = await payInfo(r.session_id, r.offer_id);
             if (!i) continue;
-            out[r.offer_id] = { paid: i.paid, amount: i.amount, refunded: i.refundedCents > 0, refund_cents: i.refundedCents };
+            // A05: refunded — tikai pilna atmaksa; daļēja un gaidoša — atsevišķi
+            out[r.offer_id] = { paid: i.paid, amount: i.amount, refunded: i.rs.full, refund_cents: i.rs.refunded,
+              refund_pending_cents: i.rs.pending, refund_state: i.rs.state };
             // Pieraksts datubāzē — arī, ja atmaksāts manuāli Stripe panelī
             if (i.paid && r.status === 'created') await mark(r.offer_id, 'paid');
-            if (i.refundedCents > 0 && r.status !== 'refunded' && i.refundId) await mark(r.offer_id, 'refunded', i.refundId, i.refundReason, i.refundedCents);
+            if (i.rs.full && r.status !== 'refunded' && i.rs.refundId) await mark(r.offer_id, 'refunded', i.rs.refundId, i.rs.reason, i.rs.refunded);
           }
         }
         // F11: vai šoferis var pieņemt karti — tikai PASAŽIERA vēl nesamaksātiem braucieniem. Tikai true/false
@@ -524,9 +582,8 @@ Deno.serve(async (req) => {
           if (!i || !passenger) { failed++; continue; }
           checked++;
           try {
-            if (i.refundedCents > 0) {
-              if (i.amount != null && i.refundedCents < i.amount) { console.log('sync: daļēja atmaksa', r.offer_id); continue; }
-              if (i.refundId && await markPay(passenger, r.offer_id, 'refunded', i.refundId, i.refundReason, i.refundedCents)) updated++;
+            if (i.rs.full) {                                       // A05: tikai pilna atmaksa; daļēja / gaidoša paliek „paid”
+              if (i.rs.refundId && await markPay(passenger, r.offer_id, 'refunded', i.rs.refundId, i.rs.reason, i.rs.refunded)) updated++;
             } else if (i.paid && r.status === 'created') {
               if (await markPay(passenger, r.offer_id, 'paid')) updated++;
             }
@@ -541,7 +598,7 @@ Deno.serve(async (req) => {
         const cand: string[] = ((await db('rpc/ride_refund_candidates', { method: 'POST', body: '{}' })) ?? []).map(String).filter((x: string) => UUID.test(x));
         const done: unknown[] = [];
         for (const oid of cand) {
-          try { const r = await refund(oid, 'auto'); if (r && !r.already) done.push({ offer_id: oid, ...r }); }
+          try { const r = await refund(oid, 'auto'); if (r && !r.already && (r.refunded || r.pending)) done.push({ offer_id: oid, ...r }); }
           catch (e) { if (!(e instanceof Fail) || e.status >= 500) console.error('refund_sync', oid, e); }   // nav samaksāts u.tml. — izlaiž
         }
         // Datubāzes ierakstam par atmaksu neuzticas — katru vēlreiz pārbauda Stripe
@@ -554,7 +611,7 @@ Deno.serve(async (req) => {
           for (const x of rec) {
             const s = sid.get(x.offer_id);
             const i = s ? await payInfo(s as string, x.offer_id) : null;
-            if (i && i.refundedCents > 0) recent.push({ ...x, refund_cents: i.refundedCents });
+            if (i && i.rs.full) recent.push({ ...x, refund_cents: i.rs.refunded });
           }
         }
         return json({ done, recent });
