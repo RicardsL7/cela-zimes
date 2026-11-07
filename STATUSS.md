@@ -101,3 +101,15 @@
 - Lietotnes kods nemainās (tā jau sūta tikai `{status}`).
 - Pārbaude: `tests/rides-guard-test.sql` lokālā PostgreSQL ar pilnu shēmu — pirms labojuma uzbrukums izdodas (FAIL), pēc labojuma 30/30 PASS (uzbrukumi noraidīti; pieņemšana, tālrunis saskaņotam pārim, šofera/pasažiera RPC, atcelšana un kontu apvienošana strādā). JS: 133/133.
 - Produkcijā: jāpalaiž `rides-13-guard.sql` Supabase SQL redaktorā (ar īpašnieka atļauju), pēc tam faila beigās esošais pārbaudes vaicājums.
+
+## A02 — viens šoferis vienam pieprasījumam (audits 07.11.2026)
+
+- Kļūda: pieņemšana bija trīs atsevišķi pieprasījumi no pārlūka (pieņemt → „matched” → noraidīt pārējos). Divās cilnēs vai pēc tīkla kļūmes vienam pieprasījumam varēja būt divi pieņemti šoferi (lokāli pierādīts: 2) vai pieņemts piedāvājums ar atvērtu pieprasījumu.
+- Labojums `supabase/rides-14-accept.sql` (palaist PĒC rides-13-guard.sql):
+  - `ride_offer_accept(oid)` — viss vienā transakcijā, pieprasījums bloķēts (`for update`); otrs vienlaicīgs mēģinājums saņem `request_not_open`; atkārtots klikšķis uz to pašu piedāvājumu ir drošs (`already: true`);
+  - unikāls indekss `ride_offers_one_accepted` — ne vairāk kā viens pieņemts piedāvājums uz pieprasījumu (ja datubāzē jau ir pārkāpumi, indekss netiek veidots un tiek parādīts saraksts);
+  - trigeris `ride_guard_status`: klients tieši drīkst tikai piedāvājumam pending→declined, pending/accepted/declined→cancelled; pieprasījumam open/matched→cancelled. Pieņemt / „matched” / atvērt no jauna — tikai servera funkcijas.
+- Lietotne: rides.js izsauc `ride_offer_accept`; ja funkcijas serverī vēl nav (404 PGRST202), izmanto veco ceļu — tāpēc lietotne strādā gan pirms, gan pēc SQL palaišanas. Pogas „Pieņemt/Noraidīt” uz laiku atslēdzas, kļūda parādās saprotamā tekstā (`rideErrorText`); arī „Atcelt” kļūda vairs neiestrēgst.
+- Pārbaude lokālā PostgreSQL: `tests/rides-accept-test.sql` 32/32, `tests/rides-accept-parallel.sh` (divas sesijas vienlaikus) 6/6, `tests/rides-guard-test.sql` (A01) 30/30 ar abiem labojumiem. JS: 136/136.
+- Versija: rides.js v147, rides-ui.js v147.
+- Produkcijā: jāpalaiž `rides-14-accept.sql` (pēc `rides-13-guard.sql`) ar īpašnieka atļauju, pēc tam faila beigās esošais pārbaudes vaicājums.

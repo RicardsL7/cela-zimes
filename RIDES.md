@@ -88,6 +88,9 @@ Kopīgai darbībai:
 * Vērtēt un ziņot var tikai brauciena dalībnieks un tikai par otru pusi; vērtējumu — tikai pēc pabeigta brauciena.
 * Piedāvājuma šoferi un pieprasījumu, kā arī pieprasījuma autoru pēc izveides mainīt nevar; lietotne tieši drīkst
   mainīt tikai `status` (`supabase/rides-13-guard.sql`, audita labojums A01). Pārējo maina tikai servera funkcijas.
+* Piedāvājumu pieņem tikai servera funkcija `ride_offer_accept` vienā transakcijā; vienam pieprasījumam var būt tikai
+  viens pieņemts piedāvājums (unikāls indekss). Tieši lietotne drīkst tikai noraidīt, atcelt piedāvājumu un atcelt
+  pieprasījumu (`supabase/rides-14-accept.sql`, audita labojums A02).
 
 ## Vēl nav (nākamie soļi)
 

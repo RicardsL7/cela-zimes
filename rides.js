@@ -289,6 +289,7 @@ class LocalRideStore {
     if (!o) return;
     const req = d.requests.find(r => r.id === o.request_id);
     if (!req || req.user_id !== this.id) return;
+    if (status === 'accepted' && req.status !== 'open') throw new Error('request_not_open');   // kā serverī (A02)
     o.status = status; o.responded_at = new Date().toISOString();
     if (status === 'accepted') {
       o.was_accepted = true;
@@ -342,6 +343,21 @@ class LocalRideStore {
 // Bez papildu bibliotēkām: Supabase Auth (anonīma pieteikšanās) + PostgREST caur fetch.
 // Drošību nodrošina datubāzes RLS noteikumi (skat. supabase/rides.sql): katrs var mainīt tikai
 // savus ierakstus, un tālruni redz tikai tas, ar kuru brauciens ir saskaņots.
+// Vai servera funkcijas (RPC) vēl nav — SQL fails nav palaists (PostgREST: 404 + PGRST202)?
+function rideRpcMissing(e, name) {
+  return !!e && e.status === 404 && /PGRST202|Could not find the function/.test(e.body || '') && (!name || (e.body || '').includes(name));
+}
+// Servera kļūdas teksts lietotājam (A02 u.c.); nezināmai — vispārīgs teksts.
+function rideErrorText(e) {
+  const b = (e && (e.body || e.message)) || '';
+  if (/request_not_open/.test(b)) return 'Šis pieprasījums jau ir saskaņots vai atcelts.';
+  if (/offer_not_pending/.test(b)) return 'Šoferis piedāvājumu atsauca vai tas vairs nav spēkā.';
+  if (/offer_not_found/.test(b)) return 'Piedāvājums vairs nav atrodams.';
+  if (/ride_offer_accept/.test(b)) return 'Lietotne ir atjaunināta — pārlādē lapu un mēģini vēlreiz.';
+  if (/mainīt nevar/.test(b)) return 'Šo darbību vairs nevar izdarīt — atjauno sarakstu.';
+  return 'Neizdevās. Pārbaudi internetu un mēģini vēlreiz.';
+}
+
 class SupabaseRideStore {
   // auth — kopīgā CzAuth instance (auth.js). Testos / otram lietotājam var padot atsevišķu atmiņu.
   constructor(cfg, storage = (typeof localStorage !== 'undefined' ? localStorage : null), auth = null) {
@@ -376,7 +392,7 @@ class SupabaseRideStore {
     await this._ensure();
     const r = await fetch(this.url + '/rest/v1/' + path, { ...opts, headers: this._h(opts.headers || {}) });
     const txt = await r.text();
-    if (!r.ok) throw new Error('Datubāze: ' + r.status + ' ' + txt.slice(0, 200));
+    if (!r.ok) throw Object.assign(new Error('Datubāze: ' + r.status + ' ' + txt.slice(0, 200)), { status: r.status, body: txt });
     return txt ? JSON.parse(txt) : null;
   }
   async profile() {
@@ -424,6 +440,12 @@ class SupabaseRideStore {
     return ok.map(o => ({ ...o, passenger: o.request.passenger, phone: ph[o.request.user_id] || '' }));
   }
   async respond(offerId, status) {
+    if (status === 'accepted') {
+      // A02: pieņemšana vienā servera transakcijā (supabase/rides-14-accept.sql). Ja serverī šīs funkcijas vēl nav
+      // (404 / PGRST202), izmanto veco ceļu — lai lietotne strādā arī pirms SQL palaišanas.
+      try { await this._rest('rpc/ride_offer_accept', { method: 'POST', body: JSON.stringify({ oid: offerId }) }); return; }
+      catch (e) { if (!rideRpcMissing(e, 'ride_offer_accept')) throw e; }
+    }
     const [o] = await this._rest(`ride_offers?id=eq.${offerId}`, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ status }) });
     if (o && status === 'accepted') {
       await this.setRequestStatus(o.request_id, 'matched');
@@ -602,5 +624,5 @@ function createRideStore(cfg) {
 
 if (typeof module !== 'undefined') {
   module.exports = { rideFareCapCents, rideParsePrice, rideMoney, rideSplit, RIDE_FEE_PCT, rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
-    rideTimeText, rideDistText, rideStage, rideFresh, rideEtaMinutes, ridePassengerStatus, rideDriverStatus, rideUnread, rideMsgTime, rideStatsEmpty, rideHistWithdrawn, RIDE_DECLINED_SHOW_MS, rideDeclinedAt, rideDeclinedRecent, rideDeclinedText, RIDE_REPORT_REASONS, rideCountText, rideRatingText, rideStarsText, rideAvg, rideDateText, ridePayText, rideSummaryPending, rideHistoryFromOffer, rideRateErr, LocalRideStore, SupabaseRideStore, createRideStore, RIDE_OFFER_STATUS };
+    rideTimeText, rideDistText, rideStage, rideFresh, rideEtaMinutes, ridePassengerStatus, rideDriverStatus, rideUnread, rideMsgTime, rideStatsEmpty, rideHistWithdrawn, RIDE_DECLINED_SHOW_MS, rideDeclinedAt, rideDeclinedRecent, rideDeclinedText, RIDE_REPORT_REASONS, rideCountText, rideRatingText, rideStarsText, rideAvg, rideDateText, ridePayText, rideSummaryPending, rideHistoryFromOffer, rideRateErr, rideRpcMissing, rideErrorText, LocalRideStore, SupabaseRideStore, createRideStore, RIDE_OFFER_STATUS };
 }

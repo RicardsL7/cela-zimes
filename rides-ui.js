@@ -459,12 +459,28 @@ function ridesRequestCard(r) {
         o.note ? rEl('p', { class: 'r-note', text: '“' + o.note + '”' }) : null,
         rEl('div', { class: 'r-actions' },
           ridesChatBtn(o.id, (o.driver && o.driver.name) || 'Šoferis'),
-          rEl('button', { class: 'btn ghost', type: 'button', text: 'Noraidīt', onclick: async () => { await rides.store.respond(o.id, 'declined'); ridesRefresh(true); } }),
-          rEl('button', { class: 'btn primary', type: 'button', text: 'Pieņemt', onclick: async () => { await rides.store.respond(o.id, 'accepted'); ridesRefresh(true); ridesToast('Brauciens saskaņots!'); } }))));
+          rEl('button', { class: 'btn ghost', type: 'button', text: 'Noraidīt', onclick: e => ridesRespond(e.currentTarget, o.id, 'declined') }),
+          rEl('button', { class: 'btn primary', type: 'button', text: 'Pieņemt', onclick: e => ridesRespond(e.currentTarget, o.id, 'accepted') }))));
     }
     card.append(rEl('button', { class: 'link-btn r-cancel', type: 'button', text: 'Atsaukt pieprasījumu', onclick: () => ridesConfirmCancel(r) }));
   }
   return card;
+}
+// A02: pieņemt / noraidīt — pogas bloķētas, kamēr pieprasījums iet (nav dubultklikšķa); kļūdu parāda; saraksts atjaunojas vienmēr.
+async function ridesRespond(btn, offerId, status) {
+  const acts = btn && btn.closest('.r-actions');
+  const btns = acts ? [...acts.querySelectorAll('button')] : [btn];
+  btns.forEach(b => { b.disabled = true; });
+  try {
+    await rides.store.respond(offerId, status);
+    if (status === 'accepted') ridesToast('Brauciens saskaņots!');
+  } catch (e) {
+    console.warn('Piedāvājums', e);
+    ridesToast(rideErrorText(e), true);
+  } finally {
+    btns.forEach(b => { b.disabled = false; });
+    ridesRefresh(true);
+  }
 }
 function ridesConfirmCancel(r) {
   const card = document.activeElement && document.activeElement.closest('.r-card');
@@ -568,9 +584,11 @@ function ridesMyOfferCard(o) {
   const acts = rEl('div', { class: 'r-actions' });
   if (st !== 'onboard') acts.append(rEl('button', { class: 'btn ghost', type: 'button', text: 'Atcelt', onclick: async e => {
     e.currentTarget.disabled = true;
-    await rides.store.cancelOffer(o.id);
-    if (ok) await ridesRefundAfterCancel(o);              // samaksāts ar karti → automātiska atmaksa
-    ridesRefresh(true);
+    try {
+      await rides.store.cancelOffer(o.id);
+      if (ok) await ridesRefundAfterCancel(o);            // samaksāts ar karti → automātiska atmaksa
+    } catch (err) { console.warn(err); ridesToast(rideErrorText(err), true); }
+    finally { ridesRefresh(true); }
   } }));
   acts.append(ridesChatBtn(o.id, (o.passenger && o.passenger.name) || 'Pasažieris'));
   const step = (text, fn) => acts.append(rEl('button', { class: 'btn primary', type: 'button', text, onclick: async e => {
