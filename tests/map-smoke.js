@@ -124,4 +124,17 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
   fs.writeFileSync(OUT + '.json', JSON.stringify({ res, logs, net: [...net] }, null, 1));
   console.log(JSON.stringify({ res: { ...res, layers: Array.isArray(res.layers) ? res.layers.length : res.layers }, nlogs: logs.length }, null, 1));
   await browser.close();
-})();
+  // A08: spriedums (GitHub Actions) — kods 1, ja karte neielādējās, kāds solis kļūdījās, XSS izpildījās vai lapā bija kļūda
+  const bad = [];
+  if (!res.styleLoaded) bad.push('karte neielādējās');
+  if (res.xss) bad.push('attribution XSS izpildījās');
+  const want = (fs.readFileSync(path.join(ROOT, 'index-gl.html'), 'utf8').match(/maplibre-gl@(\d+\.\d+\.\d+)\/dist\/maplibre-gl\.mjs/) || [])[1];
+  if (want && res.version !== want) bad.push('MapLibre versija ' + res.version + ', gaidīta ' + want);
+  for (const [k, v] of Object.entries({ ...res.steps, ...(res.app || {}) })) if (typeof v === 'string' && v.startsWith('ERR')) bad.push(k + ': ' + v);
+  for (const k of ['popup', 'routeAfterStyle']) if (res.app && res.app[k] !== 'true') bad.push(k + ': ' + (res.app && res.app[k]));
+  if (res.app && !/alert:police/.test(res.app.alertImg || '')) bad.push('brīdinājuma ikona netika uzzīmēta');
+  if (!Array.isArray(res.layers) || res.layers.length < 10) bad.push('par maz slāņu: ' + JSON.stringify(res.layers).slice(0, 80));
+  for (const l of logs) if (l.startsWith('PAGEERROR')) bad.push(l.slice(0, 200));
+  if (bad.length) { console.error('KARTES TESTS NEIZDEVĀS:\n  ' + bad.join('\n  ')); process.exit(1); }
+  console.log('Kartes tests: viss kārtībā (MapLibre ' + res.version + ')');
+})().catch(e => { console.error(e); process.exit(1); });

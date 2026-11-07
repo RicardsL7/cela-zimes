@@ -4,6 +4,10 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+// A08: Windows ar git core.autocrlf failus var izdot ar CRLF rindu beigām — testi (un ielādētie moduļi) vienmēr redz LF,
+// tāpēc rezultāts nav atkarīgs no operētājsistēmas. (.gitattributes arī liek LF, šis — drošībai.)
+const readRaw = fs.readFileSync;
+fs.readFileSync = function () { const r = readRaw.apply(fs, arguments); return typeof r === 'string' ? r.replace(/\r\n/g, '\n') : r; };
 
 const ctx = vm.createContext({ console, Intl, Date, Math, Map, Set, JSON, Number, String, Array, Object, isNaN, setTimeout, clearTimeout,
   signSvg: () => '<svg/>', encodeURIComponent, decodeURIComponent, escape, URLSearchParams, Buffer, Error, Promise });
@@ -2852,6 +2856,37 @@ test('A07: trūkstošie attēli (MapLibre 6) un skaidra ziņa, ja karte neielād
   ok(/if \(this\.map\.hasImage\(id\)\) return Promise\.resolve\(\);/.test(li) && /if \(this\._pend\.has\(id\)\) return this\._pend\.get\(id\);/.test(li) && /return p;\s*\}\s*$/.test(li), 'loadImage atgriež solījumu (vienu uz attēlu)');
   ok((li.match(/end\(\)/g) || []).length >= 3 && /f\.onerror = end;/.test(li), 'solījums izpildās arī kļūdas gadījumā (karte negaida mūžīgi)');
   ok(fs.existsSync(path.join(__dirname, 'map-smoke.js')), 'kartes dūmu tests repozitorijā');
+});
+
+// ---------- A08 (audits 07.11.2026): atkārtojami testi visur + automātiski GitHub ----------
+test('A08: LF rindu beigas, GitHub Actions (Linux + Windows, datubāze, karte)', () => {
+  const ga = fs.readFileSync(path.join(__dirname, '..', '.gitattributes'), 'utf8');
+  ok(/^\* text=auto eol=lf$/m.test(ga) && /^\*\.png binary$/m.test(ga), '.gitattributes: LF, attēli bināri');
+  // CRLF fails dod tieši to pašu saturu (Windows ar core.autocrlf)
+  const tmp = path.join(require('os').tmpdir(), 'cz-crlf-' + process.pid + '.txt');
+  readRaw.call(fs, __filename);                     // oriģinālā funkcija joprojām pieejama
+  require('fs').writeFileSync(tmp, 'a\r\nb\r\n');
+  eq(fs.readFileSync(tmp, 'utf8'), 'a\nb\n', 'CRLF → LF'); require('fs').unlinkSync(tmp);
+  const wf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'tests.yml'), 'utf8');
+  ok(/pull_request:/.test(wf) && /branches: \[main\]/.test(wf), 'katrai izmaiņai main un pull request');
+  ok(/os: \[ubuntu-latest, windows-latest\]/.test(wf) && /- run: node tests\/run\.js/.test(wf), 'JS testi Linux un Windows');
+  ok(/image: postgres:16/.test(wf) && /- run: bash tests\/run-sql\.sh/.test(wf), 'datubāzes testi');
+  ok(/node tests\/map-smoke\.js \. /.test(wf) && /releases\/download\/v\$V\/dist\.zip/.test(wf), 'kartes tests ar lietotnes MapLibre versiju');
+  ok(/permissions:\s*\n\s*contents: read/.test(wf) && !/secrets\./.test(wf), 'tikai lasīšanas tiesības, bez slepenajām atslēgām');
+});
+test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji', () => {
+  const sh = fs.readFileSync(path.join(__dirname, 'run-sql.sh'), 'utf8');
+  const steps = (sh.match(/STEPS=\(([\s\S]*?)\n\)/) || [])[1] || '';
+  const listed = new Set([...steps.matchAll(/\bs:([\w.-]+\.sql)/g)].map(m => m[1]));
+  for (const f of fs.readdirSync(path.join(__dirname, '..', 'supabase')).filter(f => f.endsWith('.sql'))) ok(listed.has(f), 'run-sql.sh: trūkst supabase/' + f);
+  const tests = new Set([...steps.matchAll(/\bt:([\w.-]+\.sql)/g)].map(m => m[1]));
+  for (const f of fs.readdirSync(__dirname).filter(f => /-test\.sql$/.test(f))) ok(tests.has(f), 'run-sql.sh: netiek palaists tests/' + f);
+  ok(/\bp:rides-accept-parallel\.sh\b/.test(steps), 'paralēlais tests');
+  for (const f of ['rides-13-guard.sql', 'rides-14-accept.sql', 'rides-15-trip.sql', 'rides-16-checkout.sql'])
+    eq((steps.match(new RegExp('s:' + f.replace(/[.-]/g, '\\$&'), 'g')) || []).length, 2, f + ' palaists divreiz (atkārtojams)');
+  ok(steps.indexOf('s:rides-16-checkout.sql') < steps.indexOf('t:rides-guard-test.sql'), 'drošības scenāriji pēc labojumiem');
+  ok(/\[ "\$fail" -eq 0 \]\s*$/.test(sh), 'kods 1, ja kaut kas neizdevās');
+  ok(fs.existsSync(path.join(__dirname, 'sql', 'supabase-stub.sql')), 'Supabase aizstājējs testiem');
 });
 
 Promise.all(pending).then(() => {
