@@ -2798,6 +2798,28 @@ test('A03: SQL labojums un lietotnes pogas', () => {
   });
 }
 
+// ---------- A06 (audits 07.11.2026): noteikumos un privātuma politikā aizpildīts sniedzējs un kontakts ----------
+test('A06: noteikumi un privātuma politika — sniedzējs, kontakts, nekas nav palicis neaizpildīts', () => {
+  const SUPPORT = 'support.travel24@gmail.com';
+  for (const f of ['terms.html', 'privacy.html']) {
+    const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    ok(!/AIZPILD/i.test(h), f + ': nav [AIZPILDĪT]');
+    ok(!/class="todo"/.test(h), f + ': nav piezīmes „vēl jāpapildina”');
+    ok(/<b>Ričards Liepa<\/b>, privātpersona, Latvija/.test(h), f + ': sniedzējs / pārzinis');
+    ok(h.includes(`<a href="mailto:${SUPPORT}">${SUPPORT}</a>`), f + ': atbalsta e-pasts kā saite');
+    // Publiskajās lapās drīkst būt TIKAI atbalsta adrese (ne īpašnieka personīgā)
+    const mails = [...new Set((h.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || []))];
+    eq(mails.join(','), SUPPORT, f + ': vienīgā e-pasta adrese');
+  }
+  const t = fs.readFileSync(path.join(__dirname, '..', 'terms.html'), 'utf8');
+  eq((t.match(/support\.travel24@gmail\.com<\/a>/g) || []).length, 2, 'terms.html: kontakts 1. punktā un pie maksājumiem');
+  const pr = fs.readFileSync(path.join(__dirname, '..', 'privacy.html'), 'utf8');
+  eq((pr.match(/support\.travel24@gmail\.com<\/a>/g) || []).length, 2, 'privacy.html: pārzinis un tiesību punkts');
+  // Versijas nemainītas: tikai identitātes aizpildīšana, lietotājiem atkārtoti piekrist nav jāprasa
+  ok(/Versija 2026-10-23/.test(t) && /CZ_TERMS_VERSION = '2026-10-23'/.test(fs.readFileSync(path.join(__dirname, '..', 'auth.js'), 'utf8')), 'noteikumu versija sakrīt ar auth.js');
+  ok(/Versija 2026-11-01/.test(pr) && /CZ_PRIVACY_VERSION = '2026-11-01'/.test(fs.readFileSync(path.join(__dirname, '..', 'auth.js'), 'utf8')), 'politikas versija sakrīt ar auth.js');
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
