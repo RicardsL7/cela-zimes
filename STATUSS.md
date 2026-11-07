@@ -127,3 +127,13 @@
 - Pārbaude lokālā PostgreSQL: `tests/rides-trip-test.sql` 39/39; A02 32/32, paralēlais 6/6, A01 30/30 ar visiem trim labojumiem. JS: 138/138.
 - Versija: rides.js v148, rides-ui.js v148 (arī admin.html).
 - Produkcijā: jāpalaiž `rides-15-trip.sql` (pēc `rides-13-guard.sql` un `rides-14-accept.sql`) ar īpašnieka atļauju, pēc tam faila beigās esošais pārbaudes vaicājums.
+
+## A04 — viena maksājuma lapa braucienam (audits 07.11.2026)
+
+- Kļūda: divi vienlaicīgi „Maksāt ar karti” pieprasījumi (divas cilnes, atkārtots pieprasījums pēc tīkla kļūmes) izveidoja divas Stripe maksājuma sesijas vienam braucienam; datubāzē palika pēdējā, bet apmaksāt varēja abas. Imitācijā pierādīts: 2 sesijas.
+- Labojums:
+  - `supabase/rides-16-checkout.sql`: `ride_payments.attempt` (mēģinājuma numurs, klients to mainīt nevar), `ride_checkout_begin` un `ride_checkout_save` (rindas bloķēšana; vecāks mēģinājums nepārraksta jaunāku; samaksātu nepārraksta);
+  - `supabase/functions/ride-pay/index.ts` (bloks `<checkout-flow>`): jaunu sesiju veido ar Stripe Idempotency-Key `cz-checkout-<brauciens>-<numurs>` — vienlaicīgi pieprasījumi saņem vienu sesiju; atvērtu sesiju atdod atkārtoti; jaunu veido tikai, ja vecā beigusies (citas summas gadījumā veco aizver); ja Stripe par veco sesiju neatbild — jaunu neveido. Stripe kļūdām saglabāts statuss un tips.
+  - Lietotne (pārlūks) nemainās — poga jau bija atslēgta klikšķa laikā, atgriešanās adrese vienāda.
+- Pārbaude: `tests/rides-checkout-test.sql` 17/17 (lokālā PostgreSQL); JS 147/147, t. sk. 2 un 10 vienlaicīgi pieprasījumi pret Stripe imitāciju → 1 sesija; TypeScript stingrā pārbaude bez kļūdām. Īstā Stripe testa vidē nav pārbaudīts.
+- Produkcijā (ar īpašnieka atļauju, šādā secībā): 1) `rides-16-checkout.sql` SQL redaktorā; 2) izvietot servera funkciju `ride-pay` (viens fails index.ts). Vecā ride-pay ar jauno SQL strādā; jaunā ride-pay bez SQL maksājuma lapu neatvērs.
