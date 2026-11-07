@@ -2458,6 +2458,76 @@ test('A01: dalībnieku aizsardzība un lietotne maina tikai statusu', () => {
   ok(fs.existsSync(path.join(__dirname, 'rides-guard-test.sql')), 'SQL scenārija tests ir repozitorijā');
 });
 
+// ---------- A02 (audits 07.11.2026): pieņemšana vienā servera transakcijā ----------
+// Uzvedību (arī divas sesijas vienlaikus) pārbauda tests/rides-accept-test.sql un tests/rides-accept-parallel.sh.
+test('A02: pieņemšana caur ride_offer_accept, vecais ceļš tikai ja funkcijas vēl nav', async () => {
+  const S = G('SupabaseRideStore'), missing = G('rideRpcMissing'), errText = G('rideErrorText');
+  const mk = handler => { const st = Object.create(S.prototype); st.auth = { userId: 'me' }; st.calls = [];
+    st._rest = async (p, o = {}) => { st.calls.push({ p, method: o.method || 'GET', body: o.body }); return handler(p, o); }; return st; };
+  const err = (status, body) => Object.assign(new Error('Datubāze: ' + status), { status, body });
+  // 1) Funkcija ir — tikai viens izsaukums, bez tiešiem PATCH
+  let st = mk(() => ({ ok: true, already: false }));
+  await st.respond('o1', 'accepted');
+  eq(st.calls.length, 1); eq(st.calls[0].p, 'rpc/ride_offer_accept'); eq(st.calls[0].method, 'POST'); eq(st.calls[0].body, JSON.stringify({ oid: 'o1' }));
+  // 2) Funkcijas vēl nav serverī (404 PGRST202) — vecais trīs soļu ceļš
+  st = mk(p => { if (p.startsWith('rpc/')) throw err(404, '{"code":"PGRST202","message":"Could not find the function public.ride_offer_accept(oid)"}'); return [{ id: 'o1', request_id: 'r1' }]; });
+  await st.respond('o1', 'accepted');
+  eq(st.calls.map(c => c.method).join(','), 'POST,PATCH,PATCH,PATCH', 'rpc → pieņemt → matched → noraidīt pārējos');
+  // 3) Servera atteikums (piem. otrā cilne) — NEkrīt atpakaļ uz veco ceļu, kļūda tiek parādīta
+  st = mk(p => { if (p.startsWith('rpc/')) throw err(400, '{"code":"P0001","message":"request_not_open"}'); return []; });
+  let caught = null; try { await st.respond('o1', 'accepted'); } catch (e) { caught = e; }
+  ok(caught, 'kļūda nodota tālāk'); eq(st.calls.length, 1, 'nav tiešu PATCH pēc atteikuma');
+  eq(errText(caught), 'Šis pieprasījums jau ir saskaņots vai atcelts.');
+  // 4) Noraidīšana — joprojām tiešs PATCH {status}
+  st = mk(() => [{ id: 'o1', request_id: 'r1' }]);
+  await st.respond('o1', 'declined');
+  eq(st.calls.length, 1); eq(st.calls[0].method, 'PATCH'); eq(st.calls[0].body, JSON.stringify({ status: 'declined' }));
+  // rideRpcMissing atpazīst tikai īsto „funkcijas nav”
+  ok(missing(err(404, 'PGRST202 ride_offer_accept'), 'ride_offer_accept'), '404 PGRST202');
+  ok(!missing(err(404, 'PGRST202 cita_funkcija'), 'ride_offer_accept'), 'cita funkcija');
+  ok(!missing(err(400, 'request_not_open'), 'ride_offer_accept'), '400 nav „funkcijas nav”');
+  ok(!missing(new Error('Failed to fetch'), 'ride_offer_accept'), 'tīkla kļūda nav „funkcijas nav”');
+  eq(errText(err(400, 'offer_not_pending')), 'Šoferis piedāvājumu atsauca vai tas vairs nav spēkā.');
+  eq(errText(err(400, 'offer_not_found')), 'Piedāvājums vairs nav atrodams.');
+  ok(/pārlādē lapu/.test(errText(err(403, 'Piedāvājumu pieņem tikai caur ride_offer_accept'))), 'vecā lietotne → pārlādēt');
+  eq(errText(new Error('Failed to fetch')), 'Neizdevās. Pārbaudi internetu un mēģini vēlreiz.');
+});
+test('A02: demo krātuve — otru piedāvājumu pieņemt nevar', async () => {
+  const L = G('LocalRideStore');
+  const m = {}; const st = { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; } };
+  const store = new L(st);
+  store._save({ requests: [{ id: 'r1', user_id: store.id, status: 'open' }],
+    offers: [{ id: 'o1', request_id: 'r1', driver_id: 'd1', status: 'pending' }, { id: 'o2', request_id: 'r1', driver_id: 'd2', status: 'pending' }] });
+  await store.respond('o1', 'accepted');
+  let d = store._load(); eq(d.requests[0].status, 'matched'); eq(d.offers[1].status, 'declined');
+  let caught = null; try { await store.respond('o2', 'accepted'); } catch (e) { caught = e; }
+  ok(caught && /request_not_open/.test(caught.message), 'otrais pieņemšanas mēģinājums atteikts');
+  d = store._load(); eq(d.offers.filter(o => o.status === 'accepted').length, 1, 'viens pieņemts');
+});
+test('A02: SQL labojums un lietotnes pogas', () => {
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'rides-14-accept.sql'), 'utf8');
+  const fn = sql.slice(sql.indexOf('function public.ride_offer_accept'), sql.indexOf('$$;'));
+  ok(/security definer/.test(fn) && /for update/.test(fn), 'funkcija ir security definer un bloķē pieprasījumu');
+  ok(fn.indexOf('from ride_requests where id = rid for update') < fn.indexOf("update ride_offers set status = 'accepted'"), 'bloķē PIRMS maina');
+  ok(/r\.user_id is distinct from me/.test(fn), 'pieņemt drīkst tikai pieprasījuma autors');
+  ok(/revoke all on function public\.ride_offer_accept\(uuid\) from public, anon;/.test(sql), 'anon nevar izsaukt');
+  ok(/create unique index ride_offers_one_accepted on public\.ride_offers \(request_id\) where status = 'accepted'/.test(sql), 'unikāls indekss');
+  const guard = sql.slice(sql.indexOf('function public.ride_guard_status'));
+  ok(!/security definer/.test(guard.slice(0, guard.indexOf('$$;'))), 'statusa trigeris NAV security definer');
+  ok(/old\.status in \('pending', 'accepted', 'declined'\)/.test(guard), 'šoferis var atcelt arī tikko noraidītu piedāvājumu');
+  ok(sql.indexOf('rides-13-guard.sql') > 0, 'norādīta palaišanas secība');
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'rides-ui.js'), 'utf8');
+  const rr = ui.slice(ui.indexOf('async function ridesRespond'), ui.indexOf('function ridesConfirmCancel'));
+  ok(/b\.disabled = true/.test(rr) && /catch \(e\)/.test(rr) && /rideErrorText\(e\)/.test(rr) && /finally/.test(rr), 'pogas atslēdz, kļūdu parāda, sarakstu atjauno');
+  ok(/ridesRespond\(e\.currentTarget, o\.id, 'accepted'\)|ridesRespond\([^)]*'accepted'\)/.test(ui) && /ridesRespond\([^)]*'declined'\)/.test(ui), 'abas pogas izmanto ridesRespond');
+  ok(/cancelOffer\(o\.id\);[\s\S]{0,200}catch \(err\)[\s\S]{0,80}rideErrorText\(err\)/.test(ui), '„Atcelt” kļūda neiestrēgst');
+  for (const f of ['index.html', 'index-gl.html']) {
+    const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    ok(/rides\.js\?v=147/.test(h) && /rides-ui\.js\?v=147/.test(h), f + ': rides v147');
+  }
+  ok(fs.existsSync(path.join(__dirname, 'rides-accept-test.sql')) && fs.existsSync(path.join(__dirname, 'rides-accept-parallel.sh')), 'SQL testi repozitorijā');
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);

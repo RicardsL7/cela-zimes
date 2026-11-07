@@ -70,8 +70,11 @@ select pg_temp.ok('A01: passenger cannot read unrelated D''s phone', pg_temp.cou
 select pg_temp.as_user('a0000000-0000-0000-0000-00000000000a', $q$update ride_requests set status = 'open' where id = '11111111-0000-0000-0000-000000000001'$q$);
 
 -- ---------- The real flow still works (the app only sends {status}) ----------
-select pg_temp.ok('passenger can accept B''s offer (status only)', pg_temp.as_user('a0000000-0000-0000-0000-00000000000a',
-  $q$update ride_offers set status = 'accepted' where id = '22222222-0000-0000-0000-00000000000b'$q$) is null);
+-- After rides-14-accept.sql (A02) accepting goes only through ride_offer_accept; before it — a direct {status} write.
+select pg_temp.ok('passenger can accept B''s offer', pg_temp.as_user('a0000000-0000-0000-0000-00000000000a',
+  case when to_regprocedure('public.ride_offer_accept(uuid)') is null
+       then $q$update ride_offers set status = 'accepted' where id = '22222222-0000-0000-0000-00000000000b'$q$
+       else $q$select ride_offer_accept('22222222-0000-0000-0000-00000000000b')$q$ end) is null);
 select pg_temp.ok('passenger can mark the request matched', pg_temp.as_user('a0000000-0000-0000-0000-00000000000a',
   $q$update ride_requests set status = 'matched' where id = '11111111-0000-0000-0000-000000000001'$q$) is null);
 select pg_temp.ok('passenger can decline the other pending offers', pg_temp.as_user('a0000000-0000-0000-0000-00000000000a',
