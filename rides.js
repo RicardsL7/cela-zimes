@@ -140,6 +140,14 @@ function rideStage(o) {
   if (o.status !== 'accepted') return o.status;
   return o.trip || 'matched';
 }
+// A03: gaita tikai uz priekšu; „Pabeigts” tikai pēc „Pasažieris iekāpa” (tas pats noteikums ir datubāzē — rides-15-trip.sql)
+const RIDE_TRIP_ORDER = ['', 'coming', 'arrived', 'onboard', 'done'];
+function rideTripCheck(from, to) {
+  const a = RIDE_TRIP_ORDER.indexOf(from || ''), b = RIDE_TRIP_ORDER.indexOf(to || '');
+  if (b < 0) throw new Error('bad trip');
+  if (b < a) throw new Error('trip_backwards');
+  if (to === 'done' && from !== 'onboard' && from !== 'done') throw new Error('trip_not_onboard');
+}
 function rideFresh(at, now = Date.now(), maxMs = 120000) { const t = Date.parse(at); return Number.isFinite(t) && now - t < maxMs; }
 // Aptuvenais laiks minūtēs pa pilsētas ceļiem (taisnā līnija × 1,3; ~25 km/h).
 function rideEtaMinutes(m) { return Math.max(1, Math.round(m * 1.3 / 7 / 60)); }
@@ -257,6 +265,7 @@ class LocalRideStore {
   async myRequests() { return this._load().requests.filter(r => r.user_id === this.id && (r.status === 'open' || r.status === 'matched')); }
   async setRequestStatus(id, status) {
     const d = this._load(); const r = d.requests.find(x => x.id === id && x.user_id === this.id);
+    if (r && status === 'cancelled' && d.offers.some(o => o.request_id === id && o.status === 'accepted' && (o.trip === 'onboard' || o.trip === 'done'))) throw new Error('trip_started');   // A03
     if (r) { r.status = status; this._save(d); }
   }
   async openRequests() {
@@ -302,6 +311,7 @@ class LocalRideStore {
     const d = this._load(); const o = d.offers.find(x => x.id === offerId && x.driver_id === this.id);
     if (!o) return;
     const req = d.requests.find(r => r.id === o.request_id);
+    if (o.status === 'accepted' && (o.trip === 'onboard' || o.trip === 'done')) throw new Error('trip_started');   // A03
     if (o.status === 'accepted' && req && req.status === 'matched') req.status = 'open';
     o.status = 'cancelled'; this._save(d);
   }
@@ -317,6 +327,7 @@ class LocalRideStore {
   async driverUpdate(offerId, u) {
     const d = this._load(); const o = d.offers.find(x => x.id === offerId && x.driver_id === this.id && x.status === 'accepted');
     if (!o) return;
+    if (u.trip != null && u.trip !== (o.trip || '')) rideTripCheck(o.trip || '', u.trip);   // kā serverī (A03)
     if (u.trip != null) o.trip = u.trip;
     if (u.lat != null) { o.drv_lat = u.lat; o.drv_lng = u.lng; o.drv_heading = u.heading ?? null; o.drv_at = new Date().toISOString(); }
     if (u.trip === 'done') { const r = d.requests.find(x => x.id === o.request_id); if (r) r.status = 'done'; }
@@ -353,6 +364,9 @@ function rideErrorText(e) {
   if (/request_not_open/.test(b)) return 'Šis pieprasījums jau ir saskaņots vai atcelts.';
   if (/offer_not_pending/.test(b)) return 'Šoferis piedāvājumu atsauca vai tas vairs nav spēkā.';
   if (/offer_not_found/.test(b)) return 'Piedāvājums vairs nav atrodams.';
+  if (/trip_started/.test(b)) return 'Pasažieris jau iekāpis — braucienu atcelt nevar. Pabeidz to ar „Brauciens pabeigts”.';
+  if (/trip_backwards|trip_not_onboard/.test(b)) return 'Brauciena gaita jau ir mainījusies — saraksts atjaunots.';
+  if (/trip_not_active/.test(b)) return 'Pasažieris braucienu atcēla vai tas jau beidzies.';
   if (/ride_offer_accept/.test(b)) return 'Lietotne ir atjaunināta — pārlādē lapu un mēģini vēlreiz.';
   if (/mainīt nevar/.test(b)) return 'Šo darbību vairs nevar izdarīt — atjauno sarakstu.';
   return 'Neizdevās. Pārbaudi internetu un mēģini vēlreiz.';
@@ -623,6 +637,6 @@ function createRideStore(cfg) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { rideFareCapCents, rideParsePrice, rideMoney, rideSplit, RIDE_FEE_PCT, rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
+  module.exports = { rideTripCheck, RIDE_TRIP_ORDER, rideFareCapCents, rideParsePrice, rideMoney, rideSplit, RIDE_FEE_PCT, rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
     rideTimeText, rideDistText, rideStage, rideFresh, rideEtaMinutes, ridePassengerStatus, rideDriverStatus, rideUnread, rideMsgTime, rideStatsEmpty, rideHistWithdrawn, RIDE_DECLINED_SHOW_MS, rideDeclinedAt, rideDeclinedRecent, rideDeclinedText, RIDE_REPORT_REASONS, rideCountText, rideRatingText, rideStarsText, rideAvg, rideDateText, ridePayText, rideSummaryPending, rideHistoryFromOffer, rideRateErr, rideRpcMissing, rideErrorText, LocalRideStore, SupabaseRideStore, createRideStore, RIDE_OFFER_STATUS };
 }

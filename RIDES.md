@@ -91,6 +91,9 @@ Kopīgai darbībai:
 * Piedāvājumu pieņem tikai servera funkcija `ride_offer_accept` vienā transakcijā; vienam pieprasījumam var būt tikai
   viens pieņemts piedāvājums (unikāls indekss). Tieši lietotne drīkst tikai noraidīt, atcelt piedāvājumu un atcelt
   pieprasījumu (`supabase/rides-14-accept.sql`, audita labojums A02).
+* Brauciena gaita iet tikai uz priekšu (gaida → brauc pakaļ → klāt → ceļā → pabeigts), pabeigt var tikai pēc iekāpšanas.
+  Iekāpšanas un pabeigšanas laiku pieraksta datubāze, un tos mainīt nevar. Kad pasažieris iekāpis, braucienu lietotnē
+  atcelt nevar (`supabase/rides-15-trip.sql`, audita labojums A03).
 
 ## Vēl nav (nākamie soļi)
 

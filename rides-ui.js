@@ -490,9 +490,11 @@ function ridesConfirmCancel(r) {
     rEl('button', { class: 'btn danger small', type: 'button', text: 'Jā, atcelt', onclick: async e => {
       e.currentTarget.disabled = true;
       const acc = (rides.offers[r.id] || []).find(o => o.status === 'accepted');
-      await rides.store.setRequestStatus(r.id, 'cancelled');
-      if (acc) await ridesRefundAfterCancel(acc);          // samaksāts ar karti → automātiska atmaksa
-      ridesRefresh(true);
+      try {
+        await rides.store.setRequestStatus(r.id, 'cancelled');
+        if (acc) await ridesRefundAfterCancel(acc);        // samaksāts ar karti → automātiska atmaksa
+      } catch (err) { console.warn(err); ridesToast(rideErrorText(err), true); box.remove(); }
+      finally { ridesRefresh(true); }
     } }));
   (card || $('ridesBody')).append(box);
 }
@@ -594,7 +596,7 @@ function ridesMyOfferCard(o) {
   const step = (text, fn) => acts.append(rEl('button', { class: 'btn primary', type: 'button', text, onclick: async e => {
     e.target.disabled = true;
     // F9: kļūda — uznirstošā ziņa (kartīte pēc ridesRefresh tiek pārzīmēta, ziņa tajā pazustu)
-    try { await fn(); } catch (err) { console.warn(err); ridesToast('Neizdevās — pārbaudi internetu un mēģini vēlreiz.', true); }
+    try { await fn(); } catch (err) { console.warn(err); ridesToast(rideErrorText(err), true); }
     ridesRefresh(true);
   } }));
   const pickup = { name: 'Pasažieris: ' + ((o.passenger && o.passenger.name) || ''), sub: r.from_name, lat: r.from_lat, lng: r.from_lng };

@@ -113,3 +113,17 @@
 - Pārbaude lokālā PostgreSQL: `tests/rides-accept-test.sql` 32/32, `tests/rides-accept-parallel.sh` (divas sesijas vienlaikus) 6/6, `tests/rides-guard-test.sql` (A01) 30/30 ar abiem labojumiem. JS: 136/136.
 - Versija: rides.js v147, rides-ui.js v147.
 - Produkcijā: jāpalaiž `rides-14-accept.sql` (pēc `rides-13-guard.sql`) ar īpašnieka atļauju, pēc tam faila beigās esošais pārbaudes vaicājums.
+
+## A03 — brauciena gaita tikai uz priekšu (audits 07.11.2026)
+
+- Kļūda (lokāli pierādīta): šoferis pabeigtu braucienu varēja pārtīt atpakaļ (done → arrived), jaunu piedāvājumu izveidot uzreiz ar trip='onboard', un iesākta brauciena vidū atcelt to (pieprasījums atvērās no jauna, pasažierim esot mašīnā). Automātiskā atmaksa paļaujas uz to, vai pasažieris bija iekāpis — tātad to varēja apiet.
+- Labojums `supabase/rides-15-trip.sql` (palaist PĒC rides-13 un rides-14):
+  - `onboard_at` / `done_at` — iekāpšanas un pabeigšanas laiku uzliek datubāze vienu reizi; pēc tam to nevar mainīt neviens (arī servera funkcijas); esošajiem braucieniem aizpilda;
+  - trigeris `ride_guard_trip`: gaita tikai uz priekšu un tikai saskaņotam piedāvājumam, „Pabeigts” tikai pēc „Pasažieris iekāpa”; jauns piedāvājums vienmēr sākas ar tukšu gaitu; pēc iekāpšanas lietotne braucienu atcelt nevar (ne šoferis, ne pasažieris — trigeris `ride_requests_guard_started`);
+  - `ride_driver_update`: gaitu maina tikai, kamēr pieprasījums saskaņots; pieprasījumu 'done' liek tikai tiešām pabeigtam;
+  - `ride_refund_candidates`: „atcelts pirms iekāpšanas” = `onboard_at` nav uzlikts;
+  - īpašniekam ar roku labot: `set local cz.trip_repair = 'on'` (lietotnes lietotājiem nedarbojas).
+- Lietotne: tas pats noteikums demo krātuvē (`rideTripCheck`); saprotami kļūdu teksti; pasažiera „Jā, atcelt” kļūda neiestrēgst. Servera funkcija ride-pay nav jāmaina (tā skatās trip, kas vairs neiet atpakaļ).
+- Pārbaude lokālā PostgreSQL: `tests/rides-trip-test.sql` 39/39; A02 32/32, paralēlais 6/6, A01 30/30 ar visiem trim labojumiem. JS: 138/138.
+- Versija: rides.js v148, rides-ui.js v148 (arī admin.html).
+- Produkcijā: jāpalaiž `rides-15-trip.sql` (pēc `rides-13-guard.sql` un `rides-14-accept.sql`) ar īpašnieka atļauju, pēc tam faila beigās esošais pārbaudes vaicājums.
