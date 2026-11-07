@@ -1151,8 +1151,8 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
   const ui = fs.readFileSync(path.join(__dirname, '..', 'rides-ui.js'), 'utf8');
   test('F14: atmaksa — Stripe Refund ar reverse_transfer, refund_application_fee un idempotences atslēgu', () => {
     ok(/stripe\('refunds', \{[\s\S]*?reverse_transfer: 'true', refund_application_fee: 'true'/.test(fn), 'refund parametri');
-    ok(/'refund-' \+ oid/.test(fn) && /'Idempotency-Key': idem/.test(fn), 'Idempotency-Key refund-<id>');
-    ok(/if \(info\.refundedCents > 0\)/.test(fn) && /Šis brauciens jau ir atmaksāts/.test(fn), 'dubulta atmaksa atteikta');
+    ok(/refundKey\(oid, st\)/.test(fn) && /`refund-\$\{oid\}-\$\{st\.refunded\}-\$\{st\.failed\}`/.test(fn) && /'Idempotency-Key': idem/.test(fn), 'Idempotency-Key refund-<id>-<atmaksāts>-<neizdevušās> (A05)');
+    ok(/if \(st\.full\) \{/.test(fn) && /Šis brauciens jau ir atmaksāts/.test(fn) && /if \(st\.pending > 0\) return result\(st, true\);/.test(fn), 'dubulta atmaksa atteikta (arī, kamēr atmaksa apstrādē — A05)');
   });
   test('F14: tiesības — šoferis pēc pieslēgtā lietotāja; automātiski tikai atceltam pirms iekāpšanas', () => {
     ok(/const isDriver = o\.driver_id === uid/.test(fn) && /Atmaksāt var tikai šī brauciena šoferis/.test(fn), 'šoferis pēc uid');
@@ -1167,7 +1167,7 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
     ok(!/create or replace function public\.ride_payment_mark/.test(sql), 'vecā (authenticated) funkcija vairs netiek veidota');
   });
   test('F14: saskarne — „Atmaksāt” tikai samaksātam un neatmaksātam, ar apstiprinājumu; ziņas kartītē / uznirstošas', () => {
-    ok(/if \(!\(ok && p && p\.paid && !p\.refunded\)\) return line;/.test(ui), 'poga tikai samaksātam');
+    ok(/if \(!\(ok && p && p\.paid && \(ri\.state === 'none' \|\| ri\.state === 'partial'\)\)\) return line;/.test(ui), 'poga tikai samaksātam (un neatmaksātam / daļēji atmaksātam — A05)');
     ok(/Atmaksāt pasažierim \$\{rideMoney\(amount\)\}\? Šo nevar atsaukt\./.test(ui), 'apstiprinājums');
     ok(/Nauda \$\{sum\} atmaksāta uz tavu karti\. Bankā tā parādīsies 5–10 darba dienu laikā\./.test(ui), 'pasažiera ziņa');
     const i = ui.indexOf('function ridesRefundBtn'), j = ui.indexOf('function ridesRefundSeenList');
@@ -1771,7 +1771,7 @@ test('F17: ride_payment_mark — tikai service_role, lietotājs no JWT, pārlūk
   ok(!/[^s]db\('rpc\/ride_payment_mark'/.test(fn), 'ar lietotāja JWT nesauc');
   ok(!/json\([^)]*SRK/.test(fn) && (fn.match(/SRK/g) || []).length <= 6, 'atslēga atbildē nenonāk');
   ok(/if \(i\.paid && r\.status === 'created'\) await mark\(r\.offer_id, 'paid'\)/.test(fn), 'paid tikai pēc Stripe');
-  ok(/if \(r\.status === 'failed' \|\| r\.status === 'canceled'\)[\s\S]{0,250}\}\s*await mark\(oid, 'refunded', r\.id/.test(fn), 'refunded tikai pēc veiksmīgas atmaksas');
+  ok(/if \(r\.status === 'failed' \|\| r\.status === 'canceled'\)[\s\S]{0,700}if \(st2\.full\) await mark\(oid, 'refunded', r\.id/.test(fn), 'refunded tikai pēc veiksmīgas un pilnas atmaksas (A05)');
   for (const f of fs.readdirSync(path.join(__dirname, '..')).filter(f => /\.(js|html)$/.test(f))) {
     const code = fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/^\s*\/\/.*$/gm, '');   // komentāri (piem. brīdinājums rides-config.js) neskaitās
     ok(!/ride_payment_mark|service_role|SERVICE_ROLE/i.test(code), f + ': nesauc / nav atslēgas');
@@ -2298,7 +2298,7 @@ test('F19: stripe-webhook — paraksts, notikumi, idempotence, tikai uz priekšu
   for (const e of ['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'checkout.session.async_payment_failed', 'checkout.session.expired', 'charge.refunded'])
     ok(wh.includes(`'${e}'`), e);
   ok(/obj\.payment_status === 'paid' \? await syncOffer/.test(wh), 'paid tikai, ja payment_status = paid');
-  ok(/amount_refunded\) < Number\(obj\.amount\)/.test(wh), 'daļēja atmaksa netiek atzīmēta');
+  ok(/if \(rs\.full\) \{/.test(wh) && /daļēja atmaksa — netiek atzīmēta kā pilna/.test(wh), 'daļēja atmaksa netiek atzīmēta (A05: refundState)');
   ok(/rpc\/ride_payment_mark/.test(wh) && /p_user_id: passenger/.test(wh), 'raksta caur ride_payment_mark (service_role)');
   ok(/seen\?\.length\) return json\(\{ received: true, duplicate: true \}\)/.test(wh), 'atkārtots notikums neko nedara');
   ok(!/json\([^)]*(SRK|WHSEC|SK)\b/.test(wh), 'atslēgas atbildē nenonāk');
@@ -2577,7 +2577,7 @@ test('A03: SQL labojums un lietotnes pogas', () => {
   ok(/if \(st !== 'onboard'\) acts\.append/.test(ui), '„Atcelt” paslēpts ceļā (abām lomām)');
   for (const f of ['index.html', 'index-gl.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    ok(/rides\.js\?v=148/.test(h) && /rides-ui\.js\?v=148/.test(h), f + ': rides v148');
+    ok(/rides\.js\?v=(14[89]|1[5-9]\d)/.test(h) && /rides-ui\.js\?v=(14[89]|1[5-9]\d)/.test(h), f + ': rides v148+');
   }
   ok(fs.existsSync(path.join(__dirname, 'rides-trip-test.sql')), 'SQL scenārija tests repozitorijā');
 });
@@ -2709,6 +2709,92 @@ test('A03: SQL labojums un lietotnes pogas', () => {
     ok(/revoke all on function public\.ride_checkout_begin\(uuid\) from public, anon;/.test(sql), 'anon nevar');
     ok(/if tg_op = 'INSERT' then new\.attempt := 1; else new\.attempt := old\.attempt;/.test(sql), 'klients numuru nemaina');
     ok(fs.existsSync(path.join(__dirname, 'rides-checkout-test.sql')), 'SQL scenārija tests');
+  });
+}
+
+// ---------- A05 (audits 07.11.2026): viena atmaksas stāvokļa loģika ----------
+{
+  const RP = path.join(__dirname, '..', 'supabase', 'functions', 'ride-pay', 'index.ts');
+  const WH = path.join(__dirname, '..', 'supabase', 'functions', 'stripe-webhook', 'index.ts');
+  const blockOf = f => { const m = fs.readFileSync(f, 'utf8').match(/\/\/ <refund-state>[\s\S]*?\/\/ <\/refund-state>/); return m ? m[0] : null; };
+  const loadRS = () => {
+    const strip = require('module').stripTypeScriptTypes;
+    const warn = process.emitWarning; process.emitWarning = () => {};
+    let js; try { js = strip(blockOf(RP)); } finally { process.emitWarning = warn; }
+    return new Function(js + '\nreturn { refundState, refundKey };')();
+  };
+  const R = (amount, status, created = 1, id = 're_' + status + created) => ({ id, amount, status, created, metadata: { cz_reason: 'driver_refund' } });
+
+  test('A05: abas servera funkcijas lieto VIENU UN TO PAŠU atmaksas loģiku', () => {
+    const a = blockOf(RP), b = blockOf(WH);
+    ok(a && b, 'bloks <refund-state> abos failos'); eq(a, b, 'bloki burtiski vienādi');
+    for (const f of [RP, WH]) {
+      const t = fs.readFileSync(f, 'utf8');
+      ok(!/refundedCents|okRefunds|amount_refunded/.test(t.replace(/\/\/[^\n]*/g, '').replace(/application_fees[\s\S]*?f\.amount_refunded/, '')), path.basename(path.dirname(f)) + ': vecā atmaksas loģika izņemta');
+    }
+  });
+  test('A05: imitācija atklāj veco kļūdu (daļēja / gaidoša atmaksa = „atmaksāts”)', () => {
+    // agrākā loģika: refundedCents = charge.amount_refunded vai succeeded+pending summa; > 0 → „atmaksāts”
+    const old = refunds => refunds.filter(r => r.status === 'succeeded' || r.status === 'pending').reduce((a, r) => a + r.amount, 0) > 0;
+    const { refundState } = loadRS();
+    eq(old([R(200, 'succeeded')]), true, 'vecā: 2 € no 5 € = atmaksāts'); eq(refundState(500, [R(200, 'succeeded')]).full, false, 'jaunā: nav pilna');
+    eq(old([R(500, 'pending')]), true, 'vecā: gaidoša = atmaksāts'); eq(refundState(500, [R(500, 'pending')]).full, false, 'jaunā: nav pilna');
+  });
+  test('A05: refundState — nav, daļēja, apstrādē, pilna, neizdevusies', () => {
+    const { refundState: rs, refundKey } = loadRS();
+    let x = rs(500, []);
+    eq(x.state, 'none'); eq(x.refunded, 0); eq(x.remaining, 500); eq(x.full, false);
+    x = rs(500, [R(200, 'succeeded')]);
+    eq(x.state, 'partial'); eq(x.refunded, 200); eq(x.remaining, 300); eq(x.full, false); eq(x.refundId, 're_succeeded1');
+    x = rs(500, [R(500, 'pending')]);
+    eq(x.state, 'pending'); eq(x.pending, 500); eq(x.refunded, 0); eq(x.remaining, 0); eq(x.full, false);
+    eq(rs(500, [R(500, 'requires_action')]).state, 'pending', 'requires_action = apstrādē');
+    x = rs(500, [R(200, 'succeeded', 1), R(300, 'pending', 2)]);
+    eq(x.state, 'pending'); eq(x.refunded, 200); eq(x.pending, 300); eq(x.remaining, 0);
+    x = rs(500, [R(200, 'succeeded', 1), R(300, 'succeeded', 5, 're_last')]);
+    eq(x.state, 'full'); eq(x.full, true); eq(x.refunded, 500); eq(x.refundId, 're_last', 'jaunākā atmaksa'); eq(x.reason, 'driver_refund');
+    x = rs(500, [R(500, 'failed'), R(500, 'canceled', 2)]);
+    eq(x.state, 'none', 'neizdevusies netiek skaitīta'); eq(x.failed, 2); eq(x.remaining, 500);
+    eq(rs(500, [R(600, 'succeeded')]).full, true, 'vairāk par summu — pilna');
+    eq(rs(0, [R(100, 'succeeded')]).full, false, 'nesamaksātam nav „pilnas atmaksas”');
+    eq(rs(500, [null, { amount: 'x', status: 'succeeded' }]).refunded, 0, 'bojāti dati netiek skaitīti');
+    // atslēga: vienāda vienlaicīgiem klikšķiem, jauna pēc daļējas vai neizdevušās atmaksas
+    eq(refundKey('o1', rs(500, [])), refundKey('o1', rs(500, [])));
+    ok(refundKey('o1', rs(500, [])) !== refundKey('o1', rs(500, [R(200, 'succeeded')])), 'pēc daļējas — jauna atslēga');
+    ok(refundKey('o1', rs(500, [])) !== refundKey('o1', rs(500, [R(500, 'failed')])), 'pēc neizdevušās — jauna atslēga');
+  });
+  test('A05: ride-pay un webhook — „refunded” tikai pilnai atmaksai; gaidošai otru neveido', () => {
+    const rp = fs.readFileSync(RP, 'utf8'), wh = fs.readFileSync(WH, 'utf8');
+    const fn = rp.slice(rp.indexOf('const refund = async'), rp.indexOf('const body = await req.json()'));
+    ok(/if \(st\.full\) \{/.test(fn) && /if \(st\.pending > 0\) return result\(st, true\);/.test(fn), 'pilna → jau; apstrādē → otru neveido');
+    ok(!/amount:/.test(fn.slice(fn.indexOf("stripe('refunds'"), fn.indexOf('refundKey(oid, st)'))), 'atmaksā atlikumu (bez summas)');
+    ok(/const again = await payInfo\(p\.session_id, oid\);/.test(fn), 'kļūdas gadījumā pārbauda vēlreiz (otrs dalībnieks tieši tagad atmaksāja)');
+    ok(/if \(st2\.full\) await mark\(oid, 'refunded'/.test(fn), 'refunded — tikai pēc pilnas');
+    ok(/refunded: i\.rs\.full, refund_cents: i\.rs\.refunded,\s*refund_pending_cents: i\.rs\.pending, refund_state: i\.rs\.state/.test(rp), "'status' atdod pilnu / atmaksāto / gaidošo atsevišķi");
+    ok(/if \(i\.rs\.full\) \{/.test(rp) && /if \(i && i\.rs\.full\) recent\.push/.test(rp), "'sync' un 'refund_sync' — tikai pilna");
+    ok(/if \(ch && ch\.refunds\?\.has_more\)/.test(rp) && /if \(ch && ch\.refunds\?\.has_more\)/.test(wh), 'vairāk par 10 atmaksām — nolasa visas');
+    for (const ev of ['charge.refunded', 'charge.refund.updated', 'refund.created', 'refund.updated', 'refund.failed']) ok(wh.includes(`case '${ev}':`), 'webhook: ' + ev);
+    ok(!/amount_refunded\) < Number\(obj\.amount\)/.test(wh), 'webhook vairs neizlemj pēc notikuma laukiem');
+    ok(/if \(info\.paid && row\.status === 'created' && await mark\('paid'\)\) res = 'paid';/.test(wh), 'samaksāts tiek pierakstīts arī, ja daļēji atmaksāts');
+  });
+  test('A05: lietotne — pilna, daļēja un gaidoša atmaksa atšķirīgi', () => {
+    const ri = G('rideRefundInfo'), pt = G('ridePayText');
+    eq(ri(null, 500).state, 'none');
+    eq(ri({ paid: true, amount: 500, refunded: true, refund_cents: 500 }, 500).text, '↩ Atmaksāts 5,00 €');
+    const part = ri({ paid: true, amount: 500, refunded: false, refund_cents: 200, refund_state: 'partial' }, 500);
+    eq(part.state, 'partial'); eq(part.remaining, 300); ok(/Daļēji atmaksāts 2,00 € no 5,00 €/.test(part.text), part.text);
+    const pend = ri({ paid: true, amount: 500, refunded: false, refund_cents: 0, refund_pending_cents: 500, refund_state: 'pending' }, 500);
+    eq(pend.state, 'pending'); ok(/apstrādē 5,00 €/.test(pend.text), pend.text);
+    eq(ri({ paid: true, amount: 500, refunded: true, refund_cents: 500 }, 500).state, 'full', 'vecāka servera atbilde (bez refund_state)');
+    ok(/Daļēji/.test(pt({ price_cents: 500 }, { paid: true, amount: 500, refund_cents: 200, refund_state: 'partial' })), 'vēsturē daļēja');
+    eq(pt({ price_cents: 500, pay_status: 'paid' }, null), 'Samaksāts ar karti');
+    const ui = fs.readFileSync(path.join(__dirname, '..', 'rides-ui.js'), 'utf8');
+    ok(/const amount = rideRefundInfo\(p, o\.price_cents\)\.remaining/.test(ui), 'pēc daļējas — poga atmaksā atlikumu');
+    ok(/else if \(r && r\.pending && !r\.already\)/.test(ui), 'automātiskā atmaksa apstrādē — atsevišķa ziņa');
+    for (const f of ['index.html', 'index-gl.html']) {
+      const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+      ok(/rides\.js\?v=149/.test(h) && /rides-ui\.js\?v=149/.test(h), f + ': rides v149');
+    }
   });
 }
 
