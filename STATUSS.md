@@ -158,3 +158,16 @@
 - Personīgais e-pasts publiski netiek rādīts (tests pārbauda, ka lapās ir tikai atbalsta adrese).
 - Dokumentu versijas nemainītas (2026-10-23 / 2026-11-01): aizpildīta tikai identitāte, lietotājiem atkārtoti piekrist nav jāprasa.
 - Pārbaude: JS 153/153. Juridiski nav pārbaudīts — pirms īstas naudas ieteicams parādīt juristam; ja Supabase iestatīs citu e-pasta sūtītāju (piem. Resend/Brevo SMTP), tas jāpieraksta privātuma politikas 7. punktā.
+
+## A07 — MapLibre 4.7.1 → 6.15.0 (audits 07.11.2026)
+
+- Ievainojamība GHSA-jrc7-96c5-q579 (CVE-2026-85061, kritiska): `DOM.sanitize()` izlaida katru otro bīstamo atribūtu — kartes autortiesību teksts (attribution) no ārēja stila / flīžu servera (OpenFreeMap) varēja izpildīt JavaScript lietotnē bez neviena klikšķa. Labots ≥ 6.4.1; 4.x/5.x labojuma nav. Lokāli pierādīts ar mūsu lietotni: ar 4.7.1 ļaunprātīgs attribution izpildījās (`__xss=1`), ar 6.15.0 — nē.
+- Izvēlēta 6.15.0 (izlaista 18.10.2026, ≥ 2 nedēļas veca; jaunākās 6.16.0 vēl neņemu).
+- Izmaiņas:
+  - `index.html` / `index-gl.html`: MapLibre 6 ir tikai ES modulis — `<script type="module">` uzliek `window.maplibregl`; visi nākamie skripti `defer` (pārlūks tos izpilda pēc moduļa, tajā pašā secībā); CSS 6.15.0. Darba pavediens (worker) ielādējas no unpkg caur pašas bibliotēkas blob pārvadu.
+  - `app-gl.js`: trūkstošie zīmju/brīdinājumu attēli — `setMissingStyleImageResolver` (MapLibre 6), rezervē `styleimagemissing`; `zoomLevelsToOverscale: undefined` (ceļu flīzes kā 4.x — ceļu indeksam tie paši gabali); skaidra ziņa, ja MapLibre neielādējas (nav interneta) vai pārlūkam nav WebGL2 (6.x WebGL1 vairs neatbalsta).
+  - `signs-gl.js`: `loadImage` atgriež solījumu (vienu uz attēlu; izpildās arī kļūdas gadījumā).
+  - Pārbaudīts, ka kods neizmanto 5.x/6.x noņemto API (map.transform, antialias opcija, `on().on()` ķēdes, setData 2. parametrs, iekļauti skripti).
+- Pārbaude: `tests/map-smoke.js` (Playwright, Chromium ar programmatūras WebGL) — 4.7.1 un 6.15.0 salīdzinājums: tie paši slāņi un avoti, kamera, marķieri, popup, maršruts, GPS bulta, brīdinājuma ikonas, stila maiņa — vienādi; ekrānuzņēmumi vienādi; 6.15.0 XSS neizpildās; bez WebGL / bez unpkg — ziņa ekrānā. JS 155/155.
+- Nav pārbaudīts: īstā OpenFreeMap karte ar flīzēm un fontiem (testa vidē tīkls bloķēts), īsts telefons / Android lietotne. Pēc izlaišanas vērts atvērt growlab.cc telefonā un pabraukt pa karti.
+- Produkcijā nekas nav jāpalaiž — GitHub Pages jau rāda jauno versiju.

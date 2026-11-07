@@ -587,15 +587,22 @@ class SignStore {
   }
 
   // Karte prasa attēlu, kura vēl nav: ielādē to un uzzīmē 64×64.
+  // A07: atgriež solījumu (Promise), kas izpildās, kad attēls pievienots (vai neizdevās) — MapLibre 6
+  // setMissingStyleImageResolver to sagaida; vecākā versijā (styleimagemissing notikums) atgriezto vērtību neizmanto.
   loadImage(id) {
-    if (this.loading.has(id) || this.map.hasImage(id)) return;
+    if (this.map.hasImage(id)) return Promise.resolve();
+    if (!this._pend) this._pend = new Map();
+    if (this._pend.has(id)) return this._pend.get(id);
     this.loading.add(id);
+    let finish;
+    const p = new Promise(res => { finish = res; });
+    this._pend.set(id, p);
+    const end = () => { this.loading.delete(id); this._pend.delete(id); finish(); };
     const url = this.iconUrl.get(id) || svgDataUrl({ kind: 'other' });
     // Brīdinājumu ikonas — 4× izšķirtspējā (asas arī telefonu ekrānos ar augstu blīvumu).
     const hi = /^alert:/.test(id), PX = hi ? Math.round(SIGN_IMG_PX * 2.25) : SIGN_IMG_PX;   // v121: laukums 72 (bija 64) — galva tikpat liela
     const done = (img) => {
-      this.loading.delete(id);
-      if (this.map.hasImage(id)) return;
+      if (this.map.hasImage(id)) return end();
       const c = document.createElement('canvas'); c.width = c.height = PX;
       const g = c.getContext('2d');
       const w = img.naturalWidth || PX, h = img.naturalHeight || PX;
@@ -604,12 +611,14 @@ class SignStore {
         g.drawImage(img, (PX - w * k) / 2, (PX - h * k) / 2, w * k, h * k);
         this.map.addImage(id, g.getImageData(0, 0, PX, PX), { pixelRatio: hi ? 4 : 2 });
       } catch { return fallback(); }
+      end();
       this.refresh();
     };
     const fallback = () => {
-      if (url === svgDataUrl({ kind: 'other' })) { this.loading.delete(id); return; }
+      if (url === svgDataUrl({ kind: 'other' })) return end();
       const f = new Image();
       f.onload = () => done(f);
+      f.onerror = end;
       f.src = svgDataUrl({ kind: 'other' });
     };
     const img = new Image();
@@ -617,6 +626,7 @@ class SignStore {
     img.onload = () => done(img);
     img.onerror = fallback;
     img.src = url;
+    return p;
   }
 
   // Atjauno kartē redzamās zīmes (ne biežāk kā ~8 reizes sekundē).

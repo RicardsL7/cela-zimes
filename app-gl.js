@@ -3447,13 +3447,30 @@ async function init() {
   const bm = await loadBasemapStyle(state.basemap);
   state.vector = bm.vector;
   setAlertTheme(bm.theme === 'dark' ? 'dark' : 'light');
-  map = new maplibregl.Map({
-    container: 'map', style: bm.style,
-    center: [START[1], START[0]], zoom: 15,
-    maxPitch: 65, fadeDuration: 250, renderWorldCopies: false,
-    pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
-    attributionControl: { compact: true },
-  });
+  // A07: MapLibre 6 — ES modulis no unpkg; WebGL2 obligāts. Ja karti nevar izveidot, skaidra ziņa, nevis tukšs ekrāns.
+  if (typeof maplibregl === 'undefined' || !maplibregl.Map) {
+    setStatus('Neizdevās ielādēt karti — pārbaudi internetu un atjauno lapu.', true);
+    return;
+  }
+  try {
+    map = new maplibregl.Map({
+      container: 'map', style: bm.style,
+      center: [START[1], START[0]], zoom: 15,
+      maxPitch: 65, fadeDuration: 250, renderWorldCopies: false,
+      pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+      attributionControl: { compact: true },
+      // A07: MapLibre 6 noklusējums (4) zoomā virs flīžu maxzoom sadala flīzes, un querySourceFeatures dod citādus ceļu
+      // gabalus (roads-gl.js ceļu indekss). undefined — kā MapLibre 4: virs maxzoom tikai palielina.
+      zoomLevelsToOverscale: undefined,
+    });
+  } catch (e) {
+    console.error(e);
+    map = null;
+    setStatus(/webgl/i.test(String(e && e.message))
+      ? 'Šajā pārlūkā karte nevar parādīties (vajag WebGL2). Atjauno pārlūku vai ieslēdz aparatūras paātrinājumu.'
+      : 'Neizdevās atvērt karti — atjauno lapu.', true);
+    return;
+  }
   signs = new SignStore(map);
   signs.decorate = signTimeInfo;
   // Radari — savā īpašajā slānī; pārējie brīdinājumi — kopējos punktos
@@ -3506,10 +3523,14 @@ async function init() {
   map.on('moveend', scheduleRoads);
   map.on('sourcedata', e => { if (e.sourceId === 'openmaptiles' && e.tile) { roadGen++; scheduleRoads(); } });
   map.on('resize', () => { clearTimeout(init._fit); init._fit = setTimeout(fitRoute, 250); });
-  map.on('styleimagemissing', e => {
-    if (/^alert:/.test(e.id)) { signs.iconUrl.set(e.id, alertDataUrl(e.id.slice(6))); signs.loadImage(e.id); }
-    else if (/^(mly|own):/.test(e.id)) signs.loadImage(e.id);
-  });
+  // Trūkstošs zīmes / brīdinājuma attēls → uzzīmē to. A07: MapLibre 6 — setMissingStyleImageResolver (karte sagaida
+  // attēlu, pirms to uzskata par trūkstošu); vecākā versijā — styleimagemissing notikums (tā pati funkcija).
+  const resolveImage = id => {
+    if (/^alert:/.test(id)) { signs.iconUrl.set(id, alertDataUrl(id.slice(6))); return signs.loadImage(id); }
+    if (/^(mly|own):/.test(id)) return signs.loadImage(id);
+  };
+  if (typeof map.setMissingStyleImageResolver === 'function') map.setMissingStyleImageResolver(resolveImage);
+  else map.on('styleimagemissing', e => { resolveImage(e.id); });
   map.on('moveend', () => { signs.refresh(); clearTimeout(init._t); init._t = setTimeout(loadAllForView, 150); loadReportsSoon(); });
   for (const ev of ['dragstart', 'rotatestart', 'pitchstart']) {
     map.on(ev, e => { if (e.originalEvent) state.follow = false; });
