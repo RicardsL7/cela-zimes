@@ -2440,6 +2440,24 @@ test('F16: admin.html — atsevišķa sesija, servera pārbaude, nav e-pasta', (
   ok(/new\.email_confirmed_at is not null/.test(fn('app_admin_from_pending')), 'īpašnieks tikai ar apstiprinātu e-pastu');
 });
 
+// ---------- A01 (audits 07.11.2026): piedāvājuma dalībnieki nemaināmi ----------
+// Uzvedību pārbauda tests/rides-guard-test.sql (lokālā PostgreSQL); šeit — ka lietotne joprojām sūta tikai {status}
+// (citādi kolonnu tiesības produkcijā to noraidītu) un ka labojuma fails nav pazudis.
+test('A01: dalībnieku aizsardzība un lietotne maina tikai statusu', () => {
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'rides-13-guard.sql'), 'utf8');
+  ok(/new\.driver_id is distinct from old\.driver_id/.test(sql) && /new\.request_id is distinct from old\.request_id/.test(sql) && /new\.user_id is distinct from old\.user_id/.test(sql), 'trigeris sargā driver_id, request_id, user_id');
+  ok(/if current_user in \('authenticated', 'anon'\)/.test(sql), 'servera funkcijas (kontu apvienošana) netiek bloķētas');
+  ok(!/security definer/.test(sql.slice(sql.indexOf('function public.ride_guard_participants'), sql.indexOf('$$;'))), 'trigera funkcija NAV security definer (citādi current_user būtu īpašnieks)');
+  ok(/revoke update on public\.ride_offers from public, anon, authenticated;/.test(sql) && /grant update \(status\) on public\.ride_offers to authenticated;/.test(sql) &&
+     /grant update \(status\) on public\.ride_requests to authenticated;/.test(sql), 'authenticated drīkst mainīt tikai status');
+  const js = fs.readFileSync(path.join(__dirname, '..', 'rides.js'), 'utf8');
+  const patches = [...js.matchAll(/_rest\(`(ride_offers|ride_requests)\?[^`]*`, \{ method: 'PATCH'[^\n]*?body: JSON\.stringify\((\{[^)]*\})\)/g)];
+  ok(patches.length >= 4, 'atrasti lietotnes PATCH pieprasījumi (' + patches.length + ')');
+  for (const m of patches) ok(/^\{ status(: '[a-z]+')? \}$/.test(m[2]), m[1] + ' PATCH sūta tikai status: ' + m[2]);
+  ok(!/(ride_offers|ride_requests)[^\n]*resolution=merge-duplicates/.test(js), 'nav upsert uz šīm tabulām (tam vajadzētu UPDATE tiesības)');
+  ok(fs.existsSync(path.join(__dirname, 'rides-guard-test.sql')), 'SQL scenārija tests ir repozitorijā');
+});
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
