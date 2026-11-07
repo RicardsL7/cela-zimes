@@ -2310,7 +2310,7 @@ test('F19: ride-pay „sync” — tikai īpašniekam, pa daļām; admin.html po
   const c = rp.slice(rp.indexOf("case 'sync'"), rp.indexOf("case 'refund_sync'"));
   ok(c.indexOf("rpc/is_app_admin") > 0 && c.indexOf("rpc/is_app_admin") < c.indexOf('sdb('), 'īpašnieka pārbaude pirms datiem');
   ok(/status=in\.\(created,paid\)/.test(c) && /offset=\$\{offset\}/.test(c), 'negalīgie, pa daļām');
-  ok(/client_reference_id: oid/.test(rp) && /metadata: \{ offer_id: oid \}/.test(rp) && /transfer_data: \{ destination: acct \}/.test(rp), 'sesijā brauciena ID; destination charges');
+  ok(/client_reference_id: oid/.test(rp) && /metadata: \{ offer_id: oid \}/.test(rp) && /transfer_data: \{ destination(: acct)? \}/.test(rp), 'sesijā brauciena ID; destination charges');
   const js = fs.readFileSync(path.join(__dirname, '..', 'admin.js'), 'utf8');
   ok(/action: 'sync', offset/.test(js) && /Pārbaudīti \$\{checked\}, atjaunoti \$\{updated\}/.test(js) && /await admLoad\(\)/.test(js), 'poga, rezultāts, pārlāde');
   const f = js.slice(js.indexOf('async function admSync'), js.indexOf('async function admFees'));
@@ -2581,6 +2581,136 @@ test('A03: SQL labojums un lietotnes pogas', () => {
   }
   ok(fs.existsSync(path.join(__dirname, 'rides-trip-test.sql')), 'SQL scenārija tests repozitorijā');
 });
+
+// ---------- A04 (audits 07.11.2026): viena maksājuma lapa braucienam ----------
+// ride-pay/index.ts bloks <checkout-flow> pret Stripe un datubāzes imitāciju. Imitācija dara to pašu, ko Stripe ar
+// Idempotency-Key (tā pati atslēga → tā pati sesija; kamēr pirmais pieprasījums vēl iet — 409) un ride_checkout_save (SQL).
+{
+  const mkWorld = (opts = {}) => {
+    const w = { sessions: new Map(), keys: new Map(), inflight: new Set(), created: 0, expired: [], row: null, n: 0, stripeDown: false };
+    const tick = () => new Promise(r => setTimeout(r, opts.lag ?? 5));
+    w.deps = {
+      begin: async () => { await tick(); return w.row ? { session_id: w.row.session_id, attempt: w.row.attempt } : { session_id: null, attempt: 0 }; },
+      retrieve: async id => { await tick(); return w.stripeDown ? null : (w.sessions.get(id) || null); },
+      create: async (params, key) => {
+        if (key && w.keys.has(key)) { const k = w.keys.get(key); if (k.params !== JSON.stringify(params)) throw Object.assign(new Error('idem'), { stripeStatus: 400, stripeType: 'idempotency_error' }); return w.sessions.get(k.id); }
+        if (key && w.inflight.has(key)) throw Object.assign(new Error('in flight'), { stripeStatus: 409, stripeType: 'idempotency_error' });
+        if (key) w.inflight.add(key);
+        await tick(); await tick();
+        const id = 'cs_test_' + (++w.n).toString().padStart(12, '0');
+        const s = { id, url: 'https://checkout.stripe.test/' + id, status: 'open', payment_status: 'unpaid', amount_total: params ? params.amount : 500, metadata: { offer_id: 'o1' } };
+        w.sessions.set(id, s); w.created++;
+        if (key) { w.keys.set(key, { id, params: JSON.stringify(params) }); w.inflight.delete(key); }
+        return s;
+      },
+      expire: async id => { await tick(); const s = w.sessions.get(id); if (s && s.status === 'open') { s.status = 'expired'; w.expired.push(id); } },
+      save: async (id, attempt) => {                       // tas pats, ko ride_checkout_save
+        await tick();
+        if (!w.row) { w.row = { session_id: id, attempt, status: 'created' }; return true; }
+        if (w.row.session_id === id) { w.row.attempt = Math.max(w.row.attempt, attempt); return true; }
+        if (w.row.status !== 'created' || attempt <= w.row.attempt) return false;
+        w.row = { ...w.row, session_id: id, attempt }; return true;
+      },
+      sleep: ms => new Promise(r => setTimeout(r, Math.min(ms, 20))),
+    };
+    w.open = () => [...w.sessions.values()].filter(s => s.status === 'open').length;
+    return w;
+  };
+  const P = { amount: 500 };
+  const O = { oid: 'o1', price_cents: 500 };
+  // Kods tiek ņemts tieši no ride-pay/index.ts (bloks <checkout-flow>), lai tests pārbauda to pašu, kas tiek izvietots
+  const load = async () => {
+    const ts = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'ride-pay', 'index.ts'), 'utf8');
+    const m = ts.match(/\/\/ <checkout-flow>[^\n]*\n([\s\S]*?)\/\/ <\/checkout-flow>/);
+    if (!m) throw new Error('nav <checkout-flow> bloka');
+    const strip = require('module').stripTypeScriptTypes;
+    if (typeof strip !== 'function') throw new Error('vajag Node 22.13+ (module.stripTypeScriptTypes)');
+    const warn = process.emitWarning; process.emitWarning = () => {};
+    let js; try { js = strip(m[1]); } finally { process.emitWarning = warn; }
+    return new Function(js + '\nreturn { checkoutFlow, checkoutKey, CheckoutError, CHECKOUT_KEY_PREFIX };')();
+  };
+
+  test('A04: imitācija atklāj veco kļūdu (bez atslēgas divi klikšķi → divas sesijas)', async () => {
+    const w = mkWorld();
+    // vecā ride-pay loģika: nolasa rindu, ja nav — veido jaunu sesiju bez atslēgas un raksta virsū
+    const old = async () => { const r = await w.deps.begin(); if (!r.session_id) { const s = await w.deps.create(P, null); w.row = { session_id: s.id, attempt: 1, status: 'created' }; return s.url; } return w.sessions.get(r.session_id).url; };
+    const [a, b] = await Promise.all([old(), old()]);
+    eq(w.created, 2, 'divas sesijas'); ok(a !== b, 'divas dažādas maksājuma lapas');
+  });
+  test('A04: divi vienlaicīgi klikšķi → viena sesija, viena lapa', async () => {
+    const { checkoutFlow } = await load();
+    const w = mkWorld();
+    const [a, b] = await Promise.all([checkoutFlow(w.deps, O, P), checkoutFlow(w.deps, O, P)]);
+    eq(w.created, 1, 'Stripe izveidoja vienu sesiju'); eq(a.url, b.url, 'abiem tā pati lapa'); eq(w.row.attempt, 1); eq(w.open(), 1);
+  });
+  test('A04: desmit vienlaicīgi pieprasījumi → viena sesija', async () => {
+    const { checkoutFlow } = await load();
+    const w = mkWorld({ lag: 3 });
+    const all = await Promise.all(Array.from({ length: 10 }, () => checkoutFlow(w.deps, O, P)));
+    eq(w.created, 1); eq(new Set(all.map(r => r.url)).size, 1); eq(w.open(), 1);
+  });
+  test('A04: atvērtu sesiju atdod atkārtoti; beigušās vietā — jauna ar nākamo numuru', async () => {
+    const { checkoutFlow, checkoutKey } = await load();
+    const w = mkWorld();
+    const a = await checkoutFlow(w.deps, O, P);
+    const b = await checkoutFlow(w.deps, O, P);
+    eq(b.url, a.url); eq(b.reused, true); eq(w.created, 1);
+    w.sessions.get(a.session_id).status = 'expired';
+    const c = await checkoutFlow(w.deps, O, P);
+    ok(c.url !== a.url, 'jauna lapa'); eq(w.row.attempt, 2); eq(w.created, 2); eq(w.open(), 1);
+    ok(w.keys.has(checkoutKey('o1', 2)), 'atslēga ar numuru 2');
+    const [d, e] = await Promise.all([checkoutFlow(w.deps, O, P), checkoutFlow(w.deps, O, P)]);
+    eq(d.url, c.url); eq(e.url, c.url); eq(w.created, 2);
+  });
+  test('A04: samaksāts / apstrādē / Stripe neatbild — jaunu sesiju neveido', async () => {
+    const { checkoutFlow } = await load();
+    const code = async (w) => { try { await checkoutFlow(w.deps, O, P); return 'ok'; } catch (e) { return e.code + ':' + e.status; } };
+    let w = mkWorld(); const a = await checkoutFlow(w.deps, O, P);
+    w.sessions.get(a.session_id).payment_status = 'paid'; w.sessions.get(a.session_id).status = 'complete';
+    eq(await code(w), 'already_paid:409'); eq(w.created, 1);
+    w = mkWorld(); const b = await checkoutFlow(w.deps, O, P);
+    w.sessions.get(b.session_id).status = 'complete';
+    eq(await code(w), 'processing:409'); eq(w.created, 1);
+    w = mkWorld(); await checkoutFlow(w.deps, O, P); w.stripeDown = true;
+    eq(await code(w), 'stripe_unreachable:502'); eq(w.created, 1, 'vecā vēl varētu būt apmaksājama — jaunu neveido');
+  });
+  test('A04: cita summa — veco aizver, tad jauna (vienlaikus apmaksājama tikai viena)', async () => {
+    const { checkoutFlow } = await load();
+    const w = mkWorld(); const a = await checkoutFlow(w.deps, O, P);
+    const r = await checkoutFlow(w.deps, { oid: 'o1', price_cents: 700 }, { amount: 700 });
+    ok(r.url !== a.url); eq(w.expired[0], a.session_id, 'vecā aizvērta'); eq(w.open(), 1);
+  });
+  test('A04: atslēga ar citiem datiem (cits logs) → saprotama kļūda, nevis otra sesija', async () => {
+    const { checkoutFlow, checkoutKey } = await load();
+    const w = mkWorld();
+    w.keys.set(checkoutKey('o1', 1), { id: 'x', params: '{"amount":1}' });
+    let err = null; try { await checkoutFlow(w.deps, O, P); } catch (e) { err = e; }
+    eq(err && err.code, 'in_other_tab'); eq(w.created, 0);
+  });
+  test('A04: atslēga atdod vecu beigušos sesiju (saglabāšana bija neizdevusies) → nākamais numurs', async () => {
+    const { checkoutFlow, checkoutKey } = await load();
+    const w = mkWorld();
+    const old = await w.deps.create(P, checkoutKey('o1', 1)); old.status = 'expired';    // izveidota, bet datubāzē nav
+    const r = await checkoutFlow(w.deps, O, P);
+    ok(r.url !== old.url, 'jauna lapa'); eq(w.row.attempt, 2); eq(w.open(), 1);
+  });
+  test('A04: ride-pay izmanto checkoutFlow un idempotences atslēgu; SQL fails', () => {
+    const ts = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'ride-pay', 'index.ts'), 'utf8');
+    ok(/\/\/ <checkout-flow>/.test(ts) && /\/\/ <\/checkout-flow>/.test(ts) && ts.indexOf('// <checkout-flow>') < ts.indexOf("case 'checkout':"), 'checkoutFlow tajā pašā failā (viens fails izvietošanai)');
+    const ck = ts.slice(ts.indexOf("case 'checkout':"), ts.indexOf("case 'status':"));
+    ok(/checkoutFlow\(/.test(ck) && /rpc\/ride_checkout_begin/.test(ck) && /rpc\/ride_checkout_save/.test(ck), 'checkout iet caur checkoutFlow');
+    ok(/stripe\('checkout\/sessions', params\(await needAcct\(\)\), key\)/.test(ck), 'sesiju veido ar atslēgu');
+    ok(!/resolution=merge-duplicates/.test(ck) && !/db\('ride_payments', \{ method: 'POST'/.test(ck), 'vairs nav aklas pārrakstīšanas');
+    ok(!/Date\.now\(\)|expires_at|Math\.random/.test(ck), 'parametros nav mainīgu vērtību (citādi atslēga nestrādātu)');
+    ok(/f\.stripeStatus = r\.status; f\.stripeType = j\?\.error\?\.type;/.test(ts), 'Stripe kļūdas statuss un tips saglabāts');
+    const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'rides-16-checkout.sql'), 'utf8');
+    ok(/function public\.ride_checkout_save[\s\S]*for update of o[\s\S]*for update;/.test(sql), 'saglabāšana bloķē rindas');
+    ok(/if p\.status <> 'created' or p_attempt <= p\.attempt then return false;/.test(sql), 'vecāks / samaksāts netiek pārrakstīts');
+    ok(/revoke all on function public\.ride_checkout_begin\(uuid\) from public, anon;/.test(sql), 'anon nevar');
+    ok(/if tg_op = 'INSERT' then new\.attempt := 1; else new\.attempt := old\.attempt;/.test(sql), 'klients numuru nemaina');
+    ok(fs.existsSync(path.join(__dirname, 'rides-checkout-test.sql')), 'SQL scenārija tests');
+  });
+}
 
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
