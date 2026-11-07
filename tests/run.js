@@ -452,7 +452,7 @@ test('v134: nobrauktā daļa — blāva līnija; griezums seko bultai arī pie v
   ok(/loc\.off <= ROUTE_CUT_M/.test(app) && /const ROUTE_CUT_M = 70;/.test(app), 'griezums arī tad, kad bulta nav piesaistīta');
   for (const f of ['index.html', 'index-gl.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    ok(/nav\.js\?v=134/.test(h) && /app-gl\.js\?v=1[34]\d/.test(h), f + ': v134');
+    ok(/nav\.js\?v=134/.test(h) && /app-gl\.js\?v=1[3-9]\d/.test(h), f + ': v134');
   }
 });
 
@@ -1446,7 +1446,8 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
     ok(/czToast\('Maršrutu neizdevās atrast\. Pamēģini vēlreiz\.', true\)/.test(app) && !/setStatus\('Maršrutu neizdevās/.test(app));
     // F2: onGpsError un startGps ziņas tagad iet caur vienu gpsShow() izsaukumu (5 → 4)
     const left = (app.match(/setStatus\([^)]*\)/g) || []).filter(x => !/^setStatus\(text(, force = false)?\)$/.test(x));
-    eq(left.length, 3, 'app-gl.js: tikai kartes statuss (zīmju skaits, GPS problēma, centrēšana; „GPS darbojas” vairs nerāda — v123): ' + left.join(' | '));
+    // A07: +2 — kartes ielādes kļūdas (MapLibre modulis neielādējās / nav WebGL2) arī ir kartes statuss
+    eq(left.length, 5, 'app-gl.js: tikai kartes statuss (zīmju skaits, GPS problēma, centrēšana, karte neielādējās ×2; „GPS darbojas” vairs nerāda — v123): ' + left.join(' | '));
   });
 }
 
@@ -1866,10 +1867,10 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
   eq(ev(afn(1)[6], { icon: 'alert:traffic-light' }), 0.5, 'alerts slānī luksofors arī uz pusi mazāks');
   for (const f of ['index.html', 'index-gl.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    ok(/signs-gl\.js\?v=14[1-9]/.test(h) && /app-gl\.js\?v=14[1-9]/.test(h), f + ': v141');
-    ok(/app-gl\.js\?v=14[3-9]/.test(h), f + ': v143');
-    ok(/alerts\.js\?v=144/.test(h) && /signs-gl\.js\?v=14[4-9]/.test(h) && /app-gl\.js\?v=14[4-9]/.test(h), f + ': v144');
-    ok(/signs-gl\.js\?v=145/.test(h) && /app-gl\.js\?v=14[5-9]/.test(h), f + ': v145');
+    ok(/signs-gl\.js\?v=(14[1-9]|1[5-9]\d)/.test(h) && /app-gl\.js\?v=(14[1-9]|1[5-9]\d)/.test(h), f + ': v141');
+    ok(/app-gl\.js\?v=(14[3-9]|1[5-9]\d)/.test(h), f + ': v143');
+    ok(/alerts\.js\?v=144/.test(h) && /signs-gl\.js\?v=(14[4-9]|1[5-9]\d)/.test(h) && /app-gl\.js\?v=(14[4-9]|1[5-9]\d)/.test(h), f + ': v144');
+    ok(/signs-gl\.js\?v=(14[5-9]|1[5-9]\d)/.test(h) && /app-gl\.js\?v=(14[5-9]|1[5-9]\d)/.test(h), f + ': v145');
   }
   {
     // v145: traffic restrictions hidden from the map (alerts mode), still in the data for the "next ahead" card
@@ -1902,7 +1903,7 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
     const ps = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'scripts', 'patch-android.js'), 'utf8');
     ok(/FOREGROUND_SERVICE_LOCATION/.test(ps) && /POST_NOTIFICATIONS/.test(ps) && !/ACCESS_BACKGROUND_LOCATION/.test(ps), 'atļaujas: priekšplāna serviss ar atrašanās vietu, bez „vienmēr” atļaujas');
     for (const f of ['index.html', 'index-gl.html'])
-      ok(/app-gl\.js\?v=146/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': v146');
+      ok(/app-gl\.js\?v=(14[6-9]|1[5-9]\d)/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': v146');
   }
   // v142: icons ↔ dots — happens after about half the zoom-out, and the animation is twice as fast
   ok(/const MARKER_IN_ZOOM = 15\.6;/.test(ap141) && /const MARKER_OUT_ZOOM = 15\.2;/.test(ap141), 'v143: punkti parādās vēl agrāk (15,2 / 15,6)');
@@ -2172,7 +2173,7 @@ test('v131: iestatījumi — Braukšana / Sastrēgumi / Izskats / Konts un priv�
     const form = h.slice(h.indexOf('id="searchForm"'), h.indexOf('</form>'));
     ok(/id="settingsBtn"/.test(form), f + ': iestatījumi ar 1 pieskārienu — meklēšanas joslā');
     ok(!/id="fabMore"|id="toggleSigns"/.test(h), f + ': v132 — ⋯ un „Zīmes/Brīdin.” poga noņemta (dublēja galveno slēdzi)');
-    ok(/style-gl\.css\?v=13[2-9]/.test(h) && /app-gl\.js\?v=1[34]\d/.test(h), f + ': versijas ≥ v132');
+    ok(/style-gl\.css\?v=13[2-9]/.test(h) && /app-gl\.js\?v=1[3-9]\d/.test(h), f + ': versijas ≥ v132');
     ok(/<a id="call112" class="call-112" href="tel:112" hidden>/.test(h) && /Zvanīt 112/.test(h) && /places\.js\?v=133/.test(h), f + ': v133 — poga „Zvanīt 112”');
     ok(!/[A-Za-z]{4,} (settings|Settings)/.test(set.replace(/<[^>]+>/g, '')), f + ': bez angļu teksta');
   }
@@ -2818,6 +2819,39 @@ test('A06: noteikumi un privātuma politika — sniedzējs, kontakts, nekas nav 
   // Versijas nemainītas: tikai identitātes aizpildīšana, lietotājiem atkārtoti piekrist nav jāprasa
   ok(/Versija 2026-10-23/.test(t) && /CZ_TERMS_VERSION = '2026-10-23'/.test(fs.readFileSync(path.join(__dirname, '..', 'auth.js'), 'utf8')), 'noteikumu versija sakrīt ar auth.js');
   ok(/Versija 2026-11-01/.test(pr) && /CZ_PRIVACY_VERSION = '2026-11-01'/.test(fs.readFileSync(path.join(__dirname, '..', 'auth.js'), 'utf8')), 'politikas versija sakrīt ar auth.js');
+});
+
+// ---------- A07 (audits 07.11.2026): MapLibre 6.15.0 (XSS labojums GHSA-jrc7-96c5-q579, ≥ 6.4.1) ----------
+test('A07: MapLibre 6.15.0 — ES modulis pirms visiem skriptiem, pārējie defer', () => {
+  for (const f of ['index.html', 'index-gl.html']) {
+    const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    ok(!/maplibre-gl@[45]\./.test(h), f + ': vecā MapLibre izņemta');
+    const vers = [...h.matchAll(/maplibre-gl@(\d+)\.(\d+)\.(\d+)/g)].map(m => m.slice(1).map(Number));
+    eq(vers.length, 2, f + ': css + modulis');
+    for (const [a, b, c] of vers) ok(a > 6 || (a === 6 && (b > 4 || (b === 4 && c >= 1))), f + ': versija ≥ 6.4.1 (' + [a, b, c].join('.') + ')');
+    ok(h.includes('href="https://unpkg.com/maplibre-gl@6.15.0/dist/maplibre-gl.css"'), f + ': css 6.15.0');
+    const mod = `<script type="module">import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.15.0/dist/maplibre-gl.mjs'; window.maplibregl = maplibregl;</script>`;
+    ok(h.includes(mod), f + ': modulis uzliek window.maplibregl');
+    const after = h.slice(h.indexOf(mod) + mod.length);
+    const tags = after.match(/<script\b[^>]*>/g) || [];
+    ok(tags.length >= 25, f + ': skripti pēc moduļa');
+    ok(tags.every(t => /\sdefer\s/.test(t) && /\ssrc="/.test(t)), f + ': visi nākamie skripti ir defer (izpildās pēc moduļa, tajā pašā secībā)');
+    ok(!/<script>/.test(h), f + ': nav iekļautu (inline) klasisko skriptu, kas izpildītos ārpus secības');
+    ok(/app-gl\.js\?v=150/.test(h) && /signs-gl\.js\?v=150/.test(h), f + ': mainītie faili ar jaunu versiju');
+  }
+});
+test('A07: trūkstošie attēli (MapLibre 6) un skaidra ziņa, ja karte neielādējas', () => {
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  ok(/if \(typeof map\.setMissingStyleImageResolver === 'function'\) map\.setMissingStyleImageResolver\(resolveImage\);\s*else map\.on\('styleimagemissing', e => \{ resolveImage\(e\.id\); \}\);/.test(app), 'resolver (6) ar rezervi (4/5)');
+  ok(/if \(typeof maplibregl === 'undefined' \|\| !maplibregl\.Map\)/.test(app), 'modulis neielādējās → ziņa');
+  ok(/zoomLevelsToOverscale: undefined,/.test(app), 'ceļu flīzes kā MapLibre 4 (bez sadalīšanas virs maxzoom)');
+  ok(/try \{\s*map = new maplibregl\.Map\(\{[\s\S]{0,700}\}\);\s*\} catch \(e\) \{[\s\S]{0,200}vajag WebGL2/.test(app), 'nav WebGL2 → ziņa');
+  ok(!/antialias|preserveDrawingBuffer|map\.transform\b|\.on\([^)]*\)\.on\(/.test(app), 'nav MapLibre 5/6 noņemto API');
+  const sg = fs.readFileSync(path.join(__dirname, '..', 'signs-gl.js'), 'utf8');
+  const li = sg.slice(sg.indexOf('  loadImage(id) {'), sg.indexOf('  // Atjauno kartē redzamās zīmes'));
+  ok(/if \(this\.map\.hasImage\(id\)\) return Promise\.resolve\(\);/.test(li) && /if \(this\._pend\.has\(id\)\) return this\._pend\.get\(id\);/.test(li) && /return p;\s*\}\s*$/.test(li), 'loadImage atgriež solījumu (vienu uz attēlu)');
+  ok((li.match(/end\(\)/g) || []).length >= 3 && /f\.onerror = end;/.test(li), 'solījums izpildās arī kļūdas gadījumā (karte negaida mūžīgi)');
+  ok(fs.existsSync(path.join(__dirname, 'map-smoke.js')), 'kartes dūmu tests repozitorijā');
 });
 
 Promise.all(pending).then(() => {
