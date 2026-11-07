@@ -666,7 +666,7 @@ test('Y. Kopbraucieni: brauciena gaita, statusi, čats', async () => {
   await drv.driverUpdate(o.id, { trip: 'coming', lat: 56.951, lng: 24.11 });
   const o2 = (await pas.offersFor(r.id))[0];
   eq(o2.trip, 'coming'); ok(o2.drv_at);
-  await drv.driverUpdate(o.id, { trip: 'done' });
+  await drv.driverUpdate(o.id, { trip: 'onboard' }); await drv.driverUpdate(o.id, { trip: 'done' });   // A03: pabeigt tikai pēc iekāpšanas
   eq((await pas.myRequests()).length, 0, 'pabeigts brauciens vairs nav aktīvo sarakstā');
 });
 
@@ -1433,7 +1433,7 @@ test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
   test('F9: step() pogas, „Brauciens pabeigts”, publicēts, saskaņots, Stripe atgriešanās — uznirstošā ziņa', () => {
     const card = fnOf(ui, 'ridesMyOfferCard');
     ok(card && !/setStatus/.test(card), 'ridesMyOfferCard (step) bez setStatus');
-    ok(/ridesToast\('Neizdevās — pārbaudi internetu un mēģini vēlreiz\.', true\)/.test(card) && /ridesToast\('Brauciens pabeigts\. Paldies!'\)/.test(card));
+    ok(/ridesToast\(rideErrorText\(err\), true\)/.test(card) && /ridesToast\('Brauciens pabeigts\. Paldies!'\)/.test(card));
     ok(/ridesToast\('Pieprasījums publicēts — šoferi to redz\.'\)/.test(ui) && /ridesToast\('Brauciens saskaņots!'\)/.test(ui));
     const ret = fnOf(ui, 'ridesPayReturn');
     ok(ret && !/setStatus/.test(ret) && ret.indexOf('ridesOpen(true)') < ret.indexOf('ridesToast(msg'), 'ridesPayReturn: logs atveras, ziņa virs tā');
@@ -1512,7 +1512,7 @@ test('F13: pēc „pabeigts” abi redz kopsavilkumu; otrreiz vērtēt nevar; vi
   // otrs brauciens ar to pašu šoferi → vidējais
   const r2 = await pas.createRequest({ ...req, depart_at: new Date(Date.now() + 60000).toISOString() });
   await drv.offer(r2.id, { eta_min: 2 }); const o2 = (await pas.offersFor(r2.id))[0];
-  await pas.respond(o2.id, 'accepted'); await drv.driverUpdate(o2.id, { trip: 'done' });
+  await pas.respond(o2.id, 'accepted'); await drv.driverUpdate(o2.id, { trip: 'onboard' }); await drv.driverUpdate(o2.id, { trip: 'done' });
   await pas.rate(o2.id, 4);
   const sum = await pas.ratingSummary(['drv', pas.id, 'nav']);
   eq(sum.drv.avg, 4.5); eq(sum.drv.count, 2); eq(sum.drv.rides, 2); eq(sum[pas.id].avg, 4); eq(sum.nav.count, 0);
@@ -1716,7 +1716,7 @@ test('F16: LocalRideStore.myStats — lomas, atceltie, tukšs konts', async () =
   ok(empty(st0), 'tukšs konts'); eq(st0.driver_done + st0.passenger_done + st0.km_approx + st0.carried, 0, 'nulles');
   const req = { from_lat: 56.95, from_lng: 24.10, to_lat: 56.95, to_lng: 24.20, from_name: 'A', to_name: 'B', seats: 2, note: '', depart_at: new Date().toISOString() };
   const r = await pas.createRequest(req); await drv.offer(r.id, { eta_min: 3 });
-  const o = (await pas.offersFor(r.id))[0]; await pas.respond(o.id, 'accepted'); await drv.driverUpdate(o.id, { trip: 'done' });
+  const o = (await pas.offersFor(r.id))[0]; await pas.respond(o.id, 'accepted'); await drv.driverUpdate(o.id, { trip: 'onboard' }); await drv.driverUpdate(o.id, { trip: 'done' });
   const r2 = await pas.createRequest({ ...req, seats: 1 }); await drv.offer(r2.id, { eta_min: 3 });
   const o2 = (await pas.offersFor(r2.id))[0]; await pas.respond(o2.id, 'accepted'); await drv.cancelOffer(o2.id);
   const sp = await pas.myStats(), sd = await drv.myStats();
@@ -2523,9 +2523,63 @@ test('A02: SQL labojums un lietotnes pogas', () => {
   ok(/cancelOffer\(o\.id\);[\s\S]{0,200}catch \(err\)[\s\S]{0,80}rideErrorText\(err\)/.test(ui), '„Atcelt” kļūda neiestrēgst');
   for (const f of ['index.html', 'index-gl.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    ok(/rides\.js\?v=147/.test(h) && /rides-ui\.js\?v=147/.test(h), f + ': rides v147');
+    ok(/rides\.js\?v=(14[7-9]|1[5-9]\d)/.test(h) && /rides-ui\.js\?v=(14[7-9]|1[5-9]\d)/.test(h), f + ': rides v147+');
   }
   ok(fs.existsSync(path.join(__dirname, 'rides-accept-test.sql')) && fs.existsSync(path.join(__dirname, 'rides-accept-parallel.sh')), 'SQL testi repozitorijā');
+});
+
+// ---------- A03 (audits 07.11.2026): brauciena gaita tikai uz priekšu ----------
+// Uzvedību datubāzē pārbauda tests/rides-trip-test.sql; šeit — demo krātuve, kļūdu teksti, pogas un SQL faila saturs.
+test('A03: gaita tikai uz priekšu (demo krātuve kā serveris)', async () => {
+  const check = G('rideTripCheck'), errText = G('rideErrorText');
+  const thr = (a, b) => { try { check(a, b); return null; } catch (e) { return e.message; } };
+  eq(thr('', 'coming'), null); eq(thr('coming', 'arrived'), null); eq(thr('arrived', 'onboard'), null); eq(thr('onboard', 'done'), null);
+  eq(thr('', 'onboard'), null, 'uz priekšu var izlaist soli');
+  eq(thr('arrived', 'coming'), 'trip_backwards'); eq(thr('done', 'arrived'), 'trip_backwards'); eq(thr('onboard', ''), 'trip_backwards');
+  eq(thr('arrived', 'done'), 'trip_not_onboard', 'pabeigt tikai pēc iekāpšanas');
+  eq(thr('', 'kaut kas'), 'bad trip');
+  const L = G('LocalRideStore');
+  const m = {}; const st = { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; } };
+  const drv = new L(st); const me = drv.id;
+  drv._save({ requests: [{ id: 'r1', user_id: 'pas', status: 'matched' }], offers: [{ id: 'o1', request_id: 'r1', driver_id: me, status: 'accepted', trip: '' }] });
+  await drv.driverUpdate('o1', { trip: 'arrived' });
+  let e1 = null; try { await drv.driverUpdate('o1', { trip: 'done' }); } catch (e) { e1 = e.message; }
+  eq(e1, 'trip_not_onboard');
+  await drv.driverUpdate('o1', { trip: 'onboard' });
+  let e2 = null; try { await drv.cancelOffer('o1'); } catch (e) { e2 = e.message; }
+  eq(e2, 'trip_started'); eq(drv._load().offers[0].status, 'accepted', 'pēc iekāpšanas neatceļ');
+  await drv.driverUpdate('o1', { trip: 'done' }); eq(drv._load().requests[0].status, 'done');
+  let e3 = null; try { await drv.driverUpdate('o1', { trip: 'coming' }); } catch (e) { e3 = e.message; }
+  eq(e3, 'trip_backwards');
+  ok(/iekāpis/.test(errText(Object.assign(new Error('x'), { status: 403, body: '{"message":"trip_started: …"}' }))), 'trip_started teksts');
+  ok(/mainījusies/.test(errText(Object.assign(new Error('x'), { status: 403, body: 'trip_backwards: brauciena gaitu onboard → arrived atpakaļ mainīt nevar' }))), 'trip_backwards teksts (nevis vispārīgais „mainīt nevar”)');
+  ok(/atcēla/.test(errText(Object.assign(new Error('x'), { status: 403, body: 'trip_not_active' }))), 'trip_not_active teksts');
+});
+test('A03: SQL labojums un lietotnes pogas', () => {
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'rides-15-trip.sql'), 'utf8');
+  const guard = sql.slice(sql.indexOf('function public.ride_guard_trip'), sql.indexOf('create trigger ride_offers_guard_trip'));
+  ok(guard && !/security definer/.test(guard), 'gaitas trigeris NAV security definer');
+  ok(/tg_op = 'INSERT'[\s\S]{0,120}new\.trip := ''; new\.onboard_at := null; new\.done_at := null;/.test(guard), 'jauns piedāvājums sākas no nulles');
+  ok(/ride_trip_rank\(new\.trip\) < public\.ride_trip_rank\(old\.trip\)/.test(guard) && /trip_backwards/.test(guard), 'atpakaļ nevar (arī servera funkcijas — pārbaude nav ierobežota ar lomu)');
+  ok(/new\.trip = 'done' and old\.trip <> 'onboard'/.test(guard), 'pabeigt tikai pēc iekāpšanas');
+  ok(/when old\.onboard_at is not null then old\.onboard_at/.test(guard) && /when old\.done_at is not null then old\.done_at/.test(guard), 'notikumu laiki nemaināmi');
+  ok(/if client and new\.status is distinct from old\.status and old\.onboard_at is not null/.test(guard), 'pēc iekāpšanas lietotne neatceļ');
+  ok(/not client and current_setting\('cz\.trip_repair', true\) = 'on'/.test(guard), 'labošanas slēdzis tikai īpašniekam');
+  ok(/create trigger ride_offers_guard_trip before insert or update on public\.ride_offers/.test(sql), 'trigeris uz insert un update');
+  ok(/create trigger ride_requests_guard_started before update of status on public\.ride_requests/.test(sql), 'pasažieris neatceļ pēc iekāpšanas');
+  const du = sql.slice(sql.indexOf('function public.ride_driver_update'));
+  ok(/for update/.test(du) && /rst is distinct from 'matched'/.test(du) && /where id = o\.request_id and status = 'matched'/.test(du), 'ride_driver_update — tikai saskaņotam braucienam');
+  ok(/o\.onboard_at is null and o\.trip in \('', 'coming', 'arrived'\)/.test(sql), 'atmaksas kandidāti — tikai pirms iekāpšanas');
+  ok(sql.indexOf('update public.ride_offers set onboard_at') < sql.indexOf('create trigger ride_offers_guard_trip'), 'esošie dati aizpildīti PIRMS trigera');
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'rides-ui.js'), 'utf8');
+  const cc = ui.slice(ui.indexOf('function ridesConfirmCancel'), ui.indexOf('function ridesDriveView'));
+  ok(/catch \(err\)[\s\S]{0,60}rideErrorText\(err\)/.test(cc) && /finally \{ ridesRefresh\(true\); \}/.test(cc), 'pasažiera „Jā, atcelt” kļūda neiestrēgst');
+  ok(/if \(st !== 'onboard'\) acts\.append/.test(ui), '„Atcelt” paslēpts ceļā (abām lomām)');
+  for (const f of ['index.html', 'index-gl.html']) {
+    const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    ok(/rides\.js\?v=148/.test(h) && /rides-ui\.js\?v=148/.test(h), f + ': rides v148');
+  }
+  ok(fs.existsSync(path.join(__dirname, 'rides-trip-test.sql')), 'SQL scenārija tests repozitorijā');
 });
 
 Promise.all(pending).then(() => {
