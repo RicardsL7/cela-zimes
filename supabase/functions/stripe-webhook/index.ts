@@ -14,7 +14,8 @@
 // notiek PLATFORMAS kontā, tāpēc pietiek ar parasto webhook (nevajag „Connected accounts” notikumus).
 //
 // Notikumi: checkout.session.completed (ja payment_status = paid), checkout.session.async_payment_succeeded → „paid”;
-// charge.refunded (pilna atmaksa) → „refunded”; daļēja atmaksa — tikai žurnālā; async_payment_failed / expired — lietotnē
+// charge.refunded, refund.created / refund.updated / refund.failed, charge.refund.updated → atmaksas stāvoklis (A05: refundState —
+// „refunded” tikai, kad visa summa atdota; daļēja vai vēl gaidoša atmaksa — tikai žurnālā); async_payment_failed / expired — lietotnē
 // tāda statusa nav, tikai žurnālā. Pārējie — 200 un ignorē.
 // Statusu raksta ride_payment_mark (tikai service_role, tikai uz priekšu — „refunded” nekad nekļūst atpakaļ par „paid”).
 // Pirms rakstīšanas maksājuma stāvokli vēlreiz nolasa no Stripe (notikumu secība un atkārtojumi nav svarīgi).
@@ -52,21 +53,54 @@ async function sdb(path: string, init: RequestInit = {}): Promise<any> {
   return t ? JSON.parse(t) : null;
 }
 
-// Maksājuma stāvoklis no Stripe (tā pati loģika kā ride-pay payInfo)
-type PayInfo = { ok: boolean; paid: boolean; amount: number | null; refundedCents: number; refundId: string | null; refundReason: string | null };
+// <refund-state> — A05: VIENA atmaksas stāvokļa loģika abām servera funkcijām (ride-pay un stripe-webhook).
+// Šis bloks abos failos ir burtiski vienāds (to pārbauda tests/run.js) un testi to izpilda tieši no faila.
+// Stripe atmaksas statusi: succeeded — nauda atdota; pending / requires_action — vēl apstrādē (var arī neizdoties);
+// failed / canceled — nav atdots. Agrāk jebkura atmaksa (arī daļēja vai vēl gaidoša) tika uzskatīta par pilnu.
+type RfRefund = { id?: string; amount?: number; status?: string; created?: number; metadata?: { cz_reason?: string } | null };
+type RefundState = {
+  amount: number;          // samaksātā summa (centi)
+  refunded: number;        // jau atdots (tikai succeeded)
+  pending: number;         // vēl apstrādē
+  failed: number;          // neizdevušos / atcelto atmaksu skaits
+  remaining: number;       // vēl atmaksājams (amount − refunded − pending)
+  full: boolean;           // atdota visa summa — tikai tad datubāzē „refunded”
+  state: 'none' | 'partial' | 'pending' | 'full';
+  refundId: string | null; // jaunākā izdevusies atmaksa (pierakstam datubāzē)
+  reason: string | null;
+};
+function refundState(amount: number, refunds: RfRefund[]): RefundState {
+  const amt = Math.max(0, Math.round(Number(amount) || 0));
+  const list = (refunds || []).filter((r) => r && typeof r === 'object');
+  const sum = (xs: RfRefund[]) => xs.reduce((a, r) => a + Math.max(0, Math.round(Number(r.amount) || 0)), 0);
+  const ok = list.filter((r) => r.status === 'succeeded');
+  const pend = list.filter((r) => r.status === 'pending' || r.status === 'requires_action');
+  const failed = list.filter((r) => r.status === 'failed' || r.status === 'canceled').length;
+  const refunded = sum(ok), pending = sum(pend);
+  const full = amt > 0 && refunded >= amt;
+  const last = ok.slice().sort((a, b) => (Number(b.created) || 0) - (Number(a.created) || 0))[0];
+  return {
+    amount: amt, refunded, pending, failed, remaining: Math.max(0, amt - refunded - pending), full,
+    state: full ? 'full' : pending > 0 ? 'pending' : refunded > 0 ? 'partial' : 'none',
+    refundId: last && typeof last.id === 'string' ? last.id : null,
+    reason: (last && last.metadata && typeof last.metadata.cz_reason === 'string') ? last.metadata.cz_reason : null,
+  };
+}
+// Stripe Idempotency-Key atmaksai: vienāds vienlaicīgiem klikšķiem, jauns pēc katras izmaiņas (daļēja atmaksa vai neizdevusies)
+const refundKey = (oid: string, st: RefundState) => `refund-${oid}-${st.refunded}-${st.failed}`;
+// </refund-state>
+
+// Maksājuma stāvoklis no Stripe (atmaksas — tā pati refundState kā ride-pay)
+type PayInfo = { ok: boolean; paid: boolean; amount: number | null; rs: RefundState };
 async function payInfo(sessionId: string, oid: string): Promise<PayInfo> {
   const s = await stripe('checkout/sessions/' + sessionId + '?expand[]=payment_intent.latest_charge.refunds');
   const ok = s.metadata?.offer_id === oid;
   const pi = s.payment_intent && typeof s.payment_intent === 'object' ? s.payment_intent : null;
   const ch = pi && pi.latest_charge && typeof pi.latest_charge === 'object' ? pi.latest_charge : null;
-  // deno-lint-ignore no-explicit-any
-  const refunds: any[] = ch?.refunds?.data ?? [];
-  const okRefunds = refunds.filter((r) => r.status === 'succeeded' || r.status === 'pending');
-  return {
-    ok, paid: ok && s.payment_status === 'paid', amount: ok ? s.amount_total : null,
-    refundedCents: ok ? Number(ch?.amount_refunded ?? 0) || okRefunds.reduce((a, r) => a + (r.amount || 0), 0) : 0,
-    refundId: okRefunds[0]?.id ?? null, refundReason: okRefunds[0]?.metadata?.cz_reason ?? null,
-  };
+  let refunds: RfRefund[] = ch?.refunds?.data ?? [];
+  if (ch && ch.refunds?.has_more) refunds = (await stripe('refunds?charge=' + ch.id + '&limit=100')).data ?? refunds;   // >10 atmaksas
+  const paid = ok && s.payment_status === 'paid';
+  return { ok, paid, amount: ok ? s.amount_total : null, rs: refundState(paid ? Number(ch?.amount ?? s.amount_total) : 0, ok ? refunds : []) };
 }
 
 // Brauciena maksājumu salīdzina ar Stripe un pieraksta (tikai uz priekšu). sessionHint — sesija no notikuma
@@ -85,14 +119,18 @@ async function syncOffer(oid: string, sessionHint: string | null = null): Promis
   const mark = (status: 'paid' | 'refunded', refundId: string | null = null, reason: string | null = null, cents: number | null = null) =>
     sdb('rpc/ride_payment_mark', { method: 'POST', body: JSON.stringify({ p_user_id: passenger, oid, p_status: status, p_refund_id: refundId,
       p_reason: reason && REASONS.includes(reason) ? reason : (status === 'refunded' ? 'stripe_dashboard' : null), p_cents: cents }) });
-  if (info.refundedCents > 0) {
-    if (info.amount != null && info.refundedCents < info.amount) { console.log('daļēja atmaksa — netiek atzīmēta', oid, info.refundedCents, info.amount); return 'partial'; }
+  // A05: samaksātu vispirms pieraksta kā „paid”; „refunded” — tikai, kad visa summa tiešām atdota (succeeded)
+  let res = 'same';
+  if (info.paid && row.status === 'created' && await mark('paid')) res = 'paid';
+  const rs = info.rs;
+  if (rs.full) {
     if (row.status === 'refunded') return 'same';
-    if (!info.refundId) return 'no_refund_id';
-    return (await mark('refunded', info.refundId, info.refundReason, info.refundedCents)) ? 'refunded' : 'same';
+    if (!rs.refundId) return 'no_refund_id';
+    return (await mark('refunded', rs.refundId, rs.reason, rs.refunded)) ? 'refunded' : res;
   }
-  if (info.paid && row.status === 'created') return (await mark('paid')) ? 'paid' : 'same';
-  return 'same';
+  if (rs.pending > 0) { console.log('atmaksa apstrādē — vēl netiek atzīmēta', oid, rs.pending); return res === 'same' ? 'pending' : res; }
+  if (rs.refunded > 0) { console.log('daļēja atmaksa — netiek atzīmēta kā pilna', oid, rs.refunded, rs.amount); return res === 'same' ? 'partial' : res; }
+  return res;
 }
 
 Deno.serve(async (req) => {
@@ -132,14 +170,18 @@ Deno.serve(async (req) => {
         console.log(event.type, oid);
         break;
       }
-      case 'charge.refunded': {
+      case 'charge.refunded':
+      case 'charge.refund.updated':
+      case 'refund.created':
+      case 'refund.updated':
+      case 'refund.failed': {
+        // A05: daļēja / gaidoša / neizdevusies atmaksa — visu izlemj refundState (syncOffer), nevis notikuma lauki
         oid = String(obj.metadata?.offer_id ?? '');
         if (!UUID.test(oid) && obj.payment_intent) {
           const pi = await stripe('payment_intents/' + (typeof obj.payment_intent === 'string' ? obj.payment_intent : obj.payment_intent.id));
           oid = String(pi.metadata?.offer_id ?? '');
         }
         if (!UUID.test(oid)) { oid = null; result = 'not_ride'; break; }
-        if (Number(obj.amount_refunded) < Number(obj.amount)) { console.log('daļēja atmaksa — netiek atzīmēta', oid, obj.amount_refunded, obj.amount); result = 'partial'; break; }
         result = await syncOffer(oid);
         break;
       }
