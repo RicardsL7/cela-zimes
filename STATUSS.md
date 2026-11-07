@@ -91,3 +91,13 @@
   https://github.com/RicardsL7/cela-zimes/releases/download/android-test/cela-zimes.apk
 - Nav pārbaudīts telefonā. Zināmi ierobežojumi: pieteikšanās ar Google lietotnē var nestrādāt (Google aizliedz iebūvētos pārlūkus), e-pasta saite atveras pārlūkā; ikona — Capacitor noklusējuma.
 - Versija: app-gl.js v146. Testi: 132/132.
+
+## A01 — tālruņa noplūde kopbraucienos (audits 07.11.2026)
+
+- Kļūda: pasažieris ar tiešu REST pieprasījumu varēja piedāvājumā nomainīt šoferi uz jebkuru lietotāju, atzīmēt to kā pieņemtu un redzēt šī cilvēka tālruni.
+- Labojums `supabase/rides-13-guard.sql` (divi slāņi):
+  - trigeris `ride_guard_participants`: klients nevar mainīt `ride_offers.driver_id/request_id/id` un `ride_requests.user_id/id`; servera funkcijas (kontu apvienošana u.c.) var;
+  - kolonnu tiesības: `authenticated` drīkst UPDATE tikai `status` abās tabulās, `anon` — neko (aizliedz arī pasažierim tieši mainīt `trip`, daļa no A03).
+- Lietotnes kods nemainās (tā jau sūta tikai `{status}`).
+- Pārbaude: `tests/rides-guard-test.sql` lokālā PostgreSQL ar pilnu shēmu — pirms labojuma uzbrukums izdodas (FAIL), pēc labojuma 30/30 PASS (uzbrukumi noraidīti; pieņemšana, tālrunis saskaņotam pārim, šofera/pasažiera RPC, atcelšana un kontu apvienošana strādā). JS: 133/133.
+- Produkcijā: jāpalaiž `rides-13-guard.sql` Supabase SQL redaktorā (ar īpašnieka atļauju), pēc tam faila beigās esošais pārbaudes vaicājums.

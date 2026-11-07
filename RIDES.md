@@ -86,6 +86,8 @@ Kopīgai darbībai:
   piedāvājumu, pasažieris var to pieņemt vai noraidīt.
 * Vienam lietotājam vienlaikus var būt ne vairāk kā 5 aktīvi pieprasījumi (pret mēstulēm).
 * Vērtēt un ziņot var tikai brauciena dalībnieks un tikai par otru pusi; vērtējumu — tikai pēc pabeigta brauciena.
+* Piedāvājuma šoferi un pieprasījumu, kā arī pieprasījuma autoru pēc izveides mainīt nevar; lietotne tieši drīkst
+  mainīt tikai `status` (`supabase/rides-13-guard.sql`, audita labojums A01). Pārējo maina tikai servera funkcijas.
 
 ## Vēl nav (nākamie soļi)
 
