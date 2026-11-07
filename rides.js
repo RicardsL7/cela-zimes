@@ -214,10 +214,24 @@ function rideDateText(iso, now = Date.now()) {
   const p = x => String(x).padStart(2, '0');
   return p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + (d.getFullYear() !== new Date(now).getFullYear() ? d.getFullYear() + '.' : '') + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
+// A05: atmaksas stāvoklis no servera atbildes (ride-pay 'status'): pilna, daļēja, vēl apstrādē vai nav.
+// refunded=true — TIKAI pilna atmaksa. Vecāka servera atbilde (bez refund_state) — kā līdz šim.
+function rideRefundInfo(p, price) {
+  if (!p) return { state: 'none', text: '' };
+  const total = p.amount || price || 0;
+  const done = Number(p.refund_cents) || 0, pend = Number(p.refund_pending_cents) || 0;
+  const state = p.refunded ? 'full' : (p.refund_state || (pend > 0 ? 'pending' : done > 0 ? 'partial' : 'none'));
+  if (state === 'full') return { state, text: '↩ Atmaksāts ' + rideMoney(done || total), remaining: 0 };
+  if (state === 'pending') return { state, text: '↩ Atmaksa apstrādē ' + rideMoney(pend || total), remaining: 0 };
+  if (state === 'partial') return { state, text: '↩ Daļēji atmaksāts ' + rideMoney(done) + ' no ' + rideMoney(total), remaining: Math.max(0, total - done) };
+  return { state: 'none', text: '', remaining: total };
+}
 // Maksājuma statuss kopsavilkumā / vēsturē. live — rides.pay[id] no servera (ja ir), citādi h.pay_status no vēstures.
 function ridePayText(h, live) {
   if (!h || !h.price_cents) return '';
-  if ((live && live.refunded) || h.pay_status === 'refunded') return '↩ Atmaksāts ' + rideMoney((live && (live.refund_cents || live.amount)) || h.refund_cents || h.price_cents);
+  const ri = rideRefundInfo(live, h.price_cents);
+  if (ri.state !== 'none') return ri.text;
+  if (h.pay_status === 'refunded') return '↩ Atmaksāts ' + rideMoney(h.refund_cents || h.price_cents);
   if ((live && live.paid) || h.pay_status === 'paid') return 'Samaksāts ar karti';
   return 'Skaidrā naudā vai nav samaksāts';
 }
@@ -637,6 +651,6 @@ function createRideStore(cfg) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { rideTripCheck, RIDE_TRIP_ORDER, rideFareCapCents, rideParsePrice, rideMoney, rideSplit, RIDE_FEE_PCT, rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
+  module.exports = { rideRefundInfo, rideTripCheck, RIDE_TRIP_ORDER, rideFareCapCents, rideParsePrice, rideMoney, rideSplit, RIDE_FEE_PCT, rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
     rideTimeText, rideDistText, rideStage, rideFresh, rideEtaMinutes, ridePassengerStatus, rideDriverStatus, rideUnread, rideMsgTime, rideStatsEmpty, rideHistWithdrawn, RIDE_DECLINED_SHOW_MS, rideDeclinedAt, rideDeclinedRecent, rideDeclinedText, RIDE_REPORT_REASONS, rideCountText, rideRatingText, rideStarsText, rideAvg, rideDateText, ridePayText, rideSummaryPending, rideHistoryFromOffer, rideRateErr, rideRpcMissing, rideErrorText, LocalRideStore, SupabaseRideStore, createRideStore, RIDE_OFFER_STATUS };
 }

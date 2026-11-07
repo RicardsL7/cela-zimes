@@ -137,3 +137,17 @@
   - Lietotne (pārlūks) nemainās — poga jau bija atslēgta klikšķa laikā, atgriešanās adrese vienāda.
 - Pārbaude: `tests/rides-checkout-test.sql` 17/17 (lokālā PostgreSQL); JS 147/147, t. sk. 2 un 10 vienlaicīgi pieprasījumi pret Stripe imitāciju → 1 sesija; TypeScript stingrā pārbaude bez kļūdām. Īstā Stripe testa vidē nav pārbaudīts.
 - Produkcijā (ar īpašnieka atļauju, šādā secībā): 1) `rides-16-checkout.sql` SQL redaktorā; 2) izvietot servera funkciju `ride-pay` (viens fails index.ts). Vecā ride-pay ar jauno SQL strādā; jaunā ride-pay bez SQL maksājuma lapu neatvērs.
+
+## A05 — daļēja vai gaidoša atmaksa vairs nav „atmaksāts” (audits 07.11.2026)
+
+- Kļūda: abas servera funkcijas atmaksu vērtēja dažādi, un jebkura atmaksa (arī daļēja vai vēl apstrādē esoša) skaitījās pilna: ride-pay 'status' to pierakstīja datubāzē kā „refunded”, „Atmaksāt” pēc daļējas atmaksas atteica („jau atmaksāts”) — pasažieris atlikumu nesaņemtu; gaidoša atmaksa, kas vēlāk neizdodas, palika „atmaksāta”.
+- Labojums — viena funkcija `refundState` (bloks `<refund-state>`, burtiski vienāds `ride-pay/index.ts` un `stripe-webhook/index.ts`; tests to pārbauda):
+  - skaita atsevišķi: atdots (tikai succeeded), apstrādē (pending / requires_action), neizdevušās; atlikums; stāvoklis none / partial / pending / full;
+  - datubāzē „refunded” — tikai, kad visa summa tiešām atdota; nolasa visas atmaksas (arī, ja vairāk par 10);
+  - „Atmaksāt”: pilna → „jau atmaksāts”; apstrādē → otru neveido; nav vai daļēja → atmaksā atlikumu; Idempotency-Key `refund-<brauciens>-<atdots>-<neizdevušās>` (vienāds vienlaicīgiem klikšķiem, jauns pēc daļējas vai neizdevušās); kļūdas gadījumā pārbauda vēlreiz (otrs dalībnieks varēja tieši tobrīd atmaksāt);
+  - webhook: arī refund.created / refund.updated / refund.failed / charge.refund.updated; samaksāts tiek pierakstīts arī, ja daļēji atmaksāts;
+  - lietotne (rides v149): „↩ Atmaksāts”, „↩ Daļēji atmaksāts X no Y” (šoferim poga atmaksā atlikumu), „↩ Atmaksa apstrādē”; atsevišķas ziņas.
+- Datubāze nemainās (SQL nav jāpalaiž).
+- Pārbaude: JS 152/152 (refundState visi stāvokļi; abu funkciju bloki vienādi; vecās kļūdas imitācija); TypeScript stingrā pārbaude abām funkcijām bez kļūdām. Stripe testa vidē nav pārbaudīts.
+- Produkcijā (ar īpašnieka atļauju): izvietot `ride-pay` un `stripe-webhook` (webhook — ar `--no-verify-jwt`, kā līdz šim). Ieteicams Stripe webhook iestatījumos pievienot notikumus refund.updated un refund.failed (bez tiem gaidošas atmaksas stāvokli atjauno lietotne, atverot braucienu).
+- Ja datubāzē jau ir maksājumi, kas kļūdas dēļ atzīmēti „refunded”, bet atmaksāti daļēji, — tos jāpārbauda Stripe panelī (atpakaļ uz „paid” statuss automātiski nemainās).

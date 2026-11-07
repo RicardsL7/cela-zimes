@@ -734,17 +734,19 @@ function ridesDriverPayLine(o, ok) {
   const { driver } = rideSplit(o.price_cents, ridesFeePct());
   const p = rides.pay[o.id];
   const text = `Cena ${rideMoney(o.price_cents)}` + (ridesPayOn() ? ` · ar karti tu saņem ${rideMoney(driver)}` : '');
-  const line = rEl('div', { class: 'r-pay-line' + (p && p.paid && !p.refunded ? ' r-paid' : '') },
+  const ri = rideRefundInfo(p, o.price_cents);                       // A05: pilna / daļēja / apstrādē
+  const line = rEl('div', { class: 'r-pay-line' + (p && p.paid && ri.state === 'none' ? ' r-paid' : '') },
     rEl('span', { text }),
-    ok && p && p.refunded ? rEl('b', { class: 'r-refunded', text: '↩ Atmaksāts ' + rideMoney(p.refund_cents || p.amount || o.price_cents) })
+    ok && ri.state !== 'none' ? rEl('b', { class: 'r-refunded', text: ri.text })
       : ok && p && p.paid ? rEl('b', { text: '✓ Samaksāts ar karti' })
       : ok ? rEl('small', { text: 'Vēl nav samaksāts (var arī skaidrā)' }) : null);
-  if (!(ok && p && p.paid && !p.refunded)) return line;
+  // „Atmaksāt” — ja samaksāts un nav ne pilnas, ne gaidošas atmaksas (pēc daļējas — atmaksā atlikumu)
+  if (!(ok && p && p.paid && (ri.state === 'none' || ri.state === 'partial'))) return line;
   return rEl('div', { class: 'r-pay-wrap' }, line, ridesRefundBtn(o, p));
 }
 // ---------- Atmaksa (F14): šofera poga „Atmaksāt” ----------
 function ridesRefundBtn(o, p) {
-  const amount = p.amount || o.price_cents;
+  const amount = rideRefundInfo(p, o.price_cents).remaining || p.amount || o.price_cents;   // A05: pēc daļējas — atlikums
   const msg = rEl('p', { class: 'r-msg', hidden: '' });             // ziņa tieši kartītē (statusa josla ir aiz loga)
   const say = (t, bad = true) => { msg.textContent = t; msg.className = 'r-msg' + (bad ? ' bad' : ''); msg.hidden = !t; };
   const wrap = rEl('div', { class: 'r-refund' });
@@ -758,11 +760,17 @@ function ridesRefundBtn(o, p) {
         try {
           const r = await rides.store.pay('refund', { offer_id: o.id });
           ridesRefundSeen(o.id);
-          rides.pay[o.id] = { ...p, refunded: true, refund_cents: r.amount || amount };
+          // A05: serveris atbild ar īsto stāvokli (pilna / vēl apstrādē / daļēja); vecāks serveris — refunded:true
+          const full = r.refunded === true || (r.refunded === undefined && !r.pending);
+          rides.pay[o.id] = { ...p, refunded: full, refund_cents: r.refunded_cents ?? (full ? (r.amount || amount) : 0),
+            refund_pending_cents: r.pending_cents || 0, refund_state: full ? 'full' : r.pending ? 'pending' : 'partial' };
           box.remove();
-          say(`✓ Atmaksāts pasažierim ${rideMoney(r.amount || amount)}. Nauda un lietotnes komisija atgriezta no tava Stripe konta.`, false);
+          const ri = rideRefundInfo(rides.pay[o.id], o.price_cents);
+          say(full ? `✓ Atmaksāts pasažierim ${rideMoney(r.amount || amount)}. Nauda un lietotnes komisija atgriezta no tava Stripe konta.`
+            : r.pending ? `Atmaksa ${rideMoney(r.amount || amount)} pieņemta un tiek apstrādāta — pasažieris naudu saņems, kad banka to apstiprinās.`
+            : `Atmaksāta tikai daļa — ${ri.text.replace('↩ ', '')}. Mēģini vēlreiz vai sazinies ar lietotnes īpašnieku.`, !full && !r.pending);
           const line = wrap.parentElement && wrap.parentElement.querySelector('.r-pay-line b');
-          if (line) { line.textContent = '↩ Atmaksāts ' + rideMoney(r.amount || amount); line.className = 'r-refunded'; }
+          if (line) { line.textContent = ri.text; line.className = 'r-refunded'; }
         } catch (err) {
           say(err.message || 'Atmaksa neizdevās — mēģini vēlreiz.');
           box.remove(); btn.hidden = false;
@@ -785,6 +793,11 @@ async function ridesRefundAfterCancel(o) {
       ridesToast(o.driver_id === rides.store.id
         ? `Brauciens atcelts. Pasažierim automātiski atmaksāti ${sum}.`
         : `Nauda ${sum} atmaksāta uz tavu karti. Bankā tā parādīsies 5–10 darba dienu laikā.`);
+    } else if (r && r.pending && !r.already) {                       // A05: atmaksa pieņemta, bet vēl apstrādē
+      const sum = rideMoney(r.amount || o.price_cents);
+      ridesToast(o.driver_id === rides.store.id
+        ? `Brauciens atcelts. Pasažiera atmaksa ${sum} tiek apstrādāta.`
+        : `Atmaksa ${sum} tiek apstrādāta — nauda parādīsies kartē, kad banka to apstiprinās.`);
     }
   } catch (e) {
     if (e.status === 409) return;                        // nebija samaksāts ar karti — nav ko atmaksāt
@@ -829,10 +842,17 @@ function ridesPassengerPay(o) {
   if (!o.price_cents) return null;
   const p = rides.pay[o.id];
   const box = rEl('div', { class: 'r-pay-line' + (p && p.paid && !p.refunded ? ' r-paid' : '') }, rEl('span', { text: 'Cena ' + rideMoney(o.price_cents) }));
-  if (p && p.refunded) {
+  const ri = rideRefundInfo(p, o.price_cents);                       // A05
+  if (ri.state === 'full') {
     const sum = rideMoney(p.refund_cents || p.amount || o.price_cents);
     box.append(rEl('b', { class: 'r-refunded', text: '↩ Atmaksāts ' + sum }));
     return rEl('div', { class: 'r-pay-wrap' }, box, rEl('p', { class: 'fine', text: `Nauda ${sum} atmaksāta uz tavu karti. Bankā tā parādīsies 5–10 darba dienu laikā.` }));
+  }
+  if (ri.state === 'pending' || ri.state === 'partial') {
+    box.append(rEl('b', { class: 'r-refunded', text: ri.text }));
+    return rEl('div', { class: 'r-pay-wrap' }, box, rEl('p', { class: 'fine', text: ri.state === 'pending'
+      ? 'Atmaksa tiek apstrādāta — nauda parādīsies kartē, kad banka to apstiprinās.'
+      : 'Atmaksāta daļa no samaksātās summas. Ja tas nav pareizi, sazinies ar šoferi vai lietotnes īpašnieku.' }));
   }
   if (p && p.paid) { box.append(rEl('b', { text: '✓ Samaksāts ar karti' })); return box; }
   if (!ridesPayOn()) { box.append(rEl('small', { text: 'Samaksā šoferim, kā vienojāties.' })); return box; }
