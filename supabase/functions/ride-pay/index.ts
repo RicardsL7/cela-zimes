@@ -36,6 +36,7 @@ const json = (b: unknown, status = 200) =>
   new Response(JSON.stringify(b), { status, headers: { ...cors, 'content-type': 'application/json' } });
 
 class Fail extends Error {
+  stripeStatus?: number; stripeType?: string;
   constructor(msg: string, public status = 400) { super(msg); }
 }
 
@@ -60,7 +61,9 @@ async function stripe(path: string, body?: Record<string, unknown>, idem?: strin
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
     console.error('Stripe', path, r.status, j?.error?.message);
-    throw new Fail('Stripe: ' + (j?.error?.message || r.status), 502);
+    const f = new Fail('Stripe: ' + (j?.error?.message || r.status), 502);
+    f.stripeStatus = r.status; f.stripeType = j?.error?.type;     // A04: idempotences kļūdu atpazīšanai
+    throw f;
   }
   return j;
 }
@@ -71,6 +74,85 @@ function withQ(url: string, q: string) {
   for (const [k, v] of new URLSearchParams(q)) u.searchParams.set(k, v);
   return u.toString();
 }
+// <checkout-flow> — A04: maksājuma lapa (Stripe Checkout) bez dublikātiem. Testi (tests/run.js) šo bloku izpilda tieši no šī faila.
+//
+// Problēma: divi vienlaicīgi „Maksāt ar karti” klikšķi (divas cilnes, dubultklikšķis, atkārtots pieprasījums pēc tīkla
+// kļūmes) izveidoja divas Stripe maksājuma sesijas vienam braucienam — pasažieris varēja samaksāt divreiz, un datubāzē
+// palika tikai viena no tām.
+// Risinājums:
+//   • Katram braucienam ir mēģinājuma numurs (ride_payments.attempt, supabase/rides-16-checkout.sql). Jaunu sesiju veido
+//     ar Stripe Idempotency-Key „cz-checkout-<brauciens>-<numurs>”: vienlaicīgi pieprasījumi ar to pašu atslēgu saņem
+//     VIENU UN TO PAŠU sesiju (Stripe to garantē), nevis divas.
+//   • Jaunu sesiju veido tikai tad, ja iepriekšējā vairs nav apmaksājama (beigusies). Atvērtu sesiju atdod atkārtoti;
+//     ja to tomēr jāaizstāj (cita summa), veco vispirms aizver (expire) — vienlaikus apmaksājama ir tikai viena.
+//   • Ja Stripe neatbild par veco sesiju, jaunu NEVEIDO (vecā vēl varētu būt apmaksājama).
+//   • Saglabā datubāzē ar salīdzināšanu (ride_checkout_save): vecāks mēģinājums nekad nepārraksta jaunāku.
+// Bloks nezina neko par HTTP vai atslēgām — visu saņem kā funkcijas.
+const CHECKOUT_KEY_PREFIX = 'cz-checkout-';
+const checkoutKey = (oid: string, attempt: number) => `${CHECKOUT_KEY_PREFIX}${oid}-${attempt}`;
+
+class CheckoutError extends Error {
+  status: number; code: string;
+  constructor(msg: string, status = 409, code = 'checkout') { super(msg); this.status = status; this.code = code; }
+}
+type CkErr = { stripeStatus?: number; stripeType?: string } | null | undefined;
+// „Tā pati atslēga vēl tiek apstrādāta” (409) vai „atslēga jau lietota ar citiem datiem” (400)
+const isIdemInFlight = (e: CkErr) => !!e && e.stripeStatus === 409;
+const isIdemMismatch = (e: CkErr) => !!e && e.stripeType === 'idempotency_error' && e.stripeStatus !== 409;
+
+type CkSession = { id: string; url: string; status: string; payment_status: string; amount_total: number; metadata?: { offer_id?: string } };
+type CkDeps = {
+  begin: () => Promise<{ session_id: string | null; attempt: number } | null>;   // datubāze, tikai pasažieris
+  retrieve: (id: string) => Promise<CkSession | null>;                             // null — Stripe neatbild
+  create: (params: unknown, key: string) => Promise<CkSession>;                    // ar Idempotency-Key
+  expire: (id: string) => Promise<unknown>;
+  save: (id: string, attempt: number) => Promise<boolean>;                         // false — jau ir jaunāks mēģinājums
+  sleep: (ms: number) => Promise<unknown>;
+};
+
+async function checkoutFlow(deps: CkDeps, o: { oid: string; price_cents: number }, params: unknown) {
+  const usable = (s: CkSession | null) => !!s && !!s.metadata && s.metadata.offer_id === o.oid;
+  const reuse = async (id: string) => {
+    const s = await deps.retrieve(id);
+    if (!s) throw new CheckoutError('Neizdevās sazināties ar Stripe — mēģini vēlreiz.', 502, 'stripe_unreachable');
+    if (!usable(s)) return { s, ok: false };
+    if (s.payment_status === 'paid') throw new CheckoutError('Šis brauciens jau ir samaksāts', 409, 'already_paid');
+    if (s.status === 'complete') throw new CheckoutError('Maksājums vēl tiek apstrādāts — pagaidi brīdi.', 409, 'processing');
+    if (s.status === 'open' && s.amount_total === o.price_cents) return { s, ok: true };
+    return { s, ok: false };
+  };
+
+  for (let round = 0; round < 3; round++) {
+    const cur = await deps.begin();
+    const attempt = Number(cur && cur.attempt) || 0;
+    if (cur && cur.session_id) {
+      const r = await reuse(cur.session_id);
+      if (r.ok) return { url: r.s.url, session_id: r.s.id, reused: true };
+      if (r.s.status === 'open' && usable(r.s)) await deps.expire(r.s.id);   // cita summa — veco aizver
+    }
+    const next = attempt + 1;
+    let s: CkSession | null = null;
+    for (let i = 0; i < 4 && !s; i++) {
+      try {
+        s = await deps.create(params, checkoutKey(o.oid, next));
+      } catch (e) {
+        if (isIdemInFlight(e as CkErr)) { await deps.sleep(600 * (i + 1)); continue; }   // otrs pieprasījums to pašu veido tieši tagad
+        if (isIdemMismatch(e as CkErr)) throw new CheckoutError('Maksājuma lapa jau tiek atvērta citā logā — atjauno lapu un mēģini vēlreiz.', 409, 'in_other_tab');
+        throw e;
+      }
+    }
+    if (!s) throw new CheckoutError('Maksājuma lapa jau tiek sagatavota — mēģini pēc brīža.', 409, 'busy');
+    const saved = await deps.save(s.id, next);
+    if (saved && s.status === 'open') return { url: s.url, session_id: s.id, reused: false };
+    if (saved) continue;              // atslēga atdeva vecu, jau beigušos sesiju (pēc ~24 h) — nākamais numurs
+    // Kāds jau saglabāja jaunāku mēģinājumu: mūsējo aizver (ja tā nav tā pati) un nākamajā kārtā atdod saglabāto
+    const again = await deps.begin();
+    if (again && again.session_id && again.session_id !== s.id && s.status === 'open') await deps.expire(s.id);
+  }
+  throw new CheckoutError('Maksājuma lapa jau tiek sagatavota — mēģini pēc brīža.', 409, 'busy');
+}
+// </checkout-flow>
+
 // Accounts v2 (šoferu konti): JSON + Stripe-Version
 const V2 = '2026-09-30.endive';
 // deno-lint-ignore no-explicit-any
@@ -325,29 +407,43 @@ Deno.serve(async (req) => {
         if (o.status !== 'accepted') throw new Fail('Maksāt var tikai par saskaņotu braucienu');
         if (!(o.price_cents >= 100)) throw new Fail('Šim braucienam nav norādīta cena');
 
-        const [p] = await db(`ride_payments?offer_id=eq.${oid}&select=session_id`);
-        if (p) {
-          const s = await stripe('checkout/sessions/' + p.session_id).catch(() => null);
-          if (s && s.metadata?.offer_id === oid && s.payment_status === 'paid') throw new Fail('Šis brauciens jau ir samaksāts', 409);
-          if (s && s.metadata?.offer_id === oid && s.status === 'open' && s.amount_total === o.price_cents) return json({ url: s.url });
-        }
-        const acct = await db('rpc/ride_driver_acct', { method: 'POST', body: JSON.stringify({ oid }) });
-        if (!acct) throw new Fail('Šoferis vēl nav pieslēdzis kartes maksājumus — vari samaksāt skaidrā naudā.', 409);
-        const a = await driverAccount(acct);
-        if (!a || !a.ready || !(await ownerOk(acct, a.owner, o.driver_id))) {
-          throw new Fail('Šoferis vēl nav pabeidzis kartes maksājumu pieslēgšanu — vari samaksāt skaidrā naudā.', 409);
-        }
+        // Šofera konta pārbaude — tikai, ja vajadzēs jaunu sesiju (atvērtu sesiju atdod bez tās, kā līdz šim)
+        let acct: string | null = null;
+        const needAcct = async () => {
+          if (acct) return acct;
+          const id = await db('rpc/ride_driver_acct', { method: 'POST', body: JSON.stringify({ oid }) });
+          if (!id) throw new Fail('Šoferis vēl nav pieslēdzis kartes maksājumus — vari samaksāt skaidrā naudā.', 409);
+          const a = await driverAccount(id);
+          if (!a || !a.ready || !(await ownerOk(id, a.owner, o.driver_id))) {
+            throw new Fail('Šoferis vēl nav pabeidzis kartes maksājumu pieslēgšanu — vari samaksāt skaidrā naudā.', 409);
+          }
+          return (acct = id);
+        };
         const fee = Math.round(o.price_cents * FEE_PCT / 100);
-        const s = await stripe('checkout/sessions', {
+        // A04: parametri ir vienādi visiem vienlaicīgajiem pieprasījumiem (citādi Stripe idempotences atslēga tos atraida)
+        const params = (destination: string) => ({
           mode: 'payment', locale: 'auto', client_reference_id: oid,
           line_items: { 0: { quantity: 1, price_data: { currency: 'eur', unit_amount: o.price_cents,
             product_data: { name: `Kopbrauciens: ${short(o.request.from_name)} → ${short(o.request.to_name)}` } } } },
-          payment_intent_data: { application_fee_amount: fee, transfer_data: { destination: acct }, metadata: { offer_id: oid } },
+          payment_intent_data: { application_fee_amount: fee, transfer_data: { destination }, metadata: { offer_id: oid } },
           metadata: { offer_id: oid },
           success_url: withQ(ret, 'pay=ok'), cancel_url: withQ(ret, 'pay=cancel'),
         });
-        await db('ride_payments', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ offer_id: oid, session_id: s.id }) });
-        return json({ url: s.url });
+        try {
+          const r = await checkoutFlow({
+            begin: () => db('rpc/ride_checkout_begin', { method: 'POST', body: JSON.stringify({ oid }) }),
+            retrieve: (id: string) => stripe('checkout/sessions/' + id).catch(() => null),
+            create: async (_p: unknown, key: string) => stripe('checkout/sessions', params(await needAcct()), key),
+            expire: (id: string) => stripe('checkout/sessions/' + id + '/expire', {}).catch((e: unknown) => console.error('expire', id, e)),
+            save: async (id: string, attempt: number) =>
+              (await db('rpc/ride_checkout_save', { method: 'POST', body: JSON.stringify({ oid, p_session: id, p_attempt: attempt }) })) === true,
+            sleep: (ms: number) => new Promise((res) => setTimeout(res, ms)),
+          }, { oid, price_cents: o.price_cents }, null);
+          return json({ url: r.url });
+        } catch (e) {
+          if (e instanceof CheckoutError) throw new Fail(e.message, e.status);
+          throw e;
+        }
       }
 
       // Abiem: vai braucieni samaksāti (patiesība — no Stripe)
