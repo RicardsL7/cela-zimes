@@ -171,3 +171,15 @@
 - Pārbaude: `tests/map-smoke.js` (Playwright, Chromium ar programmatūras WebGL) — 4.7.1 un 6.15.0 salīdzinājums: tie paši slāņi un avoti, kamera, marķieri, popup, maršruts, GPS bulta, brīdinājuma ikonas, stila maiņa — vienādi; ekrānuzņēmumi vienādi; 6.15.0 XSS neizpildās; bez WebGL / bez unpkg — ziņa ekrānā. JS 155/155.
 - Nav pārbaudīts: īstā OpenFreeMap karte ar flīzēm un fontiem (testa vidē tīkls bloķēts), īsts telefons / Android lietotne. Pēc izlaišanas vērts atvērt growlab.cc telefonā un pabraukt pa karti.
 - Produkcijā nekas nav jāpalaiž — GitHub Pages jau rāda jauno versiju.
+
+## A08 — testi atkārtojami arī Windows; automātiski testi GitHub (audits 07.11.2026)
+
+- `.gitattributes`: visi teksta faili ar LF rindu beigām (arī Windows ar core.autocrlf); attēli/arhīvi — bināri. `tests/run.js` turklāt pats pārvērš CRLF → LF (pārbaudīts: visas repozitorija kopija ar CRLF — 157/157).
+- `.github/workflows/tests.yml` („Testi”) — katrai izmaiņai main zarā un katram pull request, bez slepenām atslēgām:
+  - JS testi uz ubuntu-latest **un** windows-latest (Node 22);
+  - datubāze: PostgreSQL 16 → `tests/run-sql.sh` (visi 25 `supabase/*.sql` produkcijas secībā, drošības labojumi divreiz, 7 SQL scenāriji + 2 sesiju tests) — lokāli 190/190; kļūdas gadījumā kods 1 (pārbaudīts ar apzināti bojātu scenāriju);
+  - karte: `tests/map-smoke.js` ar to pašu MapLibre versiju, ko lieto lietotne (no oficiālā GitHub izlaiduma), Chromium; spriedums ar kodu 1; ekrānuzņēmums kā artefakts.
+- `tests/sql/supabase-stub.sql` — Supabase lomu / auth aizstājējs tikai testiem. Tests pārbauda, ka run-sql.sh sarakstā ir visi `supabase/*.sql` un visi `tests/*-test.sql` (jauns fails bez testa neaizies nepamanīts).
+- README: kā palaist testus lokāli.
+- Ieteicams (īpašniekam, GitHub iestatījumos): Settings → Branches → main → „Require status checks to pass” (Testi), lai izmaiņas bez zaļiem testiem nevar ielikt.
+

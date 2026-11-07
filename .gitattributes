@@ -1,0 +1,13 @@
+# A08: vienādas rindu beigas (LF) visās operētājsistēmās — testi un skripti Windows vidē uzvedas tāpat kā Linux.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pbf binary
+*.zip binary
+*.apk binary
+*.jar binary
+*.keystore binary

@@ -38,3 +38,14 @@ Faili:
 - Bezmaksas serveri (OpenStreetMap karte, Overpass, OSRM, Nominatim) domāti nelielai lietošanai.
   Ja lietotni lietos daudz cilvēku, vajadzēs savu serveri vai maksas pakalpojumu.
 - Telefonā GPS strādā tikai caur `https://`. Vienkāršākais veids: GitHub Pages.
+
+## Testi
+
+GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi”). Lokāli:
+
+- **Lietotnes loģika** (Node.js ≥ 22.13, Linux / macOS / Windows): `node tests/run.js`
+- **Datubāze** (vajag lokālu PostgreSQL ≥ 15 un `psql`; **nekad pret Supabase**):
+  `PGHOST=localhost PGUSER=postgres PGPASSWORD=… bash tests/run-sql.sh` — uzbūvē visu shēmu no `supabase/*.sql`
+  un palaiž drošības scenārijus. Jaunu `supabase/*.sql` failu jāpieliek `tests/run-sql.sh` sarakstā (tests to pārbauda).
+- **Karte** (Playwright + Chromium): `node tests/map-smoke.js . <maplibre dist mape> /tmp/karte` — sk. faila sākumu.
+
