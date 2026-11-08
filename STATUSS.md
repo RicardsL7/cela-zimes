@@ -313,4 +313,9 @@
   Laidienu lapā APK nonāk tikai, ja tests izdevās; ekrānuzņēmumi un logcat — artefakts `device-test`.
   Ar roku (telefonā) — saraksts `mobile/README.md` (īsts GPS, e-pasts, Google, Stripe, TalkBack, 2 telefoni).
 - Testi: `run.js` +5 (181/181), t.sk. `patch-android.js` uz parauga Android projekta un `app-native.js` (vm).
-- Versija: `app-native.js?v=155`; Android `versionName` 0.2.0.
+- **Ierīces tests atrada kļūdu:** lietotne ielādē dzīvo lapu (`server.url`), kurā nav `@capacitor/core`, tāpēc
+  `Capacitor.registerPlugin` tur neeksistē — ir tikai `Capacitor.Plugins.*`, ko ievieto Android apvalks. Gan saišu
+  apstrāde (`app-native.js`), gan **fona GPS (v146, `nativeGeo` app-gl.js)** klusām nestrādāja — lietotne lietoja parasto
+  pārlūka GPS. Tagad abi lieto `registerPlugin`, ja ir, citādi `Capacitor.Plugins.*`; `addWatcher` id der gan tieši,
+  gan kā Promise. Ierīces tests pārbauda arī `[cz-native] gatavs` (app-native.js lietotnē redz spraudni).
+- Versija: `app-native.js?v=156`, `app-gl.js?v=156`; Android `versionName` 0.2.0.

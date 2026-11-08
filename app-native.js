@@ -5,8 +5,12 @@
 // Šeit lietotne to ielādē — auth.js / rides-ui.js to apstrādā tieši tāpat kā pārlūkā. Parastā pārlūkā nekas nenotiek.
 (function () {
   const C = typeof window !== 'undefined' ? window.Capacitor : null;
-  if (!C || typeof C.isNativePlatform !== 'function' || !C.isNativePlatform() || typeof C.registerPlugin !== 'function') return;
-  const App = C.registerPlugin('App');
+  if (!C || typeof C.isNativePlatform !== 'function' || !C.isNativePlatform()) return;
+  // Lietotne ielādē dzīvo lapu (server.url) bez @capacitor/core — tur nav Capacitor.registerPlugin, ir tikai
+  // Capacitor.Plugins.App, ko ievieto Android apvalks (ierīces tests emulatorā to atklāja). Lieto to, kas ir.
+  const App = typeof C.registerPlugin === 'function' ? C.registerPlugin('App') : (C.Plugins && C.Plugins.App);
+  if (!App) { console.log('[cz-native] nav spraudņa App'); return; }
+  console.log('[cz-native] gatavs');
   const KEY = 'cz.native.opened';
   const open = (url, how) => {
     let u;

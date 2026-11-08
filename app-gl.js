@@ -1338,10 +1338,15 @@ function gpsWatchPermission() {
 // v146: inside the Android app (Capacitor shell, folder mobile/) the position comes from the phone itself
 // (plugin BackgroundGeolocation) — it keeps working with the screen off; a notification shows while it runs.
 // In a normal browser window.Capacitor does not exist and nothing here changes.
+// A14: the app loads the live site (server.url), which does not bundle @capacitor/core — there window.Capacitor has no
+// registerPlugin, only Capacitor.Plugins.<name> injected by the native shell. Use whichever exists.
 function nativeGeo() {
   const C = typeof window !== 'undefined' ? window.Capacitor : null;
-  if (!C || typeof C.isNativePlatform !== 'function' || !C.isNativePlatform() || typeof C.registerPlugin !== 'function') return null;
-  return nativeGeo._p || (nativeGeo._p = C.registerPlugin('BackgroundGeolocation'));
+  if (!C || typeof C.isNativePlatform !== 'function' || !C.isNativePlatform()) return null;
+  if (nativeGeo._p) return nativeGeo._p;
+  const p = typeof C.registerPlugin === 'function' ? C.registerPlugin('BackgroundGeolocation')
+    : (C.Plugins && C.Plugins.BackgroundGeolocation) || null;
+  return p ? (nativeGeo._p = p) : null;
 }
 let nativeWatchId = null;
 function nativeLocToPos(loc) {
@@ -1349,8 +1354,9 @@ function nativeLocToPos(loc) {
     heading: loc.bearing, altitude: loc.altitude }, timestamp: loc.time || Date.now() };
 }
 function startNativeGps(BG, onDenied) {
-  if (nativeWatchId != null) { const old = nativeWatchId; nativeWatchId = null; BG.removeWatcher({ id: old }).catch(() => {}); }
-  BG.addWatcher({
+  if (nativeWatchId != null) { const old = nativeWatchId; nativeWatchId = null; Promise.resolve().then(() => BG.removeWatcher({ id: old })).catch(() => {}); }
+  // Capacitor.Plugins.* returns the watcher id directly, registerPlugin — a Promise; Promise.resolve handles both
+  Promise.resolve().then(() => BG.addWatcher({
     backgroundTitle: 'Ceļa Zīmes',
     backgroundMessage: 'Navigācija un brīdinājumi darbojas arī ar izslēgtu ekrānu.',
     requestPermissions: true, stale: false, distanceFilter: 0,
@@ -1361,7 +1367,7 @@ function startNativeGps(BG, onDenied) {
       return;
     }
     if (loc) onPosition(nativeLocToPos(loc));
-  }).then(id => { nativeWatchId = id; }).catch(() => onGpsError({ code: 2 }));
+  })).then(id => { nativeWatchId = id; }).catch(() => onGpsError({ code: 2 }));
 }
 // onDenied — izsauc, ja atļauja joprojām liegta (poga „Mēģināt vēlreiz”)
 function startGps(onDenied) {
