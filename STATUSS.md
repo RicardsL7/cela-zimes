@@ -345,3 +345,21 @@
 - Testi: `tests/account-delete-test.sql` (42), `run.js` +6 (187/187), `run-sql.sh` 290/290; vecākie migrāciju faili
   ar `cz_migration_begin` (27) tagad paši atsakās palaisties pēc 28 (pārbaudīts).
 
+## A16 — citu braucēju punkti kartē vairs nav publiski izsekojami (audits 08.11.2026)
+
+- **Problēma:** braucēja punkts (~20 m, ik 20 s, virziens, tēls) bija nolasāms jebkuram, arī bez konta, 55 × 60 km
+  laukumā; rādīšana ieslēdzās kopā ar ātruma dalīšanu. Punktus varēja savienot ceļā un atrast mājas / darbu.
+- **Īpašnieka lēmums (08.11.2026):** atsevišķs slēdzis; ~150 m + pēc 1 min; redz tikai braucot, ap sevi.
+- **`supabase/presence-2-privacy.sql` (Nr. 29):** piekrišana `show_on_map` (≥ 2026-11-08) — ātruma dalīšana vairs
+  neieslēdz; ~150 m; redzams pēc ≥ 60 s nepārtrauktas braukšanas; atjaunošana ≥ 25 s; līdzšinējie punkti dzēsti.
+  `presence_nearby(mana vieta, ātrums)` — tikai `authenticated`, tikai ≥ 15 km/h, ≤ 15 km, ≥ 12 s; pirmās 60 s / 200 m —
+  tukšs; lēciens > 250 km/h — no jauna; skatītāja vieta (~50 m) `presence_viewers`, dzēsta apstājoties / pēc 10 min
+  (arī `cz_cleanup`). Vecā publiskā `presence_nearby(laukums)` dzēsta.
+- **Lietotne v158** (`presence.js`, `reports.js`, `traffic-gl.js`, `garage.js`, `auth.js`, `admin.js`): iestatījumos
+  „Rādīt mani citu kartē” (noklusēti izslēgts, piekrišana serverī); citus rāda tikai braucot (sava vieta, nevis kartes
+  laukums), bez konta — nerāda; ātruma dalīšanas teksts vairs nesola vietu citu kartē (versija nemainās — šaurāk).
+- **Politika** `privacy.html` 2026-11-08b (vēlreiz piekrišanas logs): §6 vieta citu kartē un citu redzēšana, §8 termiņi.
+- **Atlikušais risks:** viltots „brauciens” ar daudziem anonīmiem kontiem joprojām var redzēt punktus ap sevi (≤ 15 km,
+  ~150 m, ne biežāk kā ik 12 s) — daudz grūtāk nekā līdz šim, bet ne neiespējami.
+- Testi: `tests/presence-privacy-test.sql` (27), `run.js` +4 (191/191), `run-sql.sh` 318/318.
+

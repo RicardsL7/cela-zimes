@@ -167,7 +167,12 @@ class ReportsApi {
       p_heading: heading == null || !isFinite(heading) ? null : Math.round(heading), p_speed_kmh: speedKmh }, { account: true });
   }
   presenceClear() { return this._rpc('presence_clear', {}, { account: true }); }
-  async presenceNearby(bbox) { return (await this._rpc('presence_nearby', bbox)) || []; }
+  // A16: only signed in and only while driving — p = { p_lat, p_lng, p_speed_kmh } (my own position and speed).
+  // Returns { ok, reason, points: [{ lat, lng, heading, skin, age_s }] }; without an account no request is made.
+  async presenceNearby(p) {
+    if (!this.auth || !this.auth.hasSession || !this.auth.hasSession()) return { ok: false, reason: 'no_account', points: [] };
+    return (await this._rpc('presence_nearby', p)) || { ok: false, reason: 'error', points: [] };
+  }
 }
 
 // v124: the confirmation prompt — is this report worth asking about right now?

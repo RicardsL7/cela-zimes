@@ -8,7 +8,7 @@
 //   • Cards: 2 columns, cheapest first, border colour = rarity (common, rare, epic, mythic). States: locked (progress "120 / 300"),
 //     affordable ("Pirkt" + confirmation), owned ("Izmantot"), equipped (highlight + ✓).
 //   • "Apskatīt" shows on the real map how other drivers will see you. You yourself always keep the
-//     green arrow — your skin is shown to OTHER drivers (presence.js, only with "Palīdzēt citiem").
+//     green arrow — your skin is shown to OTHER drivers (presence.js, only with "Rādīt mani citu kartē" — A16).
 
 const garage = {
   wallet: null,          // { balance, earned_today, daily_cap, equipped, can_spend, owned: [] } or null (no account yet)
@@ -205,7 +205,9 @@ async function garageRun(fn, okText) {
 function garageBuy(s) { return garageRun(() => garageApi().buy(s.id), `Apsveicam! „${s.name}” ir tavs. Spied „Izmantot”, lai citi tevi redzētu šādu.`); }
 function garageEquip(id) {
   const s = garage.skins.find(x => x.id === id);
-  return garageRun(() => garageApi().equip(id), id ? `Tagad citi braucēji tevi redz kā „${s ? s.name : id}”.` : 'Tēls noņemts — citi redz parasto bultiņu.');
+  return garageRun(() => garageApi().equip(id), id ? (typeof presenceShowOn === 'function' && presenceShowOn() ? `Tagad citi braucēji tevi redz kā „${s ? s.name : id}”.`
+    : `Tēls „${s ? s.name : id}” izvēlēts. Citi to redzēs, ja iestatījumos ieslēgsi „Rādīt mani citu kartē”.`)
+    : 'Tēls noņemts — citi redz parasto bultiņu.');
 }
 
 // Preview on the real map: the Garage closes for a moment and the skin appears where you are

@@ -206,7 +206,7 @@ function admRow(label, arr, fmt = admNum, opts = {}) {
 }
 // A11: vecu datu tīrīšana — ja nestrādā, brīdinājums paneļa augšā; ja strādā, piezīme apakšā
 const ADM_CLEAN_LABELS = { reports: 'ziņojumi', traffic_samples: 'ātruma mērījumi', traffic_quota: 'mērījumu skaitītāji',
-  user_presence: 'vietas kartē', account_transfers: 'pārneses kodi', stripe_events: 'Stripe notikumi',
+  user_presence: 'vietas kartē', presence_viewers: 'skatītāju vietas', account_transfers: 'pārneses kodi', stripe_events: 'Stripe notikumi',
   rides_expired: 'novecojuši braucieni', cron_history: 'plānotāja vēsture' };
 function admAgo(ts) {
   const m = Math.max(0, Math.round((Date.now() - Date.parse(ts)) / 60000));

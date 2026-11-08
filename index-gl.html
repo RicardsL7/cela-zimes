@@ -227,7 +227,7 @@
     <p id="garageNote" class="gr-note" hidden></p>
     <p id="garageMsg" class="rep-msg" role="status" hidden></p>
     <div id="garageGrid" class="gr-grid"></div>
-    <p class="fine">Tavs tēls redzams <b>citiem</b> braucējiem kartē, kad brauc un ir ieslēgts „Palīdzēt citiem”. Pats tu vienmēr redzi zaļo bultiņu.
+    <p class="fine">Tavs tēls redzams <b>citiem</b> braucējiem kartē, kad brauc un iestatījumos ieslēgts „Rādīt mani citu kartē”. Pats tu vienmēr redzi zaļo bultiņu.
       Monētas: +10 par atbildi uz jautājumu braucot, +5 par katru „JĀ” tavam ziņojumam, līdz 100 dienā.</p>
     <div id="garageDlg" class="gr-dlg" role="dialog" aria-modal="true" hidden></div>
   </section>
@@ -317,9 +317,19 @@
       </label>
       <details class="set-more">
         <summary>Vairāk</summary>
-        <p>Braucot tiek sūtīts tikai ātrums, aptuvenā vieta uz ceļa (~50 m) un virziens — bez vārda, e-pasta un maršruta, ne brauciena pirmie un pēdējie 400 m. Glabājas 28 dienas. Kamēr brauc, citi kartē redz tavu aptuveno vietu ar Garāžas tēlu (bez vārda).</p>
+        <p>Braucot tiek sūtīts tikai ātrums, aptuvenā vieta uz ceļa (~50 m) un virziens — bez vārda, e-pasta un maršruta, ne brauciena pirmie un pēdējie 400 m. Glabājas 28 dienas. Tava vieta citiem kartē netiek rādīta (tam ir atsevišķs slēdzis zemāk).</p>
       </details>
       <p id="trHelpersSet" class="tr-helpers set-note" hidden></p>
+      <!-- A16: citi braucēji kartē — atsevišķa izvēle (presence.js) -->
+      <label class="set-row">
+        <svg class="set-ic" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 3 19 20l-7-4-7 4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        <span class="set-txt"><b>Rādīt mani citu kartē</b><small>Citi braucēji redz tavu Garāžas tēlu aptuveni (~150 m), bez vārda.</small></span>
+        <input type="checkbox" id="presenceShow" class="switch">
+      </label>
+      <details class="set-more">
+        <summary>Vairāk</summary>
+        <p>Tikai kamēr brauc (no 15 km/h) un tikai pēc ~1 minūtes braukšanas — brauciena sākums netiek rādīts. Vieta noapaļota līdz ~150 m, atjaunojas ne biežāk kā ik 30 s; apstājoties pazūd uzreiz. To redz tikai pieteikušies lietotāji, kuri paši tobrīd brauc tuvumā (līdz 15 km). Arī tu citus braucējus redzi tikai braucot. Noklusēti izslēgts.</p>
+      </details>
     </div>
 
     <!-- C. Izskats -->
@@ -440,23 +450,23 @@
   <script defer src="times.js?v=93"></script>
   <script defer src="parking.js?v=93"></script>
   <script defer src="alerts.js?v=144"></script>
-  <script defer src="reports.js?v=124"></script>
+  <script defer src="reports.js?v=158"></script>
   <script defer src="skins-art.js?v=125"></script>
   <script defer src="skins.js?v=125"></script>
   <script defer src="places.js?v=133"></script>
   <script defer src="model.js?v=93"></script>
   <script defer src="rides-config.js?v=93"></script>
   <script defer src="app-native.js?v=156"></script>
-  <script defer src="auth.js?v=157"></script>
+  <script defer src="auth.js?v=158"></script>
   <script defer src="mly-config.js?v=93"></script>
   <script defer src="traffic.js?v=93"></script>
   <script defer src="rides.js?v=157"></script>
   <script defer src="rides-ui.js?v=157"></script>
-  <script defer src="garage.js?v=125"></script>
-  <script defer src="presence.js?v=124"></script>
+  <script defer src="garage.js?v=158"></script>
+  <script defer src="presence.js?v=158"></script>
   <script defer src="app-gl.js?v=156"></script>
   <script defer src="park-gl.js?v=116"></script>
   <script defer src="park-dest-gl.js?v=93"></script>
-  <script defer src="traffic-gl.js?v=124"></script>
+  <script defer src="traffic-gl.js?v=158"></script>
 </body>
 </html>

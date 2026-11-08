@@ -47,6 +47,8 @@ demo režīms tikai šajā pārlūkā).
 - Konta dzēšana (`supabase/account-1-delete.sql`, A15): nav iespējama aktīva brauciena, atvērtas maksājuma lapas vai
   nepabeigtas atmaksas laikā; otram brauciena dalībniekam paliek anonīms brauciena ieraksts (datums, cena, maksājums,
   maršruts ~1 km) — sīkāk `supabase/MIGRATIONS.md` un `privacy.html` 9. punkts.
+- Citi braucēji kartē (`supabase/presence-2-privacy.sql`, A16): tikai ar slēdzi „Rādīt mani citu kartē” (noklusēti
+  izslēgts), ~150 m, pēc ~1 min braukšanas; redz tikai pieteikušies lietotāji, kuri paši brauc ≤ 15 km attālumā.
 - Servera funkcijas izvieto īpašnieks (`ride-pay`; `stripe-webhook` ar `--no-verify-jwt`). Slepenās atslēgas
   (Stripe, `service_role`) — tikai Supabase Secrets, **nekad** šajā repozitorijā vai pārlūkā.
 

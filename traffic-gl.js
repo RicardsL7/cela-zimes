@@ -11,8 +11,8 @@ let trLastFetch = 0, trFetchBox = null, trSending = false, trAsked = false;
 function trPref(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } }
 function trSetPref(k, v) { try { localStorage.setItem(k, v); } catch {} }
 const trShare = () => trPref('cz.traffic.share', '') === 'yes';
-// v124: "yes" given to the CURRENT text (which says that other drivers see your Garage skin). An older "yes"
-// keeps the speed sharing it was given for, but presence.js shows you to others only after the new "yes".
+// v124: "yes" given to the current text (2026-11-01). Since A16 it no longer decides whether others see you on the
+// map — that is the separate switch "Rādīt mani citu kartē" (presence.js).
 const trShareCurrent = () => trShare() && trPref('cz.traffic.shareVer', '') >= TR_SHARE_VERSION;
 const trShow = () => trPref('cz.traffic.show', 'yes') === 'yes';
 
@@ -28,7 +28,6 @@ async function trAuth() {
 function trShareChoice(yes, say = true) {
   trSetPref('cz.traffic.share', yes ? 'yes' : 'no');
   trSetPref('cz.traffic.shareVer', TR_SHARE_VERSION);
-  if (!yes && typeof presenceStop === 'function') presenceStop();
   trSyncSwitch();
   if (say) trToast(yes ? 'Paldies! Braucot tavs ātrums anonīmi palīdzēs sastrēgumu kartei. Izslēgt vari iestatījumos.'
     : 'Labi — ātrums netiek sūtīts. Ieslēgt vari jebkurā brīdī iestatījumos.');
@@ -99,9 +98,10 @@ async function trFlush(force) {
 
 // ---------- Piekrišana (F15) ----------
 // Jautā vienu reizi: pirmajā navigācijas sākšanā (app-gl.js startNav) vai — ja lietotājs nenavigē — pirmajā braucienā.
+// A16 (08.11.2026): tava vieta citu kartē vairs nav daļa no šīs piekrišanas — tai ir atsevišķs slēdzis (presence.js).
+// Teksts kļuva šaurāks, tāpēc TR_SHARE_VERSION nemainās (jau piekritušajiem vēlreiz nejautā).
 const TR_ASK_TEXT = 'Braucot tiek sūtīts tikai ātrums, aptuvenā vieta uz ceļa (~50 m) un braukšanas virziens — bez tava vārda, e-pasta vai maršruta, un nekad ne brauciena pirmie un pēdējie 400 m. Dati glabājas 28 dienas. ' +
-  'Kamēr brauc (no 15 km/h), citi braucēji kartē redz tavu aptuveno vietu (~20 m) ar tavu Garāžas tēlu vai bultiņu — bez vārda; apstājoties tā pazūd uzreiz, citādi pēc 2 minūtēm. ' +
-  'Dalīšanos vari jebkurā brīdī izslēgt iestatījumos.';
+  'Tava vieta citiem braucējiem kartē netiek rādīta. Dalīšanos vari jebkurā brīdī izslēgt iestatījumos.';
 async function trafficOffer(again = false) {
   if (!trafficCfg || trAsked) return;
   if (!again && trPref('cz.traffic.share', '') !== '') return;

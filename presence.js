@@ -1,27 +1,58 @@
-// Ceļa Zīmes — other drivers on the map with their Garage skin (v124).
-// Server: supabase/coins-2-presence.sql (presence_update, presence_clear, presence_nearby).
+// Ceļa Zīmes — other drivers on the map with their Garage skin (v124; privacy A16 — v158).
+// Server: supabase/presence-2-privacy.sql (presence_update, presence_clear, presence_nearby).
 //
-// Privacy (option A): your position is sent ONLY if you turned on "Palīdzēt citiem" and accepted its
-// current text (TR_SHARE_VERSION, traffic-gl.js), only while driving (≥ 15 km/h), rounded to ~20 m,
-// without a name or account id; it disappears 2 minutes after the last update. You yourself always see
-// the green arrow — the fox is what OTHER drivers see.
+// Privacy (owner decision 08.11.2026, audit A16):
+//   • You are shown ONLY if you switched on "Rādīt mani citu kartē" (separate from speed sharing, off by default;
+//     consent kind 'show_on_map', PRESENCE_SHOW_VERSION), only while driving (≥ 15 km/h). The server rounds the
+//     position to ~150 m, shows it only after ~60 s of continuous driving and drops it at once when you stop.
+//   • You SEE other drivers only while you are driving yourself, signed in, within ~15 km of you: the request carries
+//     your position and speed, the server checks that you really drive (60 s / 200 m warm-up, no jumps) and keeps
+//     that position (~50 m) only for this check, at most 10 minutes. Without an account — nobody is shown.
+// You yourself always see the green arrow — the fox is what OTHER drivers see.
 
-const PRESENCE_SEND_MS = 20000;      // send my position at most every 20 s
-const PRESENCE_POLL_MS = 20000;      // refresh other drivers every 20 s
+const PRESENCE_SEND_MS = 30000;      // send my position at most every 30 s (server: ≥ 25 s)
+const PRESENCE_POLL_MS = 20000;      // refresh other drivers every 20 s (server: ≥ 12 s)
 const PRESENCE_MIN_KMH = 15;
 const PRESENCE_MIN_ZOOM = 11;
 const PRESENCE_ICON_PX = 48;
+const PRESENCE_SHOW_VERSION = '2026-11-08';   // text of the "Rādīt mani citu kartē" switch (index.html, privacy.html §6)
 
-const presence = { lastSend: 0, shown: false, sending: false, markers: [], pollTimer: null, seq: 0, skin: null };
+const presence = { lastSend: 0, shown: false, sending: false, markers: [], pollTimer: null, seq: 0, skin: null, me: null, polling: false };
 
+function presencePref(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } }
+function presenceSetPref(k, v) { try { localStorage.setItem(k, v); } catch { /* */ } }
+// "Rādīt mani citu kartē" switched on for the current text?
+function presenceShowOn() {
+  return presencePref('cz.presence.show', '') === 'yes' && presencePref('cz.presence.showVer', '') >= PRESENCE_SHOW_VERSION;
+}
 // Allowed to be shown to others right now?
 function presenceSharing() {
-  return typeof trShareCurrent === 'function' && trShareCurrent() &&
-    (typeof czConsentOk !== 'function' || czConsentOk()) && !state.testMode;
+  return presenceShowOn() && (typeof czConsentOk !== 'function' || czConsentOk()) && !state.testMode;
+}
+// The switch in the settings. "Yes" creates an (anonymous) account if there is none — the server needs it.
+function presenceShowChoice(yes, say = true) {
+  presenceSetPref('cz.presence.show', yes ? 'yes' : 'no');
+  presenceSetPref('cz.presence.showVer', PRESENCE_SHOW_VERSION);
+  if (!yes) presenceStop();
+  const sw = typeof document !== 'undefined' && document.getElementById('presenceShow');
+  if (sw) sw.checked = !!yes;
+  if (say && typeof czToast === 'function') czToast(yes
+    ? 'Ieslēgts: braucot citi kartē redzēs tavu tēlu aptuveni (~150 m), bez vārda. Izslēgt vari iestatījumos.'
+    : 'Izslēgts: citi tevi kartē neredz.');
+  const a = typeof czAuthGet === 'function' ? czAuthGet() : null;
+  if (!a) return Promise.resolve();
+  return (async () => {
+    try {
+      if (yes) await a.token({ create: true });
+      await a.syncTermsConsent();
+      await a.syncConsent('show_on_map', PRESENCE_SHOW_VERSION, !!yes);
+    } catch (e) { console.warn('Izvēli „Rādīt mani citu kartē” neizdevās saglabāt serverī', e); }
+  })();
 }
 
 // Called from app-gl.js onFix() after every GPS fix.
 function presenceOnFix(lat, lng, kmh, heading, acc) {
+  presence.me = { lat, lng, kmh, acc, t: Date.now() };            // for viewing others (presencePoll)
   const api = typeof reportsApi !== 'undefined' ? reportsApi : null;
   if (!api || presence.sending) return;
   const sharing = presenceSharing();
@@ -30,7 +61,7 @@ function presenceOnFix(lat, lng, kmh, heading, acc) {
   if (moving && presence.shown && Date.now() - presence.lastSend < PRESENCE_SEND_MS) return;
   presence.sending = true; presence.lastSend = Date.now();
   const req = sharing ? api.presenceUpdate(lat, lng, heading, kmh) : api.presenceClear().then(() => ({ shown: false }));
-  req.then(r => { presence.shown = !!(r && r.shown); })
+  req.then(r => { presence.shown = !!(r && (r.stored != null ? r.stored : r.shown)); })   // stored — server has my point (clear it later)
     .catch(e => { if (e.status === 404) presence.lastSend = Date.now() + 10 * 60000; })   // SQL not installed yet — retry later
     .finally(() => { presence.sending = false; });
 }
@@ -76,24 +107,25 @@ function presenceRotateAll() {
   if (typeof garage !== 'undefined' && garage.previewMarker) presenceRotate(garage.previewMarker.getElement());
 }
 
-// Bounding box around the map centre, within the server's limit (0.5° × 1°).
-function presenceBBox() {
-  const b = map.getBounds(), c = map.getCenter();
-  const dLat = Math.min((b.getNorth() - b.getSouth()) / 2 + 0.01, 0.24), dLng = Math.min((b.getEast() - b.getWest()) / 2 + 0.02, 0.49);
-  return { min_lat: +(c.lat - dLat).toFixed(4), min_lng: +(c.lng - dLng).toFixed(4), max_lat: +(c.lat + dLat).toFixed(4), max_lng: +(c.lng + dLng).toFixed(4) };
+// Am I driving right now (fresh fix, ≥ 15 km/h, usable accuracy)? Only then other drivers are shown.
+function presenceDriving(now = Date.now()) {
+  const m = presence.me;
+  return !!m && now - m.t < 15000 && m.kmh != null && m.kmh >= PRESENCE_MIN_KMH && (m.acc == null || m.acc <= 80);
 }
 async function presencePoll() {
   const api = typeof reportsApi !== 'undefined' ? reportsApi : null;
-  if (!api || !map || document.hidden) return;
+  if (!api || !map || document.hidden || presence.polling) return;
   if (typeof czConsentOk === 'function' && !czConsentOk()) return;
-  let rows = [];
-  if (map.getZoom() >= PRESENCE_MIN_ZOOM) {
-    const seq = ++presence.seq;
-    try { rows = await api.presenceNearby(presenceBBox()); }
-    catch (e) { if (e.status === 404) { clearInterval(presence.pollTimer); presence.pollTimer = null; } return; }
-    if (seq !== presence.seq) return;
-  }
-  presenceDraw(rows);
+  if (!presenceDriving() || map.getZoom() < PRESENCE_MIN_ZOOM || state.testMode) { presenceDraw([]); return; }
+  const m = presence.me, seq = ++presence.seq;
+  let r;
+  presence.polling = true;
+  try { r = await api.presenceNearby({ p_lat: +m.lat.toFixed(5), p_lng: +m.lng.toFixed(5), p_speed_kmh: Math.round(m.kmh) }); }
+  catch (e) { if (e.status === 404) { clearInterval(presence.pollTimer); presence.pollTimer = null; } return; }   // SQL Nr. 29 not installed yet
+  finally { presence.polling = false; }
+  if (seq !== presence.seq || !r) return;
+  if (r.reason === 'throttled') return;                          // keep what is on the map
+  presenceDraw(r.ok ? r.points : []);
 }
 function presenceDraw(rows) {
   for (const m of presence.markers) m.remove();
@@ -103,12 +135,13 @@ function presenceDraw(rows) {
 }
 
 function presenceInit() {
+  const sw = document.getElementById('presenceShow');
+  if (sw) { sw.checked = presenceShowOn(); sw.addEventListener('change', () => presenceShowChoice(sw.checked)); }
   if (typeof map === 'undefined' || !map) return;
   map.on('rotate', presenceRotateAll);
-  map.on('moveend', () => { clearTimeout(presenceInit._t); presenceInit._t = setTimeout(presencePoll, 800); });
   presence.pollTimer = setInterval(presencePoll, PRESENCE_POLL_MS);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) presencePoll(); });
   presencePoll();
 }
 
-if (typeof module !== 'undefined') module.exports = { presence, presenceOnFix, presenceSharing, PRESENCE_MIN_KMH };
+if (typeof module !== 'undefined') module.exports = { presence, presenceOnFix, presenceSharing, presenceShowOn, presenceShowChoice, presenceDriving, presencePoll, PRESENCE_MIN_KMH, PRESENCE_SHOW_VERSION };
