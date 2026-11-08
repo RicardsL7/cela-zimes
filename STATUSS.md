@@ -293,3 +293,24 @@
 - Avoti: Overpass — wiki.openstreetmap.org/wiki/Overpass_API; OSRM — github.com/Project-OSRM/osrm-backend/wiki/API Usage Policy;
   Photon — github.com/komoot/photon/wiki; OpenFreeMap — openfreemap.org; Nominatim — operations.osmfoundation.org/policies/nominatim.
 - Versijas: `netguard.js?v=154`, `app-gl.js?v=154`, `rides-ui.js?v=154`, `style-gl.css?v=154`.
+
+## A14 — Android: lockfile, parakstīts laidiens, ierīces tests, saites lietotnē (audits 08.11.2026)
+
+- **Atkarības:** `mobile/package-lock.json` (precīzas versijas + kontrolsummas) — to uztur GitHub Actions
+  „Android atkarības (lockfile)” (`android-lock.yml`, bez instalēšanas skriptiem); `android.yml` būvē ar `npm ci`
+  (bez lockfile — skaidra kļūda). Node 22. Jauns spraudnis `@capacitor/app` (saites lietotnē).
+- **Parakstīts laidiens:** ja GitHub Secrets ir `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
+  `ANDROID_KEY_PASSWORD` — parakstīts APK (telefonam, atjauninās virs vecā) un AAB (Google Play); versionCode = būvējuma
+  numurs. Atslēgas failu darbplūsma izdzēš arī kļūdas gadījumā; atslēgu izveido tikai īpašnieks (`mobile/README.md`).
+  Bez atslēgas — testa APK kā līdz šim (brīdinājums Actions).
+- **Saites lietotnē (e-pasta pieslēgšanās, Google, Stripe atgriešanās):** Android App Links — `patch-android.js` pievieno
+  `https://growlab.cc` filtru (autoVerify); `.well-known/assetlinks.json` darbplūsma izveido pati no parakstīšanas
+  sertifikāta (`_config.yml` — GitHub Pages to publicē); `app-native.js` lietotnē ielādē atvērto adresi (tikai savu
+  domēnu; to pašu otrreiz ne; žurnālā bez atslēgām), un auth.js / rides-ui.js to apstrādā kā pārlūkā.
+  Darbojas pēc parakstīta laidiena (verificēts domēns); līdz tam saites atveras pārlūkā kā agrāk.
+- **Ierīces tests:** `android.yml` darbs „device” — Android 14 emulatorā `mobile/scripts/device-test.sh`: instalēšana,
+  atļaujas, App Links filtrs, palaišana bez avārijas, growlab.cc ielāde, spraudņi, growlab.cc saite atveras lietotnē.
+  Laidienu lapā APK nonāk tikai, ja tests izdevās; ekrānuzņēmumi un logcat — artefakts `device-test`.
+  Ar roku (telefonā) — saraksts `mobile/README.md` (īsts GPS, e-pasts, Google, Stripe, TalkBack, 2 telefoni).
+- Testi: `run.js` +5 (181/181), t.sk. `patch-android.js` uz parauga Android projekta un `app-native.js` (vm).
+- Versija: `app-native.js?v=155`; Android `versionName` 0.2.0.

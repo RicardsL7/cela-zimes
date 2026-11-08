@@ -1,0 +1,2 @@
+include:
+  - .well-known   # A14: Android App Links (assetlinks.json) — Jekyll citādi izlaiž mapes, kas sākas ar punktu
