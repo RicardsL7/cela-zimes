@@ -3,6 +3,7 @@
 // izveidi, slāņus, kameru, markerus, popup, maršrutu, brīdinājumu ikonas, stila maiņu un ka attribution XSS neizpildās.
 // A10: lapas drošības politika (CSP meta tags) ir spēkā — neviens CSP pārkāpums nedrīkst rasties; kartes worker no tās
 // pašas adreses; admin/privacy/terms atveras bez pārkāpumiem; lapa svešā rāmī (iframe) netiek rādīta.
+// A12: paneļi ar tastatūru — fokuss panelī, fons paslēpts (modāliem), Tab riņķo, Esc aizver, fokuss atpakaļ; piekrišanas ekrāns.
 // Lietošana: node tests/map-smoke.js <repo mape> <izvades prefikss>   (vendor/ jābūt — bash tools/vendor.sh)
 // Rezultāts: <prefikss>.json (res.xss jābūt 0, res.app visi „ok”/skaitļi, nav PAGEERROR, res.csp tukšs) un <prefikss>.png
 const { chromium } = require('playwright');
@@ -32,7 +33,7 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
   const logs = [], net = new Set(), served = new Set();
   page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') logs.push(m.type() + ': ' + m.text().slice(0, 300)); });
   page.on('pageerror', e => logs.push('PAGEERROR: ' + String(e && e.stack || e).slice(0, 500)));
-  await ctx.route('**/*', async route => {   // A10: ctx — arī pārējām lapām
+  const routeAll = async route => {   // A10: ctx — arī pārējām lapām; A12: arī kontekstam bez piekrišanas
     const u = new URL(route.request().url());
     if (u.hostname === 'app.test') {
       const f = path.join(ROOT, decodeURIComponent(u.pathname === '/' ? '/index-gl.html' : u.pathname));
@@ -45,7 +46,8 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
     if (u.hostname === 'tiles.openfreemap.org' && u.pathname.startsWith('/styles/')) return route.fulfill({ status: 200, body: JSON.stringify(STYLE), headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' } });
     net.add('blocked ' + u.hostname);
     return route.fulfill({ status: 503, body: '', headers: { 'access-control-allow-origin': '*' } });
-  });
+  };
+  await ctx.route('**/*', routeAll);
   await page.goto('https://app.test/index-gl.html');
   const res = {};
   try {
@@ -124,6 +126,56 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
   await page.waitForTimeout(2500);
   await page.screenshot({ path: OUT + '.png' });
   // A10: pārējās lapas ar savu CSP — bez pārkāpumiem un lapas kļūdām; lapa svešā rāmī ir paslēpta
+  // A12: paneļi ar tastatūru — fokuss panelī, fons ekrāna lasītājam paslēpts, Tab riņķo panelī, Esc aizver, fokuss atpakaļ
+  res.a11y = {};
+  const st = (sheet) => page.evaluate(id => {
+    const a = document.activeElement, el = document.getElementById(id);
+    return { open: !el.hidden, inside: el.contains(a), active: a ? (a.id || a.tagName) : null, role: el.getAttribute('role'),
+      modal: el.getAttribute('aria-modal'), mapHidden: document.getElementById('map').getAttribute('aria-hidden'),
+      mapInert: document.getElementById('map').inert };
+  }, sheet);
+  const tabLoop = async (sheet, n) => { let out = 0; for (let i = 0; i < n; i++) { await page.keyboard.press(i % 7 === 6 ? 'Shift+Tab' : 'Tab');
+    if (!(await page.evaluate(id => document.getElementById(id).contains(document.activeElement), sheet))) out++; } return out; };
+  for (const [sheet, btn, modal] of [['settings', 'settingsBtn', true], ['reportSheet', 'reportBtn', true], ['parkSheet', 'parkBtn', false]]) {
+    const r = {};
+    await page.focus('#' + btn); await page.keyboard.press('Enter'); await page.waitForTimeout(400);
+    r.opened = await st(sheet);
+    r.expanded = await page.getAttribute('#' + btn, 'aria-expanded');
+    r.tabOut = modal ? await tabLoop(sheet, 40) : null;
+    await page.focus('#' + sheet + ' h2'); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    r.closed = await st(sheet);
+    r.closedExpanded = await page.getAttribute('#' + btn, 'aria-expanded');
+    res.a11y[sheet] = r;
+  }
+  // Ar peli atvērts → Esc → fokuss uz pogu, ar ko atvēra
+  await page.click('#settingsBtn'); await page.waitForTimeout(300); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+  res.a11y.mouse = await page.evaluate(() => document.activeElement && document.activeElement.id);
+  // Garāžas pirkuma dialogs Garāžā: fons (arī paneļa pogas) inert, Esc aizver tikai dialogu, fokuss atpakaļ Garāžā
+  await page.focus('#garageBtn'); await page.keyboard.press('Enter'); await page.waitForTimeout(400);
+  await page.evaluate(() => { const b = document.createElement('button'); b.id = 'a12Buy'; b.textContent = 'Pirkt'; document.getElementById('garageSheet').appendChild(b); b.focus();
+    garageConfirmBuy({ id: Object.keys(SKIN_CHARS)[0] + '-1', name: 'Tests', price: 10 }); });
+  await page.waitForTimeout(300);
+  res.a11y.garageDlg = await page.evaluate(() => ({ inside: document.getElementById('garageDlg').contains(document.activeElement),
+    closeInert: document.getElementById('closeGarage').closest('[inert]') !== null, mapInert: document.getElementById('map').inert }));
+  await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+  res.a11y.garageDlgClosed = await page.evaluate(() => ({ dlg: document.getElementById('garageDlg').hidden, sheet: document.getElementById('garageSheet').hidden,
+    active: document.activeElement && document.activeElement.id, inert: !!document.querySelector('[inert]') }));
+  await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+  res.a11y.garageClosed = await page.evaluate(() => ({ sheet: document.getElementById('garageSheet').hidden, active: document.activeElement && document.activeElement.id }));
+  // Piekrišanas ekrāns (jauns lietotājs): fokuss tajā, fons inert, Esc neaizver, solis „Nepiekrītu” nepazaudē fokusu
+  { const ctx2 = await browser.newContext({ viewport: { width: 420, height: 860 } });
+    await ctx2.route('**/*', routeAll);
+    const pg = await ctx2.newPage(); const errs = [];
+    pg.on('pageerror', e => errs.push(String(e && e.message || e).slice(0, 200)));
+    await pg.goto('https://app.test/index-gl.html'); await pg.waitForTimeout(2500);
+    const g = () => pg.evaluate(() => ({ open: !document.getElementById('consentGate').hidden, inside: document.getElementById('consentGate').contains(document.activeElement),
+      active: document.activeElement && (document.activeElement.id || document.activeElement.tagName), mapInert: document.getElementById('map').inert }));
+    const c = { start: await g() };
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(200); c.esc = await g();
+    await pg.focus('#consentGate [data-act="decline"]'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(300); c.declined = await g();
+    await pg.click('#consentGate [data-act="back"]'); await pg.waitForTimeout(200);
+    await pg.click('#consentGate [data-act="accept"]'); await pg.waitForTimeout(300); c.accepted = await g(); c.errs = errs;
+    res.a11y.consent = c; await ctx2.close(); }
   res.pages = {};
   for (const p of ['admin.html', 'privacy.html', 'terms.html']) {
     const pg = await ctx.newPage(); const errs = [];
@@ -161,6 +213,28 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
     if (r.errs.length) bad.push(p + ': ' + r.errs[0]);
   }
   if (res.framed !== 'none') bad.push('lapa svešā rāmī ir redzama (display: ' + res.framed + ')');
+  // A12
+  const A = res.a11y || {};
+  for (const [sheet, btn, modal] of [['settings', 'settingsBtn', true], ['reportSheet', 'reportBtn', true], ['parkSheet', 'parkBtn', false]]) {
+    const r = A[sheet] || {};
+    if (!r.opened || !r.opened.open || !r.opened.inside) bad.push(sheet + ': atverot fokuss nav panelī (' + JSON.stringify(r.opened) + ')');
+    if (r.opened && r.opened.role !== 'dialog') bad.push(sheet + ': nav role="dialog"');
+    if (modal && r.opened && (r.opened.modal !== 'true' || r.opened.mapHidden !== 'true')) bad.push(sheet + ': modālam fons nav paslēpts / nav aria-modal');
+    if (!modal && r.opened && (r.opened.modal || r.opened.mapHidden)) bad.push(sheet + ': ne-modālam panelim fons paslēpts');
+    if (r.expanded !== 'true' || r.closedExpanded !== 'false') bad.push(sheet + ': aria-expanded ' + r.expanded + ' → ' + r.closedExpanded);
+    if (modal && r.tabOut) bad.push(sheet + ': Tab izgāja no paneļa ' + r.tabOut + ' reizes');
+    if (!r.closed || r.closed.open || r.closed.active !== btn || r.closed.mapHidden) bad.push(sheet + ': Esc → ' + JSON.stringify(r.closed));
+  }
+  if (A.mouse !== 'settingsBtn') bad.push('ar peli atvērts panelis: fokuss pēc Esc uz ' + A.mouse);
+  if (!A.garageDlg || !A.garageDlg.inside || !A.garageDlg.closeInert || !A.garageDlg.mapInert) bad.push('Garāžas dialogs: ' + JSON.stringify(A.garageDlg));
+  if (!A.garageDlgClosed || !A.garageDlgClosed.dlg || A.garageDlgClosed.sheet || A.garageDlgClosed.active !== 'a12Buy' || A.garageDlgClosed.inert) bad.push('Garāžas dialogs aizverot: ' + JSON.stringify(A.garageDlgClosed));
+  if (!A.garageClosed || !A.garageClosed.sheet || A.garageClosed.active !== 'garageBtn') bad.push('Garāža aizverot: ' + JSON.stringify(A.garageClosed));
+  const C = A.consent || {};
+  if (!C.start || !C.start.open || !C.start.inside || !C.start.mapInert) bad.push('piekrišana: ' + JSON.stringify(C.start));
+  if (!C.esc || !C.esc.open) bad.push('piekrišana aizvērās ar Esc');
+  if (!C.declined || !C.declined.inside) bad.push('piekrišana „Nepiekrītu”: fokuss pazuda ' + JSON.stringify(C.declined));
+  if (!C.accepted || C.accepted.open || C.accepted.mapInert) bad.push('piekrišana pēc „Piekrītu”: ' + JSON.stringify(C.accepted));
+  if (C.errs && C.errs.length) bad.push('piekrišanas lapā kļūda: ' + C.errs[0]);
   for (const n of net) if (/^404 /.test(n) && !/favicon/.test(n)) bad.push('trūkst faila: ' + n.slice(4));
   if (bad.length) { console.error('KARTES TESTS NEIZDEVĀS:\n  ' + bad.join('\n  ')); process.exit(1); }
   console.log('Kartes tests: viss kārtībā (MapLibre ' + res.version + ')');

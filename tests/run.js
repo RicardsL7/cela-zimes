@@ -2177,7 +2177,7 @@ test('v131: iestatījumi — Braukšana / Sastrēgumi / Izskats / Konts un priv�
     const form = h.slice(h.indexOf('id="searchForm"'), h.indexOf('</form>'));
     ok(/id="settingsBtn"/.test(form), f + ': iestatījumi ar 1 pieskārienu — meklēšanas joslā');
     ok(!/id="fabMore"|id="toggleSigns"/.test(h), f + ': v132 — ⋯ un „Zīmes/Brīdin.” poga noņemta (dublēja galveno slēdzi)');
-    ok(/style-gl\.css\?v=13[2-9]/.test(h) && /app-gl\.js\?v=1[3-9]\d/.test(h), f + ': versijas ≥ v132');
+    ok(/style-gl\.css\?v=(13[2-9]|1[4-9]\d)/.test(h) && /app-gl\.js\?v=1[3-9]\d/.test(h), f + ': versijas ≥ v132');
     ok(/<a id="call112" class="call-112" href="tel:112" hidden>/.test(h) && /Zvanīt 112/.test(h) && /places\.js\?v=133/.test(h), f + ': v133 — poga „Zvanīt 112”');
     ok(!/[A-Za-z]{4,} (settings|Settings)/.test(set.replace(/<[^>]+>/g, '')), f + ': bez angļu teksta');
   }
@@ -3089,6 +3089,49 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/admin\.js\?v=152/.test(fs.readFileSync(path.join(ROOT, 'admin.html'), 'utf8')), 'admin.html: jauna admin.js versija');
     const md = fs.readFileSync(path.join(ROOT, 'supabase', 'MIGRATIONS.md'), 'utf8');
     ok(/## Vecu datu tīrīšana un uzraudzība \(A11\)/.test(md) && /palaisti visi 1–27/.test(md), 'MIGRATIONS.md');
+  });
+}
+
+// ---------- A12 (audits 08.11.2026): paneļi — dialoga semantika, fokuss, fons, Esc, fokuss atpakaļ ----------
+{
+  const ROOT = path.join(__dirname, '..');
+  test('A12: visi paneļi zināmi sheets.js, ar aizvēršanas pogu; sheets.js ielādējas pirms piekrišanas ekrāna', () => {
+    const sj = fs.readFileSync(path.join(ROOT, 'sheets.js'), 'utf8');
+    const h = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const known = {};
+    for (const m of sj.matchAll(/^  (\w+): +\['(modal|panel|overlay)', +(?:'(\w+)'|null), +(?:'(\w+)'|null)\],/gm)) known[m[1]] = { type: m[2], close: m[3], btn: m[4] };
+    const sheets = [...h.matchAll(/<section id="(\w+)" class="sheet\b/g)].map(m => m[1]);
+    ok(sheets.length >= 7, 'paneļi index.html');
+    for (const id of sheets) {
+      ok(known[id], id + ': ir sheets.js sarakstā');
+      if (!known[id]) continue;
+      ok(known[id].close && h.includes(`id="${known[id].close}"`), id + ': aizvēršanas poga ' + known[id].close);
+      ok(new RegExp(`<section id="${id}"[^>]*aria-labelledby="\\w+"`).test(h), id + ': aria-labelledby (virsraksts fokusam un nosaukumam)');
+      const b = known[id].btn;
+      if (b) ok(new RegExp(`id="${b}"[^>]*aria-controls="${id}"[^>]*aria-expanded="false"|aria-controls="${id}"[^>]*aria-expanded="false"[^>]*id="${b}"|id="${b}"[^>]*aria-expanded="false"[^>]*aria-controls="${id}"`).test(h), id + ': poga ' + b + ' ar aria-controls un aria-expanded');
+    }
+    eq(known.parkSheet && known.parkSheet.type, 'panel', 'stāvēšana — ne-modāla (vietu izvēlas kartē)');
+    eq(known.placesSheet && known.placesSheet.type, 'panel', 'vietas — ne-modālas (saraksts seko kartei)');
+    eq(known.consentGate && known.consentGate.type, 'overlay', 'piekrišana — pārklājums');
+    eq(known.garageDlg && known.garageDlg.type, 'overlay', 'Garāžas pirkums — pārklājums');
+    const scripts = [...h.matchAll(/<script defer src="([\w.-]+\.js)\?v=/g)].map(m => m[1]);
+    ok(scripts.indexOf('sheets.js') >= 0 && scripts.indexOf('sheets.js') < scripts.indexOf('auth.js'), 'sheets.js pirms auth.js (piekrišana atveras tūlīt)');
+    ok(/if \(!el\.hidden\) czShOpened\(id\);/.test(sj), 'jau atvērts panelis tiek apstrādāts');
+  });
+  test('A12: uzvedība — fokuss, fons, Tab, Esc, atpakaļ', () => {
+    const sj = fs.readFileSync(path.join(ROOT, 'sheets.js'), 'utf8');
+    ok(/attributeFilter: \['hidden'\]/.test(sj) && /new MutationObserver/.test(sj), 'vēro hidden — nav jāmaina katra atvēršanas vieta');
+    ok(/if \(type !== 'panel'\) el\.setAttribute\('aria-modal', 'true'\)/.test(sj) && /el\.setAttribute\('role', 'dialog'\)/.test(sj), 'dialoga semantika');
+    ok(/sib\.setAttribute\('aria-hidden', 'true'\);/.test(sj) && /if \(type === 'overlay'\) sib\.inert = true;/.test(sj), 'fons: aria-hidden; pārklājumiem arī inert');
+    ok(/if \(id === 'consentGate'\) return;/.test(sj), 'piekrišanu ar Esc neaizver');
+    ok(/e\.key !== 'Tab' \|\| type === 'panel'/.test(sj), 'Tab riņķo tikai modālos');
+    ok(/czSh\.openers\.get\(id\)/.test(sj) && /target\.focus\(\{ preventScroll: true \}\)/.test(sj), 'fokuss atpakaļ uz atvērēju');
+    ok(!/\binert = true/.test(sj.replace("if (type === 'overlay') sib.inert = true;", '')), 'paneļiem fons nav inert (karte jāvar pavilkt)');
+    const css = fs.readFileSync(path.join(ROOT, 'style-gl.css'), 'utf8');
+    ok(/h2\[tabindex="-1"\]:focus/.test(css), 'virsrakstam fokusa rāmis nav jārāda');
+    const ms = fs.readFileSync(path.join(__dirname, 'map-smoke.js'), 'utf8');
+    ok(/res\.a11y = \{\}/.test(ms) && /Tab izgāja no paneļa/.test(ms) && /piekrišana aizvērās ar Esc/.test(ms) && /Garāžas dialogs aizverot/.test(ms), 'kartes tests pārbauda ar tastatūru');
+    for (const f of ['index.html', 'index-gl.html']) ok(/sheets\.js\?v=153/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /style-gl\.css\?v=153/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': jaunas versijas');
   });
 }
 
