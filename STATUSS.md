@@ -183,3 +183,16 @@
 - README: kā palaist testus lokāli.
 - Ieteicams (īpašniekam, GitHub iestatījumos): Settings → Branches → main → „Require status checks to pass” (Testi), lai izmaiņas bez zaļiem testiem nevar ielikt.
 
+## A09 — sakārtotas migrācijas, datubāzes pārbaude, jauns README (audits 08.11.2026)
+
+- `supabase/ORDER.txt` — vienīgais migrāciju secības saraksts (26 faili); `tests/run-sql.sh` 2. daļa uzbūvē datubāzi tieši pēc tā.
+- Pārbaudīts automātiski: katru vecāku failu palaižot atkārtoti pilnā datubāzē, 11 faili atjauno vecākas funkciju versijas (piem. `rides-2` atceltu A03 — `ride_driver_update`; `rides-7`, `reports`, `rides-9`, `stats-f16` — vecākus kontu/ziņojumu/statistikas kodus; `reports` un `coins-1` atkārtoti krīt ar kļūdu). Šiem failiem sākumā aizsardzība: ja `cz_migrations` rāda jaunākus — atsakās (`set cz.allow_rerun = 'on'` — apzinātai atkārtošanai). Pārējie paliek palaižami atkārtoti.
+- `supabase/rides-17-migrations.sql` — tabula `cz_migrations` (lietotnei neredzama), atzīmē 1–25, palīgfunkcijas `cz_migration_begin/done` nākamajām migrācijām; prasa, lai 1–25 jau palaisti.
+- `supabase/status.sql` — ģenerēts (`tests/gen-status.sh`), tikai lasošs „shēmas eksports”: salīdzina visas funkcijas (pēc teksta — neatkarīgi no PostgreSQL versijas), kolonnas, trigerus, politikas, indeksus, RLS, lietotnes tiesības un atzīmētās migrācijas; „VISS KĀRTĪBĀ” vai problēmu saraksts. CI pārbauda, ka tas ir aktuāls, ka uz pareizas datubāzes saka „VISS KĀRTĪBĀ” un ka pamana vecu funkcijas versiju.
+- `tests/sql/supabase-stub.sql`: funkciju noklusējuma tiesības kā Supabase (anon/authenticated var izsaukt jaunas funkcijas, ja fails neatsauc).
+- `supabase/MIGRATIONS.md` — failu tabula (ko dara, vai drīkst atkārtot), kā palaist migrāciju produkcijā, kā rakstīt jaunu, jauns Supabase projekts no nulles, rezerves kopijas un atjaunošana (ar brīdinājumu par trigeriem).
+- `README.md` pārrakstīts (pašreizējā arhitektūra, faili, datubāze, testi, ierobežojumi).
+- Pārbaude: SQL 212/212 (t. sk. 11 aizsardzības, status.sql), JS 161/161.
+- Pamanīts (nav labots — A10): Supabase noklusējuma dēļ `ride_driver_acct`, `traffic_report`, `report_type_ttl`, `coin_trust_factor` var izsaukt arī anon (faili atsauc tikai `public`).
+- Produkcijā: pēc 22–25 palaist arī `rides-17-migrations.sql`, tad `status.sql` (ar īpašnieka atļauju).
+
