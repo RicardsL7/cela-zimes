@@ -432,6 +432,9 @@ Deno.serve(async (req) => {
 
       // Konta dzēšana: slēdz šofera Stripe kontu (dati datubāzē tiek dzēsti pēc tam — delete_my_account)
       case 'close': {
+        // A15: kamēr ir aktīvs brauciens vai nepabeigts maksājums / atmaksa, kontu dzēst nevar — Stripe kontu neslēdz
+        const chk = await db('rpc/account_delete_check', { method: 'POST', body: '{}' });
+        if (!chk || chk.ok !== true) return json({ closed: false, busy: true, blockers: chk?.blockers ?? [] }, 409);
         const [row] = await db(`driver_accounts?user_id=eq.${uid}&select=acct`);
         if (!row) return json({ closed: false, none: true });
         const a = await driverAccount(row.acct);
@@ -573,11 +576,11 @@ Deno.serve(async (req) => {
         if (isAdmin !== true) throw new Fail('Nav piekļuves', 403);
         if (!SRK) throw new Fail('Serverim nav servisa atslēgas', 500);
         const offset = Math.max(0, Math.min(100000, Number(body.offset) || 0));
-        const rows = await sdb(`ride_payments?status=in.(created,paid)&select=offer_id,session_id,status,offer:ride_offers(request:ride_requests(user_id))` +
+        const rows = await sdb(`ride_payments?status=in.(created,paid)&select=offer_id,session_id,status,offer:ride_offers(driver_id,request:ride_requests(user_id))` +
           `&order=created_at.asc,offer_id.asc&limit=${SYNC_MAX}&offset=${offset}`);
         let checked = 0, updated = 0, failed = 0;
         for (const r of rows ?? []) {
-          const passenger = r.offer?.request?.user_id;
+          const passenger = r.offer?.request?.user_id ?? r.offer?.driver_id;   // A15: pasažieris dzēsis kontu → šofera vārdā
           const i = await payInfo(r.session_id, r.offer_id);
           if (!i || !passenger) { failed++; continue; }
           checked++;
