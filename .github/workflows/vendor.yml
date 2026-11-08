@@ -1,0 +1,39 @@
+# A10: trešo pušu bibliotēkas (MapLibre) lietotnes paša mapē vendor/ — lai lapa neielādē JavaScript no CDN.
+# Kad mainās vendor/vendor.lock: lejupielādē arhīvu no github.com, pārbauda SHA-256 (tools/vendor.sh) un saglabā
+# vendor/<nosaukums>-<versija>/ main zarā. Var palaist arī ar roku: Actions → "Bibliotēkas (vendor)" → Run workflow.
+# Neizmanto slepenās atslēgas; raksta tikai mapē vendor/.
+name: Bibliotēkas (vendor)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'vendor/vendor.lock'
+      - 'tools/vendor.sh'
+      - '.github/workflows/vendor.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vendor
+  cancel-in-progress: false
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lejupielādē un pārbauda (SHA-256)
+        run: bash tools/vendor.sh
+      - name: Saglabā izmaiņas
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A vendor
+          if git diff --cached --quiet; then echo "Izmaiņu nav"; exit 0; fi
+          git commit -m "A10: vendor — $(awk '$1 == "zip" {print $2 " " $3}' vendor/vendor.lock | paste -sd, -)"
+          git pull --rebase --autostash
+          git push
