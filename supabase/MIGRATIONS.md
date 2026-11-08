@@ -47,10 +47,21 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 27 | cleanup-1.sql | A11: vecu datu tīrīšana ik 5 min (pg_cron), uzraudzība | **nē — aizsargāts** (pēc 28) |
 | 28 | account-1-delete.sql | A15: konta dzēšana — pārbaudes; otram dalībniekam paliek anonīms brauciena ieraksts | **nē — aizsargāts** (pēc 29) |
 | 29 | presence-2-privacy.sql | A16: citu braucēju punkti — atsevišķa izvēle, ~150 m, redz tikai braucot ≤ 15 km | **nē — aizsargāts** (pēc 30) |
-| 30 | rides-18-open-privacy.sql | B02: atvērtie braucieni šoferiem aptuveni (~1 km, bez vārda/adreses/piezīmes) | jā (kamēr nav jaunāku) |
+| 30 | rides-18-open-privacy.sql | B02: atvērtie braucieni šoferiem aptuveni (~1 km, bez vārda/adreses/piezīmes) | **nē — aizsargāts** (pēc 31) |
+| 31 | rides-19-cost-share.sql | B03: kopbrauciena maksa ≤ ceļa izmaksas (attālums × 1,3 × 12 c/km, ≥ 2 €) | jā (kamēr nav jaunāku) |
 
 **Produkcijā:** palaisti visi 1–30 (22–30 — 08.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
 Faili ar `cz_migration_begin` (27–…) atkārtoti palaižami tikai, kamēr nav palaists jaunāks (tad tie paši atsakās).
+
+## Kopbrauciena maksa — ceļa izdevumu daļa (B03)
+
+- `rides-19-cost-share.sql` (Nr. 31): `ride_fare_cap_cents` = attālums taisnā līnijā × 1,3 × 12 c/km, vismaz 2 €
+  (funkcija `ride_cost_cap`; agrāk — 300 € jebkuram braucienam). Trigeris `ride_offer_price_check` atsaka lielāku cenu.
+- `ride_requests_open` / `ride_requests_coarse` atdod arī `cap_cents` (precīzs maksimums, lai gan vieta noapaļota).
+- Jau nosūtītie piedāvājumi netiek mainīti. Pārbaude: `select ride_cost_cap(56.9496, 24.1052, 56.5047, 21.0108);` → 3044.
+- Kāpēc: maksa par pārvadājumu „profesionālas darbības veidā” ir komercpārvadājums (Autopārvadājumu likums, 1. p. 26. p.)
+  ar licencēm un ATD/VID prasībām (MK Nr. 541). Galīgo vērtējumu sniedz jurists — sk. dokumentu
+  „Maksājumu juridiskā sagatavošana”. Pirms `PAY_LIVE` — tā kontrolsaraksts.
 
 ## Atvērtie braucieni (B02)
 
@@ -102,7 +113,7 @@ palaid **visus failus no tā, kas definē šo funkciju jaunāko versiju, līdz b
 ## Jauns Supabase projekts (atjaunošana no nulles)
 
 1. Supabase → New project (reģions ES).
-2. SQL Editor: visi faili no `ORDER.txt` pēc kārtas (1 → 30); beigās `status.sql` → „VISS KĀRTĪBĀ”. (`cleanup-1.sql` pats
+2. SQL Editor: visi faili no `ORDER.txt` pēc kārtas (1 → 31); beigās `status.sql` → „VISS KĀRTĪBĀ”. (`cleanup-1.sql` pats
    ieslēdz plānotāju pg_cron; ja Supabase to neļauj — Integrations → Cron → ieslēgt, un palaist failu vēlreiz.)
 3. Authentication: kā aprakstīts `AUTH-IESTATIJUMI.md` (Site URL, Redirect URLs, anonīmie konti, Google, SMTP).
 4. Servera funkcijas (Edge Functions): `ride-pay` un `stripe-webhook` (pēdējo — ar `--no-verify-jwt`).

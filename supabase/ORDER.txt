@@ -31,3 +31,4 @@
 28 account-1-delete.sql
 29 presence-2-privacy.sql
 30 rides-18-open-privacy.sql
+31 rides-19-cost-share.sql
