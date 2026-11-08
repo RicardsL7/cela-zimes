@@ -1895,6 +1895,11 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
     const plug = {}; let asked = null;
     eq(nativeGeo({ Capacitor: { isNativePlatform: () => true, registerPlugin: n => { asked = n; return plug; } } })(), plug, 'Android lietotnē — telefona GPS');
     eq(asked, 'BackgroundGeolocation');
+    // A14: dzīvajā lapā lietotnē nav registerPlugin — tikai Capacitor.Plugins.* (to atklāja ierīces tests)
+    const plug2 = { addWatcher: () => 'w1' };
+    eq(nativeGeo({ Capacitor: { isNativePlatform: () => true, Plugins: { BackgroundGeolocation: plug2 } } })(), plug2, 'A14: bez registerPlugin — Capacitor.Plugins.BackgroundGeolocation');
+    eq(nativeGeo({ Capacitor: { isNativePlatform: () => true, Plugins: {} } })(), null, 'A14: nav spraudņa — parastais GPS');
+    ok(/Promise\.resolve\(\)\.then\(\(\) => BG\.addWatcher\(/.test(ap146) && /Promise\.resolve\(\)\.then\(\(\) => BG\.removeWatcher\(/.test(ap146), 'A14: addWatcher id — gan tieši, gan Promise');
     const toPos = new Function(grab('nativeLocToPos') + '; return nativeLocToPos;')();
     const p = toPos({ latitude: 56.95, longitude: 24.1, accuracy: 6, speed: 13.9, bearing: 270, altitude: 10, time: 123 });
     ok(p.coords.latitude === 56.95 && p.coords.longitude === 24.1 && p.coords.speed === 13.9 && p.coords.heading === 270 && p.coords.accuracy === 6 && p.timestamp === 123, 'telefona vieta → tas pats formāts kā pārlūkā');
@@ -3285,12 +3290,15 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   test('A14: app-native.js — growlab.cc saite atveras lietotnē; svešas adreses nē; atslēgas žurnālā nerāda', () => {
     const vm = require('vm');
     const src = fs.readFileSync(path.join(ROOT, 'app-native.js'), 'utf8');
-    const mk = (launch) => {
+    const mk = (launch, plugins) => {
       const log = [], store = {}, listeners = {};
       const loc = { origin: 'https://growlab.cc', pathname: '/', search: '', href: 'https://growlab.cc/', reloads: 0, reload() { this.reloads++; } };
       const ctx = { URL, Promise, console: { log: m => log.push(m) }, location: loc,
         sessionStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } },
-        window: { Capacitor: { isNativePlatform: () => true, registerPlugin: () => ({ addListener: (n, f) => { listeners[n] = f; }, getLaunchUrl: () => Promise.resolve(launch ? { url: launch } : null) }) } } };
+        window: { Capacitor: null } };
+      const plug = { addListener: (n, f) => { listeners[n] = f; return 'cb1'; }, getLaunchUrl: () => Promise.resolve(launch ? { url: launch } : null) };
+      // Dzīvajā lapā lietotnē nav @capacitor/core: ir tikai Capacitor.Plugins.App (ierīces tests to atklāja)
+      ctx.window.Capacitor = plugins ? { isNativePlatform: () => true, Plugins: { App: plug } } : { isNativePlatform: () => true, registerPlugin: () => plug };
       Object.defineProperty(loc, 'href', { get() { return this._h || 'https://growlab.cc/'; }, set(v) { this._h = v; } });
       vm.runInNewContext(src, ctx);
       return { log, loc, listeners, store };
@@ -3301,17 +3309,28 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     a.listeners.appUrlOpen({ url: 'https://growlab.cc/#access_token=SECRET&refresh_token=R' });
     eq(a.loc._h, 'https://growlab.cc/#access_token=SECRET&refresh_token=R', 'atver savu adresi');
     eq(a.loc.reloads, 1, 'tikai #… mainās — pārlādē, lai auth.js to apstrādā');
-    ok(a.log.length === 1 && /^\[cz-native\] appUrlOpen https:\/\/growlab\.cc\/ #…$/.test(a.log[0]) && !/SECRET/.test(a.log.join()), 'žurnālā bez atslēgām: ' + a.log[0]);
+    eq(a.log[0], '[cz-native] gatavs', 'žurnālā — ielādēts (ierīces tests to meklē)');
+    ok(a.log.length === 2 && /^\[cz-native\] appUrlOpen https:\/\/growlab\.cc\/ #…$/.test(a.log[1]) && !/SECRET/.test(a.log.join()), 'žurnālā bez atslēgām: ' + a.log[1]);
     a.listeners.appUrlOpen({ url: 'https://growlab.cc/#access_token=SECRET&refresh_token=R' });
     eq(a.loc.reloads, 1, 'to pašu adresi otrreiz neatver (nav pārlādes cilpas)');
+    const b = mk(null, true);
+    ok(typeof b.listeners.appUrlOpen === 'function', 'bez registerPlugin — lieto Capacitor.Plugins.App');
+    b.listeners.appUrlOpen({ url: 'https://growlab.cc/?pay=ok' });
+    eq(b.loc._h, 'https://growlab.cc/?pay=ok', 'Capacitor.Plugins.App saite atveras');
+    const c = mk('https://growlab.cc/#access_token=Z');
+    return Promise.resolve().then(() => new Promise(r => setTimeout(r, 0))).then(() => {
+      eq(c.loc._h, 'https://growlab.cc/#access_token=Z', 'palaišanas adrese (getLaunchUrl) atveras');
+      eq(c.log[1], '[cz-native] launchUrl https://growlab.cc/ #…');
     const n = mk(null); delete n.loc._h;
     const plain = { URL, console, location: {}, window: {} }; vm.runInNewContext(src, plain);
     ok(true, 'pārlūkā (bez Capacitor) nedara neko');
     const tpl = fs.readFileSync(path.join(MOB, 'scripts', 'device-test.sh'), 'utf8');
-    ok(tpl.includes('"\\[cz-native\\] appUrlOpen https://growlab.cc/ ?…"') && /czapptest=1/.test(tpl), 'ierīces tests meklē tieši šo žurnāla rindu');
+    ok(tpl.includes('"\\[cz-native\\] (appUrlOpen|launchUrl) https://growlab.cc/ \\?…"') && /czapptest=1/.test(tpl), 'ierīces tests meklē tieši šo žurnāla rindu');
+    ok(tpl.includes('"\\[cz-native\\] gatavs"'), 'ierīces tests pārbauda, ka app-native.js lietotnē strādā');
     const h = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
     const sc = [...h.matchAll(/<script defer src="([\w.-]+\.js)\?v=/g)].map(m => m[1]);
     ok(sc.indexOf('app-native.js') >= 0 && sc.indexOf('app-native.js') < sc.indexOf('auth.js'), 'app-native.js pirms auth.js');
+    });
   });
   test('A14: dokumentācija — paraksts, Play, ierīces tests ar roku; atslēgas nav repozitorijā', () => {
     const md = fs.readFileSync(path.join(MOB, 'README.md'), 'utf8');
