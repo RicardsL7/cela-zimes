@@ -1,6 +1,8 @@
 -- Minimal stand-in for what Supabase provides (roles, auth schema, auth.uid()) so the repo SQL files run on a plain
 -- local PostgreSQL. Used ONLY by tests (tests/run-sql.sh and GitHub Actions) — never run this against Supabase.
-create extension if not exists pgcrypto;
+-- Kā Supabase: pgcrypto ir shēmā extensions (ne public) — status.sql tad negaida tās funkcijas public shēmā
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
 do $$ begin create role authenticated nologin; exception when others then null; end $$;
 do $$ begin create role anon nologin; exception when others then null; end $$;
 do $$ begin create role service_role nologin bypassrls; exception when others then null; end $$;
