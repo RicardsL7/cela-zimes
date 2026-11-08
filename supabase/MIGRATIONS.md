@@ -44,8 +44,9 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 24 | rides-15-trip.sql | A03: gaita tikai uz priekšu | jā |
 | 25 | rides-16-checkout.sql | A04: viena maksājuma lapa | jā |
 | 26 | rides-17-migrations.sql | A09: migrāciju uzskaite | jā |
+| 27 | cleanup-1.sql | A11: vecu datu tīrīšana ik 5 min (pg_cron), uzraudzība | jā (kamēr nav jaunāku) |
 
-**Produkcijā (08.11.2026):** 1–21 palaisti agrāk; **22–26 vēl jāpalaiž** (šādā secībā, ar īpašnieka atļauju).
+**Produkcijā (08.11.2026):** 1–21 palaisti agrāk; **22–27 vēl jāpalaiž** (šādā secībā, ar īpašnieka atļauju).
 
 ## Kā palaist migrāciju produkcijā
 
@@ -70,7 +71,8 @@ palaid **visus failus no tā, kas definē šo funkciju jaunāko versiju, līdz b
 ## Jauns Supabase projekts (atjaunošana no nulles)
 
 1. Supabase → New project (reģions ES).
-2. SQL Editor: visi faili no `ORDER.txt` pēc kārtas (1 → 26); beigās `status.sql` → „VISS KĀRTĪBĀ”.
+2. SQL Editor: visi faili no `ORDER.txt` pēc kārtas (1 → 27); beigās `status.sql` → „VISS KĀRTĪBĀ”. (`cleanup-1.sql` pats
+   ieslēdz plānotāju pg_cron; ja Supabase to neļauj — Integrations → Cron → ieslēgt, un palaist failu vēlreiz.)
 3. Authentication: kā aprakstīts `AUTH-IESTATIJUMI.md` (Site URL, Redirect URLs, anonīmie konti, Google, SMTP).
 4. Servera funkcijas (Edge Functions): `ride-pay` un `stripe-webhook` (pēdējo — ar `--no-verify-jwt`).
    Secrets (vērtības ievada tikai īpašnieks; nekad repozitorijā): `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
@@ -78,6 +80,19 @@ palaid **visus failus no tā, kas definē šo funkciju jaunāko versiju, līdz b
 5. Stripe: webhook uz `https://<projekts>.supabase.co/functions/v1/stripe-webhook` (notikumi — `stripe-webhook/index.ts` sākumā).
 6. `rides-config.js`: jaunā projekta URL un **publishable** (anon) atslēga. Nekad `service_role`.
 7. Īpašnieka tiesības statistikai — `stats-f16.sql` sākumā (ar savu e-pastu, SQL redaktorā; repozitorijā neraksta).
+
+## Vecu datu tīrīšana un uzraudzība (A11)
+
+- `cleanup-1.sql`: funkcija `cz_cleanup()` ik 5 minūtes (pg_cron darbs `cz-cleanup`) dzēš datus, kuru glabāšanas laiks
+  beidzies (tieši kā `privacy.html` 9. punktā): ziņojumi (ar atzīmēm) — derīguma beigas + 2 dienas, ātruma mērījumi —
+  28 dienas, mērījumu skaitītāji — 1 diena, vieta citu kartē — pēc 5 min bez atjaunošanas (tātad ≤ 10 min), konta pārneses
+  kodi — pēc derīguma, Stripe notikumu ID — 90 dienas; arī novecojušos braucienus (`ride_expire`) un plānotāja vēsturi (7 dienas).
+  Katrs solis atsevišķi — viena kļūda neaptur pārējos.
+- Katra palaišana — `cz_cleanup_runs` (7 dienas). Pēdējās: `select started_at, ok, deleted, errors from cz_cleanup_runs order by id desc limit 10;`
+- **Brīdinājumi:** `admin.html` augšā sarkans paziņojums, ja tīrīšana nav ieplānota vai pēdējā veiksmīgā > 20 min;
+  GitHub Actions „Uzraudzība” reizi stundā izsauc `cz_health()` un, ja tīrīšana nestrādā, darbs neizdodas → GitHub e-pasts.
+  `status.sql` rāda „plānotājs … nav ieplānots”, ja darbs pazudis.
+- GitHub ieplānotos darbus aptur pēc 60 dienām bez izmaiņām repozitorijā — tad Actions → „Uzraudzība” → Enable workflow.
 
 ## Datu rezerves kopija
 

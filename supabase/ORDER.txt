@@ -27,3 +27,4 @@
 24 rides-15-trip.sql
 25 rides-16-checkout.sql
 26 rides-17-migrations.sql
+27 cleanup-1.sql

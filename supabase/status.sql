@@ -7,6 +7,7 @@
 --   cita versija      — funkcija atšķiras no repozitorija (palaists vecs fails pēc jaunāka vai labots ar roku)
 --   tiesības          — lietotnei (anon / authenticated) ir citas tiesības nekā paredzēts
 --   migrācija         — fails nav atzīmēts cz_migrations (pēc rides-17-migrations.sql)
+--   plānotājs         — regulārais darbs (piem. vecu datu tīrīšana cz-cleanup) nav ieplānots pg_cron
 -- Papildu objekti (piem. paša pievienoti) netiek ziņoti.
 with
 exp_mig(seq, name) as (values
@@ -35,7 +36,8 @@ exp_mig(seq, name) as (values
   (23, 'rides-14-accept.sql'),
   (24, 'rides-15-trip.sql'),
   (25, 'rides-16-checkout.sql'),
-  (26, 'rides-17-migrations.sql')
+  (26, 'rides-17-migrations.sql'),
+  (27, 'cleanup-1.sql')
 ),
 exp_fn(sig, h, secdef) as (values
   ('account_alias_ok(old_id uuid, new_id uuid)', '5d3cd15fa3ad944c76d4cb86de68bbfc', true),
@@ -51,6 +53,9 @@ exp_fn(sig, h, secdef) as (values
   ('coin_today()', 'a7471e876725d3e2621b674248d98b5f', false),
   ('coin_trust_factor(t real)', 'fda97ae01d1e2fc13d48f0abb47b7fa3', false),
   ('crypt(text, text)', 'ea9cb21d4668638c79f471dc607df1b4', false),
+  ('cz_cleanup()', '77513019ec2310321630b26799734d1a', true),
+  ('cz_cleanup_status()', '4d5d8495c62557c37cfb93b5fbec24e7', true),
+  ('cz_health()', '262c67a2d88644c3f110b8876bc56f79', true),
   ('cz_migration_begin(p_seq integer, p_name text)', '4239150cb52783ecddb3376722c8eba0', false),
   ('cz_migration_done(p_seq integer, p_name text)', 'e2f03f0cae1ad9d9353783425d6b8ba8', false),
   ('dearmor(text)', '698d71f03c675ff58762990312109ea6', false),
@@ -177,6 +182,12 @@ exp_col(t, c) as (values
   ('coin_ledger', 'user_id'),
   ('contacts', 'id'),
   ('contacts', 'phone'),
+  ('cz_cleanup_runs', 'deleted'),
+  ('cz_cleanup_runs', 'errors'),
+  ('cz_cleanup_runs', 'finished_at'),
+  ('cz_cleanup_runs', 'id'),
+  ('cz_cleanup_runs', 'ok'),
+  ('cz_cleanup_runs', 'started_at'),
   ('cz_migrations', 'applied_at'),
   ('cz_migrations', 'name'),
   ('cz_migrations', 'note'),
@@ -411,12 +422,15 @@ exp_pol(t, p) as (values
 exp_idx(i) as (values
   ('account_aliases_pkey'),
   ('account_closures_pkey'),
+  ('account_transfers_expires'),
   ('account_transfers_pkey'),
   ('app_admin_pending_pkey'),
   ('app_admins_pkey'),
   ('coin_ledger_pkey'),
   ('coin_ledger_user_time'),
   ('contacts_pkey'),
+  ('cz_cleanup_runs_pkey'),
+  ('cz_cleanup_runs_started'),
   ('cz_migrations_name_key'),
   ('cz_migrations_pkey'),
   ('driver_accounts_pkey'),
@@ -455,6 +469,7 @@ exp_idx(i) as (values
   ('user_consents_user'),
   ('user_presence_area'),
   ('user_presence_pkey'),
+  ('user_presence_updated'),
   ('user_reports_pkey'),
   ('user_reports_reported'),
   ('user_reports_reporter'),
@@ -470,6 +485,7 @@ exp_rls(t) as (values
   ('app_admins'),
   ('coin_ledger'),
   ('contacts'),
+  ('cz_cleanup_runs'),
   ('cz_migrations'),
   ('driver_accounts'),
   ('profiles'),
@@ -522,6 +538,12 @@ exp_fpriv(sig, r, ok) as (values
   ('coin_trust_factor(t real)', 'authenticated', true),
   ('crypt(text, text)', 'anon', true),
   ('crypt(text, text)', 'authenticated', true),
+  ('cz_cleanup()', 'anon', false),
+  ('cz_cleanup()', 'authenticated', false),
+  ('cz_cleanup_status()', 'anon', false),
+  ('cz_cleanup_status()', 'authenticated', true),
+  ('cz_health()', 'anon', true),
+  ('cz_health()', 'authenticated', true),
   ('cz_migration_begin(p_seq integer, p_name text)', 'anon', false),
   ('cz_migration_begin(p_seq integer, p_name text)', 'authenticated', false),
   ('cz_migration_done(p_seq integer, p_name text)', 'anon', false),
@@ -790,6 +812,14 @@ exp_tpriv(t, r, act, ok) as (values
   ('contacts', 'authenticated', 'INSERT', true),
   ('contacts', 'authenticated', 'SELECT', true),
   ('contacts', 'authenticated', 'UPDATE', true),
+  ('cz_cleanup_runs', 'anon', 'DELETE', false),
+  ('cz_cleanup_runs', 'anon', 'INSERT', false),
+  ('cz_cleanup_runs', 'anon', 'SELECT', false),
+  ('cz_cleanup_runs', 'anon', 'UPDATE', false),
+  ('cz_cleanup_runs', 'authenticated', 'DELETE', false),
+  ('cz_cleanup_runs', 'authenticated', 'INSERT', false),
+  ('cz_cleanup_runs', 'authenticated', 'SELECT', false),
+  ('cz_cleanup_runs', 'authenticated', 'UPDATE', false),
   ('cz_migrations', 'anon', 'DELETE', false),
   ('cz_migrations', 'anon', 'INSERT', false),
   ('cz_migrations', 'anon', 'SELECT', false),
@@ -1069,6 +1099,14 @@ exp_cpriv(t, c, r, ok) as (values
   ('ride_requests', 'user_id', 'anon', false),
   ('ride_requests', 'user_id', 'authenticated', false)
 ),
+exp_cron(name, sched) as (values
+  ('cz-cleanup', '*/5 * * * *')
+),
+act_cron as (
+  select (xpath('/row/jobname/text()', x))[1]::text name, (xpath('/row/schedule/text()', x))[1]::text sched
+  from unnest(xpath('/table/row', case when to_regclass('cron.job') is not null
+         then query_to_xml('select jobname, schedule from cron.job where active', false, false, '') end)) x
+),
 -- cz_migrations var vēl nebūt (pirms rides-17) — nolasa dinamiski, lai vaicājums nekristu
 act_mig as (
   select (xpath('/row/seq/text()', x))[1]::text::int seq, (xpath('/row/name/text()', x))[1]::text name
@@ -1110,6 +1148,9 @@ problems(kas, objekts, problema) as (
     from exp_cpriv e
     where case when exists (select 1 from information_schema.columns x where x.table_schema = 'public' and x.table_name = e.t and x.column_name = e.c)
                then has_column_privilege(e.r, to_regclass('public.' || quote_ident(e.t)), e.c, 'UPDATE') <> e.ok end
+  union all
+  select 'plānotājs', e.name || ' (' || e.sched || ')', 'nav ieplānots (pg_cron)' from exp_cron e
+    where e.name is not null and not exists (select 1 from act_cron a where a.name = e.name and a.sched = e.sched)
   union all
   select 'migrācija', e.seq || ' ' || e.name, 'nav atzīmēts cz_migrations' from exp_mig e
     where not exists (select 1 from act_mig m where m.seq = e.seq and m.name = e.name)
