@@ -8,6 +8,7 @@
 --   tiesības          — lietotnei (anon / authenticated) ir citas tiesības nekā paredzēts
 --   migrācija         — fails nav atzīmēts cz_migrations (pēc rides-17-migrations.sql)
 --   plānotājs         — regulārais darbs (piem. vecu datu tīrīšana cz-cleanup) nav ieplānots pg_cron
+--   ārējā atslēga     — saite starp tabulām trūkst vai dzēšot rīkojas citādi (piem. CASCADE, nevis SET NULL — A15)
 -- Papildu objekti (piem. paša pievienoti) netiek ziņoti.
 with
 exp_mig(seq, name) as (values
@@ -37,10 +38,13 @@ exp_mig(seq, name) as (values
   (24, 'rides-15-trip.sql'),
   (25, 'rides-16-checkout.sql'),
   (26, 'rides-17-migrations.sql'),
-  (27, 'cleanup-1.sql')
+  (27, 'cleanup-1.sql'),
+  (28, 'account-1-delete.sql')
 ),
 exp_fn(sig, h, secdef) as (values
   ('account_alias_ok(old_id uuid, new_id uuid)', '5d3cd15fa3ad944c76d4cb86de68bbfc', true),
+  ('account_delete_blockers(me uuid)', 'd06ce639bd751f4c33ffb25de0dd1e6c', true),
+  ('account_delete_check()', 'b5c4e29974a7a20b0dd5a409452c5198', true),
   ('account_transfer_claim(code text)', 'ad90e184a811e42717d863637547a38c', true),
   ('account_transfer_start()', '2a58937b3961640722155f471be7328c', true),
   ('admin_stats()', '6a802ea388a92b237d80493ef276c076', true),
@@ -55,7 +59,7 @@ exp_fn(sig, h, secdef) as (values
   ('cz_health()', '262c67a2d88644c3f110b8876bc56f79', true),
   ('cz_migration_begin(p_seq integer, p_name text)', '4239150cb52783ecddb3376722c8eba0', false),
   ('cz_migration_done(p_seq integer, p_name text)', 'e2f03f0cae1ad9d9353783425d6b8ba8', false),
-  ('delete_my_account(p_unclosed_acct text)', 'd1bfcc54b79a38224b221e10e40fd907', true),
+  ('delete_my_account(p_unclosed_acct text)', '4cc08c948676b6720487db5e60f21a25', true),
   ('has_offer_on(rid uuid)', 'c7a0c510cbc3b44a72638320372331d6', true),
   ('is_app_admin()', 'd79cac5c1d75eea0ad751cd75faf8abe', true),
   ('is_offer_party(oid uuid)', '4fb3ac67dfacb9ce6fc226847b397505', true),
@@ -104,7 +108,8 @@ exp_fn(sig, h, secdef) as (values
   ('ride_payment_guard()', '5953f41d5c9a809c6c03220aaa9583eb', false),
   ('ride_payment_guard_ins()', '4ee30219e76e6f1665702fce3bbc8a91', false),
   ('ride_payment_mark(p_user_id uuid, oid uuid, p_status text, p_refund_id text, p_reason text, p_cents integer)', '74fa5096945d15a8025b9555030fe2ec', true),
-  ('ride_rating_fill()', '663e0d57e003d632f9fcea72f85af276', true),
+  ('ride_profile_erase()', '2f95bb8da020606f9700cf963ac817ea', true),
+  ('ride_rating_fill()', 'e6019baf4125cda84da361b7364db1dd', true),
   ('ride_refund_candidates()', '98577f55890f820c8fcfe6c9928218e6', true),
   ('ride_refunds_recent()', '64486966e05146490e32c4aa4405afbe', true),
   ('ride_request_started(rid uuid)', '8679be392e30fa4b8ed74fd1f3b0d20d', true),
@@ -117,7 +122,7 @@ exp_fn(sig, h, secdef) as (values
   ('traffic_helpers()', '934bac4b2cefa3af79273f718a3e23f0', true),
   ('traffic_now(s double precision, w double precision, n double precision, e double precision)', 'c291a003adec4d6effe3571a43232b8a', true),
   ('traffic_report(items jsonb)', '2ad52ceab1fc38003bed333347aceeba', true),
-  ('user_report_fill()', '39c0cb90e975c56ac69bb98892de4a87', true),
+  ('user_report_fill()', 'd453eef63a8b2d40cb2731cfbe0cb8ff', true),
   ('wallet_award(u uuid, amount integer, why text, rid uuid)', 'ff8aa4953aa10c1a33036bf912dc4de8', true),
   ('wallet_can_spend(u uuid)', '95e6f7238d872c02c48fc6e65cc6b73d', true),
   ('wallet_get()', '494e5fa936bed3d9cc66ce1882638c4a', true),
@@ -335,6 +340,7 @@ exp_col(t, c) as (values
 ),
 exp_trg(t, g) as (values
   ('account_aliases', 'account_aliases_wallet'),
+  ('profiles', 'profiles_erase_rides'),
   ('ride_messages', 'ride_messages_limit'),
   ('ride_offers', 'ride_offer_mark_accepted'),
   ('ride_offers', 'ride_offer_price'),
@@ -478,6 +484,10 @@ exp_rls(t) as (values
 exp_fpriv(sig, r, ok) as (values
   ('account_alias_ok(old_id uuid, new_id uuid)', 'anon', false),
   ('account_alias_ok(old_id uuid, new_id uuid)', 'authenticated', true),
+  ('account_delete_blockers(me uuid)', 'anon', false),
+  ('account_delete_blockers(me uuid)', 'authenticated', false),
+  ('account_delete_check()', 'anon', false),
+  ('account_delete_check()', 'authenticated', true),
   ('account_transfer_claim(code text)', 'anon', false),
   ('account_transfer_claim(code text)', 'authenticated', true),
   ('account_transfer_start()', 'anon', false),
@@ -604,6 +614,8 @@ exp_fpriv(sig, r, ok) as (values
   ('ride_payment_guard_ins()', 'authenticated', true),
   ('ride_payment_mark(p_user_id uuid, oid uuid, p_status text, p_refund_id text, p_reason text, p_cents integer)', 'anon', false),
   ('ride_payment_mark(p_user_id uuid, oid uuid, p_status text, p_refund_id text, p_reason text, p_cents integer)', 'authenticated', false),
+  ('ride_profile_erase()', 'anon', false),
+  ('ride_profile_erase()', 'authenticated', false),
   ('ride_rating_fill()', 'anon', true),
   ('ride_rating_fill()', 'authenticated', true),
   ('ride_refund_candidates()', 'anon', false),
@@ -991,6 +1003,38 @@ exp_cpriv(t, c, r, ok) as (values
   ('ride_requests', 'user_id', 'anon', false),
   ('ride_requests', 'user_id', 'authenticated', false)
 ),
+exp_fk(t, k, def) as (values
+  ('account_aliases', 'account_aliases_new_user_fkey', 'FOREIGN KEY (new_user) REFERENCES auth.users(id) ON DELETE CASCADE'),
+  ('account_transfers', 'account_transfers_from_user_fkey', 'FOREIGN KEY (from_user) REFERENCES auth.users(id) ON DELETE CASCADE'),
+  ('app_admins', 'app_admins_user_id_fkey', 'FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE'),
+  ('coin_ledger', 'coin_ledger_user_id_fkey', 'FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE'),
+  ('contacts', 'contacts_id_fkey', 'FOREIGN KEY (id) REFERENCES profiles(id) ON DELETE CASCADE'),
+  ('driver_accounts', 'driver_accounts_user_id_fkey', 'FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE'),
+  ('profiles', 'profiles_id_fkey', 'FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE'),
+  ('report_votes', 'report_votes_report_id_fkey', 'FOREIGN KEY (report_id) REFERENCES reports(id) ON DELETE CASCADE'),
+  ('report_votes', 'report_votes_user_id_fkey', 'FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE'),
+  ('reports', 'reports_user_id_fkey', 'FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE'),
+  ('ride_messages', 'ride_messages_offer_id_fkey', 'FOREIGN KEY (offer_id) REFERENCES ride_offers(id) ON DELETE CASCADE'),
+  ('ride_messages', 'ride_messages_sender_fkey', 'FOREIGN KEY (sender) REFERENCES profiles(id) ON DELETE CASCADE'),
+  ('ride_offers', 'ride_offers_driver_id_fkey', 'FOREIGN KEY (driver_id) REFERENCES profiles(id) ON DELETE SET NULL'),
+  ('ride_offers', 'ride_offers_request_id_fkey', 'FOREIGN KEY (request_id) REFERENCES ride_requests(id) ON DELETE CASCADE'),
+  ('ride_payments', 'ride_payments_offer_id_fkey', 'FOREIGN KEY (offer_id) REFERENCES ride_offers(id) ON DELETE CASCADE'),
+  ('ride_ratings', 'ride_ratings_offer_id_fkey', 'FOREIGN KEY (offer_id) REFERENCES ride_offers(id) ON DELETE CASCADE'),
+  ('ride_ratings', 'ride_ratings_rated_id_fkey', 'FOREIGN KEY (rated_id) REFERENCES profiles(id) ON DELETE CASCADE'),
+  ('ride_ratings', 'ride_ratings_rater_id_fkey', 'FOREIGN KEY (rater_id) REFERENCES profiles(id) ON DELETE SET NULL'),
+  ('ride_requests', 'ride_requests_user_id_fkey', 'FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE SET NULL'),
+  ('user_consents', 'user_consents_user_id_fkey', 'FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE'),
+  ('user_presence', 'user_presence_skin_fkey', 'FOREIGN KEY (skin) REFERENCES skins(id)'),
+  ('user_presence', 'user_presence_user_id_fkey', 'FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE'),
+  ('user_reports', 'user_reports_offer_id_fkey', 'FOREIGN KEY (offer_id) REFERENCES ride_offers(id) ON DELETE SET NULL'),
+  ('user_reports', 'user_reports_reported_id_fkey', 'FOREIGN KEY (reported_id) REFERENCES auth.users(id) ON DELETE SET NULL'),
+  ('user_reports', 'user_reports_reporter_id_fkey', 'FOREIGN KEY (reporter_id) REFERENCES auth.users(id) ON DELETE CASCADE'),
+  ('user_skins', 'user_skins_skin_id_fkey', 'FOREIGN KEY (skin_id) REFERENCES skins(id)'),
+  ('user_skins', 'user_skins_user_id_fkey', 'FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE'),
+  ('user_stat_counters', 'user_stat_counters_user_id_fkey', 'FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE'),
+  ('user_wallet', 'user_wallet_equipped_skin_fkey', 'FOREIGN KEY (equipped_skin) REFERENCES skins(id)'),
+  ('user_wallet', 'user_wallet_user_id_fkey', 'FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE')
+),
 exp_cron(name, sched) as (values
   ('cz-cleanup', '*/5 * * * *')
 ),
@@ -1040,6 +1084,10 @@ problems(kas, objekts, problema) as (
     from exp_cpriv e
     where case when exists (select 1 from information_schema.columns x where x.table_schema = 'public' and x.table_name = e.t and x.column_name = e.c)
                then has_column_privilege(e.r, to_regclass('public.' || quote_ident(e.t)), e.c, 'UPDATE') <> e.ok end
+  union all
+  select 'ārējā atslēga', e.t || '.' || e.k, case when x.oid is null then 'trūkst' else 'cita: ' || pg_get_constraintdef(x.oid) end
+    from exp_fk e left join pg_constraint x on x.conname = e.k and x.contype = 'f' and x.conrelid = to_regclass('public.' || quote_ident(e.t))
+    where x.oid is null or pg_get_constraintdef(x.oid) <> e.def
   union all
   select 'plānotājs', e.name || ' (' || e.sched || ')', 'nav ieplānots (pg_cron)' from exp_cron e
     where e.name is not null and not exists (select 1 from act_cron a where a.name = e.name and a.sched = e.sched)

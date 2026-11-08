@@ -28,3 +28,4 @@
 25 rides-16-checkout.sql
 26 rides-17-migrations.sql
 27 cleanup-1.sql
+28 account-1-delete.sql

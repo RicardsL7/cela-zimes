@@ -44,9 +44,22 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 24 | rides-15-trip.sql | A03: gaita tikai uz priekšu | jā |
 | 25 | rides-16-checkout.sql | A04: viena maksājuma lapa | jā |
 | 26 | rides-17-migrations.sql | A09: migrāciju uzskaite | jā |
-| 27 | cleanup-1.sql | A11: vecu datu tīrīšana ik 5 min (pg_cron), uzraudzība | jā (kamēr nav jaunāku) |
+| 27 | cleanup-1.sql | A11: vecu datu tīrīšana ik 5 min (pg_cron), uzraudzība | **nē — aizsargāts** (pēc 28) |
+| 28 | account-1-delete.sql | A15: konta dzēšana — pārbaudes; otram dalībniekam paliek anonīms brauciena ieraksts | jā (kamēr nav jaunāku) |
 
-**Produkcijā:** palaisti visi 1–27 (22–27 — 08.11.2026, ar īpašnieka atļauju). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
+**Produkcijā:** palaisti 1–27 (22–27 — 08.11.2026, ar īpašnieka atļauju); **28 — vēl jāpalaiž**. Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
+Faili ar `cz_migration_begin` (27–…) atkārtoti palaižami tikai, kamēr nav palaists jaunāks (tad tie paši atsakās).
+
+## Konta dzēšana (A15)
+
+- `account_delete_check()` — vai pieteikušos lietotāju drīkst dzēst; `delete_my_account()` bez tās nedzēš (kļūda `account_busy`):
+  aktīvs brauciens; maksājuma lapa atvērta < 24 h; samaksāts brauciens atcelts pirms iekāpšanas, bet atmaksa nav pabeigta.
+  `ride-pay` darbība `close` (šofera Stripe konta slēgšana) to pārbauda pirms slēgšanas.
+- Profila dzēšana jebkurā veidā (arī Supabase panelī) — trigeris `profiles_erase_rides`: braucieni bez vēstures dzēsti,
+  ar vēsturi — otram paliek bez dzēstā ID, adreses, piezīmes, precīzām koordinātām (~1 km) un pēdējām atrašanās vietām;
+  dzēstā čata ziņas un vērtējumi par viņu — dzēsti. Ja abi dalībnieki dzēsuši kontu — brauciens dzēsts pilnībā.
+  Ārējās atslēgas `ride_requests.user_id`, `ride_offers.driver_id`, `ride_ratings.rater_id` — `ON DELETE SET NULL`
+  (`status.sql` pārbauda arī ārējo atslēgu darbību).
 
 ## Kā palaist migrāciju produkcijā
 
@@ -71,7 +84,7 @@ palaid **visus failus no tā, kas definē šo funkciju jaunāko versiju, līdz b
 ## Jauns Supabase projekts (atjaunošana no nulles)
 
 1. Supabase → New project (reģions ES).
-2. SQL Editor: visi faili no `ORDER.txt` pēc kārtas (1 → 27); beigās `status.sql` → „VISS KĀRTĪBĀ”. (`cleanup-1.sql` pats
+2. SQL Editor: visi faili no `ORDER.txt` pēc kārtas (1 → 28); beigās `status.sql` → „VISS KĀRTĪBĀ”. (`cleanup-1.sql` pats
    ieslēdz plānotāju pg_cron; ja Supabase to neļauj — Integrations → Cron → ieslēgt, un palaist failu vēlreiz.)
 3. Authentication: kā aprakstīts `AUTH-IESTATIJUMI.md` (Site URL, Redirect URLs, anonīmie konti, Google, SMTP).
 4. Servera funkcijas (Edge Functions): `ride-pay` un `stripe-webhook` (pēdējo — ar `--no-verify-jwt`).
