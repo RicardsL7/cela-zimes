@@ -561,7 +561,7 @@ function ridesOpenCard(x) {
     r.note ? rEl('p', { class: 'r-note', text: '“' + r.note + '”' }) : null,
     r.coarse ? rEl('p', { class: 'fine r-coarse', text: RIDES_COARSE_HINT }) : null,
     rEl('label', { class: 'r-price-row' },
-      rEl('span', { text: `Cena (neobligāti, līdz ${rideMoney(cap)})` }),
+      rEl('span', { text: `Ceļa izdevumu daļa (neobligāti, līdz ${rideMoney(cap)})` }),
       rEl('span', { class: 'r-price-box' }, price, rEl('b', { text: '€' }))),
     rEl('div', { class: 'r-actions' },
       rEl('button', { class: 'btn ghost', type: 'button', text: 'Kartē', onclick: () => { map.easeTo({ center: [r.from_lng, r.from_lat], zoom: r.coarse ? 13 : 15 }); } }),
@@ -569,7 +569,7 @@ function ridesOpenCard(x) {
         const say = (text, bad = true) => { msg.textContent = text; msg.className = 'r-msg' + (bad ? ' bad' : ''); msg.hidden = false; setStatus(text); };
         const cents = rideParsePrice(price.value);
         if (Number.isNaN(cents)) { say('Cenu ieraksti skaitļos, piem. 4,50'); price.focus(); return; }
-        if (cents != null && cents > cap) { say(`Cena var būt līdz ${rideMoney(cap)}.`); price.focus(); return; }
+        if (cents != null && cents > cap) { say(`Summa var būt līdz ${rideMoney(cap)} — tās ir aptuvenās ceļa izmaksas (kopbrauciens nav peļņas pārvadājums).`); price.focus(); return; }
         if (cents != null && cents > 0 && cents < 100) { say('Mazākā cena ir 1 €.'); price.focus(); return; }
         const btn = e.currentTarget;
         btn.disabled = true; say('Sūta piedāvājumu…', false);
@@ -581,7 +581,7 @@ function ridesOpenCard(x) {
           console.warn(err);
           const t = String(err && err.message || '');
           say(/ 409 |23505|duplicate/.test(t) ? 'Tu šim braucienam jau esi piedāvājis (vai pasažieris to atteica).'
-            : /pārsniedz/.test(t) ? `Cena pārsniedz maksimālo (${rideMoney(cap)}).`
+            : /pārsniedz/.test(t) ? `Summa pārsniedz ceļa izmaksas (maks. ${rideMoney(cap)}).`
             : 'Neizdevās nosūtīt piedāvājumu — pārbaudi internetu un mēģini vēlreiz.');
           btn.disabled = false;
           return;

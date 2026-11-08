@@ -10,7 +10,7 @@
 // Viena sesija visām funkcijām: localStorage "cz.auth.session" (vecās cz.rides.session /
 // cz.traffic.session tiek pārņemtas, nevis izmestas).
 
-const CZ_TERMS_VERSION = '2026-11-08';        // A15: konta dzēšana — kad nevar, kas paliek otram (iepr. 2026-10-23)
+const CZ_TERMS_VERSION = '2026-11-08b';       // B03: kopbrauciens = izdevumu dalīšana, ≤ 12 c/km (iepr. 2026-11-08 — A15)
 const CZ_PRIVACY_VERSION = '2026-11-08b';      // A16: vieta citu kartē — atsevišķa izvēle, ~150 m (iepr. 2026-11-08 — A15 dzēšana)
 const CZ_AUTH_KEY = 'cz.auth.session';
 const CZ_CONSENT_KEY = 'cz.consent';

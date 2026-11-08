@@ -390,3 +390,17 @@
   `(user_id = auth.uid()) OR ride_request_exact(id)`; `ride_requests_open` — ne anon; braucieni neskarti (28).
 - Testi: `tests/open-privacy-test.sql` (14), `run.js` +3 (194/194), `run-sql.sh` 333/333.
 
+## B03 (audits 2) — kopbrauciena maksa = ceļa izdevumu daļa, ne peļņa (08.11.2026)
+
+- **Problēma:** kopš v92 šoferis drīkstēja prasīt līdz 300 € jebkuram braucienam, un lietotne ietur 10 % komisiju.
+  Tas izskatās pēc komercpārvadājuma („par maksu profesionālas darbības veidā”, Autopārvadājumu likums 1. p. 26. p.),
+  kam vajag licences kartītes, ATD reģistrāciju un datu sūtīšanu VID pēc katra brauciena (MK Nr. 541).
+- **Īpašnieka lēmums:** modelis „izdevumu dalīšana”.
+- **`supabase/rides-19-cost-share.sql` (Nr. 31):** griesti = attālums × 1,3 × 12 c/km, vismaz 2 € (Rīga → Liepāja ≈ 30,44 €);
+  šoferu saraksts atdod `cap_cents`; `ride_fare_cap_cents` — ne anon.
+- **Lietotne v160** (`rides.js`, `rides-ui.js`, `auth.js`): tā pati haversina formula (cents sakrīt ar datubāzi), lauks
+  „Ceļa izdevumu daļa (neobligāti, līdz X)”, skaidrs paziņojums, ja summa par lielu; noteikumi lietotnē.
+- **Noteikumi:** `terms.html` — „Kopbraucieni ir izdevumu dalīšana…”, versija 2026-11-08b (piekrišanas logs no jauna).
+- **Juristam un grāmatvedim:** dokuments „Maksājumu juridiskā sagatavošana” (jautājumi, MK 541 prasības, kontrolsaraksts
+  pirms `PAY_LIVE`). Īsti maksājumi paliek izslēgti, līdz jurists to apstiprina.
+- Testi: `tests/cost-share-test.sql` (9), `run.js` +3 (197/197), `run-sql.sh` 343/343, kartes tests — kārtībā.

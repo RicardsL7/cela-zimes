@@ -103,10 +103,21 @@ function rideTimeText(iso, now = Date.now()) {
   if (dd === 1) return 'rīt ' + hm;
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}. ${hm}`;
 }
-// Maksa par braucienu: šoferis var norādīt cenu līdz 300 € (tāpat datubāzē: supabase/rides-6-price.sql).
+// B03 (audits 2): kopbrauciena maksa ir ceļa izdevumu daļa, ne peļņa — attālums taisnā līnijā × 1,3 (pa ceļiem)
+// × 12 c/km, vismaz 2 € (tāpat datubāzē: supabase/rides-19-cost-share.sql → ride_cost_cap). Šoferu sarakstā vieta
+// ir noapaļota, tāpēc serveris atdod precīzo maksimumu cap_cents — to izmanto, ja ir.
 const RIDE_FEE_PCT = 10;
-const RIDE_PRICE_MAX = 30000;
-function rideFareCapCents(r) { return RIDE_PRICE_MAX; }
+const RIDE_PRICE_MAX = 30000;                // absolūtā robeža datubāzē (ride_offers_price_cents_check)
+const RIDE_CENTS_PER_KM = 12, RIDE_CAP_MIN = 200;
+function rideFareCapCents(r) {
+  if (r && Number.isFinite(r.cap_cents)) return r.cap_cents;
+  const ok = v => typeof v === 'number' && Number.isFinite(v);
+  if (!r || !ok(r.from_lat) || !ok(r.from_lng) || !ok(r.to_lat) || !ok(r.to_lng)) return RIDE_CAP_MIN;
+  // Tā pati haversina formula kā SQL ride_cost_cap (R = 6371 km), lai lietotne un datubāze nonāk pie tā paša centa
+  const rad = d => d * Math.PI / 180;
+  const h = Math.sin(rad(r.to_lat - r.from_lat) / 2) ** 2 + Math.cos(rad(r.from_lat)) * Math.cos(rad(r.to_lat)) * Math.sin(rad(r.to_lng - r.from_lng) / 2) ** 2;
+  return Math.min(RIDE_PRICE_MAX, Math.max(RIDE_CAP_MIN, Math.round(2 * 6371 * Math.asin(Math.sqrt(h)) * 1.3 * RIDE_CENTS_PER_KM)));
+}
 // "4,50" / "4.5" / "4" → 450 (centi); tukšs → null; nederīgs → NaN
 function rideParsePrice(text) {
   const t = String(text ?? '').trim().replace(/\s|€|eur/gi, '').replace(',', '.');
@@ -380,6 +391,7 @@ function rideCoarseToReq(x, myId = null) {
     to_lat: Number(x.to_lat), to_lng: Number(x.to_lng), to_name: area(x.to_area, 'Galamērķis'),
     depart_at: x.depart_at, seats: x.seats, status: x.status, created_at: x.created_at,
     note: '', user_id: x.mine ? myId : null, passenger: null, coarse: true,
+    ...(x.cap_cents != null ? { cap_cents: Number(x.cap_cents) } : {}),                       // B03: precīzais maksimums
     rating: { avg: x.pas_avg != null ? Number(x.pas_avg) : null, count: x.pas_count || 0, rides: x.pas_rides || 0 },
   };
 }
@@ -688,6 +700,6 @@ function createRideStore(cfg) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { rideCoarseToReq, rideOtherDeleted, rideRefundInfo, rideTripCheck, RIDE_TRIP_ORDER, rideFareCapCents, rideParsePrice, rideMoney, rideSplit, RIDE_FEE_PCT, rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
+  module.exports = { RIDE_CENTS_PER_KM, rideCoarseToReq, rideOtherDeleted, rideRefundInfo, rideTripCheck, RIDE_TRIP_ORDER, rideFareCapCents, rideParsePrice, rideMoney, rideSplit, RIDE_FEE_PCT, rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
     rideTimeText, rideDistText, rideStage, rideFresh, rideEtaMinutes, ridePassengerStatus, rideDriverStatus, rideUnread, rideMsgTime, rideStatsEmpty, rideHistWithdrawn, RIDE_DECLINED_SHOW_MS, rideDeclinedAt, rideDeclinedRecent, rideDeclinedText, RIDE_REPORT_REASONS, rideCountText, rideRatingText, rideStarsText, rideAvg, rideDateText, ridePayText, rideSummaryPending, rideHistoryFromOffer, rideRateErr, rideRpcMissing, rideErrorText, LocalRideStore, SupabaseRideStore, createRideStore, RIDE_OFFER_STATUS };
 }

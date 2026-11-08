@@ -49,6 +49,8 @@ demo režīms tikai šajā pārlūkā).
   maršruts ~1 km) — sīkāk `supabase/MIGRATIONS.md` un `privacy.html` 9. punkts.
 - Citi braucēji kartē (`supabase/presence-2-privacy.sql`, A16): tikai ar slēdzi „Rādīt mani citu kartē” (noklusēti
   izslēgts), ~150 m, pēc ~1 min braukšanas; redz tikai pieteikušies lietotāji, kuri paši brauc ≤ 15 km attālumā.
+- Kopbrauciena maksa (`supabase/rides-19-cost-share.sql`, B03): tikai ceļa izdevumu daļa — attālums × 1,3 × 12 c/km,
+  vismaz 2 € (datubāze lielāku cenu atsaka). Īsti maksājumi (`PAY_LIVE`) — tikai pēc jurista un grāmatveža apstiprinājuma.
 - Servera funkcijas: `ride-pay`; `stripe-webhook` ar izslēgtu JWT pārbaudi (`--no-verify-jwt`). Pēdējā izvietošana —
   08.11.2026 (audits B01), kods sakrīt ar šo repozitoriju. Slepenās atslēgas
   (Stripe, `service_role`) — tikai Supabase Secrets, **nekad** šajā repozitorijā vai pārlūkā.
