@@ -249,3 +249,22 @@
 - 08.11.2026 produkcijā palaisti 22–27 (rides-13 … cleanup-1). Pirmajā `status.sql` palaišanā produkcijā pgcrypto funkcijas
   rādījās kā „trūkst”: Supabase pgcrypto ir shēmā `extensions`, bet testu aizstājējs to lika `public`. Labots
   (`tests/sql/supabase-stub.sql` — `with schema extensions`), `status.sql` pārģenerēts; lietotnes SQL pgcrypto nelieto.
+
+## A12 — paneļi ar tastatūru un ekrāna lasītāju (audits 08.11.2026)
+
+- Problēma: atvērtā panelī (iestatījumi, „Ziņot”, „Kopā”, Garāža …) tastatūras fokuss palika fonā; Esc strādāja tikai iestatījumos.
+- `sheets.js` (jauns, ielādējas pirms `auth.js`): vēro paneļu atribūtu `hidden` (MutationObserver) — atvēršanas vietas kodā nav jāmaina.
+  - `role="dialog"`; modālajiem (iestatījumi, Ziņot, „Kā ieslēgt?”, Garāža, Kopā) `aria-modal="true"`.
+  - Atverot fokuss — uz paneļa virsrakstu (ekrāna lasītājs nolasa nosaukumu); ja kods jau fokusēja lauku panelī — atstāj.
+  - Modālajiem fons ekrāna lasītājam paslēpts (`aria-hidden`), Tab / Shift+Tab riņķo panelī. Pilnekrāna pārklājumiem
+    (piekrišana, Garāžas pirkums) fons arī `inert`.
+  - Esc aizver augšējo paneli (caur tā pogu „Aizvērt”); piekrišanu — ne. Ja raksta meklēšanā ārpus paneļa — Esc pieder meklēšanai.
+  - Aizverot fokuss atgriežas uz pogas, ar ko atvēra (arī ja atvēra ar peli/pirkstu), citādi uz paneļa pogu rīkjoslā.
+  - Rīkjoslas pogām `aria-controls` + `aria-expanded` (atvērts / aizvērts).
+  - Ja panelī nomainās saturs un fokuss pazūd (piekrišanas solis „Nepiekrītu”, Garāžas dialogs) — fokuss atpakaļ panelī.
+- Apzināti: stāvēšanas un vietu paneļi ir ne-modāli (tajos vietu izvēlas, pieskaroties kartei); arī modālo paneļu laikā karti
+  var pavilkt — tāpēc `inert` fonam tikai pilnekrāna pārklājumiem (ne paneļiem, kas aizņem ekrāna apakšu).
+- Testi: kartes testā (Chromium) ar tastatūru — iestatījumi, Ziņot, stāvēšana, Garāžas pirkuma dialogs, piekrišanas ekrāns
+  jaunam lietotājam (fokuss, fons, Tab 40×, Esc, fokuss atpakaļ, aria-expanded); pretēji pārbaudīts — bez `sheets.js` tests krīt.
+  `tests/run.js` +2 (169/169).
+- Versijas: `sheets.js?v=153`, `style-gl.css?v=153`.

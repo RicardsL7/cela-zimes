@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="vendor/maplibre-gl-6.15.0/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=133">
+  <link rel="stylesheet" href="style-gl.css?v=153">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -34,7 +34,7 @@
     </form>
     <ul id="results" class="results" hidden></ul>
     <!-- Liela poga: atrast vajadzīgo vietu tuvumā -->
-    <button type="button" id="placesBtn" class="places-btn" aria-controls="placesSheet">
+    <button type="button" id="placesBtn" class="places-btn" aria-controls="placesSheet" aria-expanded="false">
       <span class="pb-icons" id="placesBtnIcons" aria-hidden="true"></span>
       <span class="pb-text">Atrast tuvumā<small>Degviela, stāvvieta, ēdiens, kafija…</small></span>
       <svg class="pb-chev" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -82,20 +82,20 @@
 
   <!-- Pogas labajā pusē -->
   <nav class="fab-stack" aria-label="Kartes vadība">
-    <button id="ridesBtn" class="fab rides-fab" title="Braukt kopā — atrodi šoferi vai paņem pasažieri" aria-controls="ridesSheet">
+    <button id="ridesBtn" class="fab rides-fab" title="Braukt kopā — atrodi šoferi vai paņem pasažieri" aria-controls="ridesSheet" aria-expanded="false">
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="8.5" cy="7.5" r="3" fill="currentColor"/><circle cx="16" cy="8.5" r="2.5" fill="currentColor" opacity=".75"/><path d="M2.5 19c.5-3.8 2.9-6 6-6s5.5 2.2 6 6Z" fill="currentColor"/><path d="M15.2 12.6c2.8 0 5 1.9 5.6 5.4h-4.7c-.2-2-1-3.8-2.4-5.2.5-.1 1-.2 1.5-.2Z" fill="currentColor" opacity=".75"/></svg>
       <span class="fab-label">Kopā</span>
     </button>
-    <button id="reportBtn" class="fab report-fab" title="Ziņot par notikumu uz ceļa">
+    <button id="reportBtn" class="fab report-fab" title="Ziņot par notikumu uz ceļa" aria-controls="reportSheet" aria-expanded="false">
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 3 21.5 19.5h-19Z" fill="currentColor"/><path d="M12 9v5" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16.8" r="1.2" fill="#fff"/></svg>
       <span class="fab-label">Ziņot</span>
     </button>
-    <button id="garageBtn" class="fab garage-fab" title="Garāža — tavas monētas un tēli" aria-controls="garageSheet">
+    <button id="garageBtn" class="fab garage-fab" title="Garāža — tavas monētas un tēli" aria-controls="garageSheet" aria-expanded="false">
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M2.5 10.2 12 4l9.5 6.2V20h-3v-7.5h-13V20h-3Z" fill="currentColor"/><rect x="7.5" y="14.5" width="9" height="2" rx="1" fill="currentColor"/><rect x="7.5" y="18" width="9" height="2" rx="1" fill="currentColor"/></svg>
       <span class="fab-label">Garāža</span>
       <span class="garage-bal" aria-label="Monētas"><span class="coin" aria-hidden="true"></span><b id="garageBal">0</b></span>
     </button>
-    <button id="parkBtn" class="fab park-fab" title="Vai drīkstu šeit stāvēt?" aria-controls="parkSheet">
+    <button id="parkBtn" class="fab park-fab" title="Vai drīkstu šeit stāvēt?" aria-controls="parkSheet" aria-expanded="false">
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5" fill="currentColor"/><path d="M9.6 17V7.4h3.3a3 3 0 0 1 0 6H9.6" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span class="fab-label">Stāvēt</span>
     </button>
@@ -148,7 +148,7 @@
     </button>
     <div class="status" id="statusBox">
       <p id="statusText" class="status-text" role="status">Meklē GPS…</p>
-      <button id="gpsHelpBtn" class="link-btn status-act" type="button" hidden>Kā ieslēgt?</button>
+      <button id="gpsHelpBtn" class="link-btn status-act" type="button" aria-controls="gpsSheet" aria-expanded="false" hidden>Kā ieslēgt?</button>
     </div>
     <div class="eta" id="etaBox" hidden>
       <div class="eta-time" id="etaTime">17:42</div>
@@ -423,6 +423,7 @@
        pārlūks tos izpilda pēc šī moduļa, tādā pašā secībā kā līdz šim. A10: MapLibre no vendor/ (nevis unpkg). -->
   <script type="module" src="maplibre-load.js?v=151"></script>
   <script defer src="cache.js?v=93"></script>
+  <script defer src="sheets.js?v=153"></script>
   <script defer src="signs.js?v=93"></script>
   <script defer src="mapillary.js?v=93"></script>
   <script defer src="roads-gl.js?v=93"></script>

@@ -50,6 +50,8 @@ body {
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 button { font: inherit; color: inherit; cursor: pointer; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* A12: paneļa virsraksts saņem fokusu atverot (ekrāna lasītājam) — tas nav poga, rāmi nerāda */
+h2[tabindex="-1"]:focus, .gr-dlg-t[tabindex="-1"]:focus { outline: none; }
 
 /* ---- Meklēšana ---- */
 .topbar {
