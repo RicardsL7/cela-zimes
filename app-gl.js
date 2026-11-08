@@ -3447,7 +3447,7 @@ async function init() {
   const bm = await loadBasemapStyle(state.basemap);
   state.vector = bm.vector;
   setAlertTheme(bm.theme === 'dark' ? 'dark' : 'light');
-  // A07: MapLibre 6 — ES modulis no unpkg; WebGL2 obligāts. Ja karti nevar izveidot, skaidra ziņa, nevis tukšs ekrāns.
+  // A07: MapLibre 6 — ES modulis (A10: no vendor/, maplibre-load.js); WebGL2 obligāts. Ja karti nevar izveidot, skaidra ziņa, nevis tukšs ekrāns.
   if (typeof maplibregl === 'undefined' || !maplibregl.Map) {
     setStatus('Neizdevās ielādēt karti — pārbaudi internetu un atjauno lapu.', true);
     return;
