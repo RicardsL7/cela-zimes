@@ -403,4 +403,6 @@
 - **Noteikumi:** `terms.html` — „Kopbraucieni ir izdevumu dalīšana…”, versija 2026-11-08b (piekrišanas logs no jauna).
 - **Juristam un grāmatvedim:** dokuments „Maksājumu juridiskā sagatavošana” (jautājumi, MK 541 prasības, kontrolsaraksts
   pirms `PAY_LIVE`). Īsti maksājumi paliek izslēgti, līdz jurists to apstiprina.
+- **Produkcijā:** Nr. 31 palaists 08.11.2026 ar īpašnieka atļauju; `status.sql` — VISS KĀRTĪBĀ; Rīga → Liepāja = 3044;
+  `ride_fare_cap_cents` un `ride_requests_open` — ne anon; gaidošu piedāvājumu nebija, braucieni neskarti (28).
 - Testi: `tests/cost-share-test.sql` (9), `run.js` +3 (197/197), `run-sql.sh` 343/343, kartes tests — kārtībā.
