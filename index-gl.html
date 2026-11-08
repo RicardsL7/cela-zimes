@@ -2,13 +2,18 @@
 <html lang="lv">
 <head>
   <meta charset="utf-8">
+  <!-- A10: drošības politika (CSP) — kādus resursus lapa drīkst ielādēt. GitHub Pages neļauj HTTP galvenes, tāpēc meta tags.
+       Jauns serveris (fetch) → jāpievieno connect-src; tests/run.js to pārbauda. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://pkqusuoicxmwcgwsrdqy.supabase.co https://tiles.openfreemap.org https://tile.openstreetmap.org https://overpass-api.de https://maps.mail.ru https://graph.mapillary.com https://tiles.mapillary.com https://api.openstreetmap.org https://api.open-meteo.com https://router.project-osrm.org https://routing.openstreetmap.de https://photon.komoot.io https://nominatim.openstreetmap.org; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'; upgrade-insecure-requests">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <script src="guard.js?v=151"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#16202e">
   <title>Ceļa Zīmes</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.15.0/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="vendor/maplibre-gl-6.15.0/maplibre-gl.css">
   <link rel="stylesheet" href="style-gl.css?v=133">
 </head>
 <body>
@@ -414,9 +419,9 @@
     </div>
   </div>
 
-  <!-- A07: MapLibre 6 ir tikai ES modulis (bez UMD). Tas uzliek window.maplibregl; visi nākamie skripti ir defer —
-       pārlūks tos izpilda pēc šī moduļa, tādā pašā secībā kā līdz šim. -->
-  <script type="module">import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.15.0/dist/maplibre-gl.mjs'; window.maplibregl = maplibregl;</script>
+  <!-- A07: MapLibre 6 ir tikai ES modulis (bez UMD). maplibre-load.js uzliek window.maplibregl; visi nākamie skripti ir defer —
+       pārlūks tos izpilda pēc šī moduļa, tādā pašā secībā kā līdz šim. A10: MapLibre no vendor/ (nevis unpkg). -->
+  <script type="module" src="maplibre-load.js?v=151"></script>
   <script defer src="cache.js?v=93"></script>
   <script defer src="signs.js?v=93"></script>
   <script defer src="mapillary.js?v=93"></script>
@@ -441,7 +446,7 @@
   <script defer src="rides-ui.js?v=149"></script>
   <script defer src="garage.js?v=125"></script>
   <script defer src="presence.js?v=124"></script>
-  <script defer src="app-gl.js?v=150"></script>
+  <script defer src="app-gl.js?v=151"></script>
   <script defer src="park-gl.js?v=116"></script>
   <script defer src="park-dest-gl.js?v=93"></script>
   <script defer src="traffic-gl.js?v=124"></script>

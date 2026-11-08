@@ -2,6 +2,11 @@
 <html lang="lv">
 <head>
   <meta charset="utf-8">
+  <!-- A10: drošības politika (CSP) — kādus resursus lapa drīkst ielādēt. GitHub Pages neļauj HTTP galvenes, tāpēc meta tags.
+       Jauns serveris (fetch) → jāpievieno connect-src; tests/run.js to pārbauda. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'; upgrade-insecure-requests">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <script src="guard.js?v=151"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Privātuma politika — Ceļa Zīmes</title>
   <link rel="stylesheet" href="legal.css?v=93">
