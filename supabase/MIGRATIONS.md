@@ -48,7 +48,7 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 28 | account-1-delete.sql | A15: konta dzēšana — pārbaudes; otram dalībniekam paliek anonīms brauciena ieraksts | **nē — aizsargāts** (pēc 29) |
 | 29 | presence-2-privacy.sql | A16: citu braucēju punkti — atsevišķa izvēle, ~150 m, redz tikai braucot ≤ 15 km | jā (kamēr nav jaunāku) |
 
-**Produkcijā:** palaisti 1–27 (22–27 — 08.11.2026, ar īpašnieka atļauju); **28 un 29 — vēl jāpalaiž** (pēc kārtas). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
+**Produkcijā:** palaisti visi 1–29 (22–29 — 08.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
 Faili ar `cz_migration_begin` (27–…) atkārtoti palaižami tikai, kamēr nav palaists jaunāks (tad tie paši atsakās).
 
 ## Citi braucēji kartē (A16)
