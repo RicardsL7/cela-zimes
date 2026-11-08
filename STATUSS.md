@@ -363,3 +363,15 @@
   ~150 m, ne biežāk kā ik 12 s) — daudz grūtāk nekā līdz šim, bet ne neiespējami.
 - Testi: `tests/presence-privacy-test.sql` (27), `run.js` +4 (191/191), `run-sql.sh` 318/318.
 
+## B01 (audits 2) — produkcija panākta (08.11.2026)
+
+- Pēc īpašnieka lūguma produkcijā palaisti SQL **28** (`account-1-delete.sql`) un **29** (`presence-2-privacy.sql`).
+  Pirms tam pārbaudīts stāvoklis (1–27, ārējās atslēgas CASCADE, vecā `presence_nearby` bija publiska); pēc tam
+  `status.sql` — **VISS KĀRTĪBĀ**; ārējās atslēgas — SET NULL; vecā publiskā `presence_nearby(laukums)` dzēsta, jaunā —
+  tikai pieteikušies; `cz_cleanup` un `cz_health` strādā; braucienu skaits nemainījās (28).
+- Edge funkcijas izvietotas no repozitorija (sha256 sakrīt): `ride-pay` (iepriekš bija 29.10. versija — bez A04 dubultā
+  maksājuma, A05 atmaksu un A15 labojumiem) un `stripe-webhook` (iepriekš 28.10. versija). Pirms izvietošanas —
+  `deno check`. `stripe-webhook` JWT pārbaude izslēgta (Stripe sūta bez JWT), startē bez kļūdām; `ride-pay` bez
+  pieteikšanās atbild 401.
+- Nav pārbaudīts: īsts maksājums / atmaksa Stripe testa režīmā (audits B18) un konta dzēšana ar īstu kontu dzīvajā vietnē.
+
