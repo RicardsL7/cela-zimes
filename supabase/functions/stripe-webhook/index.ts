@@ -106,9 +106,10 @@ async function payInfo(sessionId: string, oid: string): Promise<PayInfo> {
 // Brauciena maksājumu salīdzina ar Stripe un pieraksta (tikai uz priekšu). sessionHint — sesija no notikuma
 // (ja pasažieris bija atvēris vairākas maksājuma lapas, samaksātā var atšķirties no pēdējās datubāzē).
 async function syncOffer(oid: string, sessionHint: string | null = null): Promise<string> {
-  const [row] = await sdb(`ride_payments?offer_id=eq.${oid}&select=session_id,status,offer:ride_offers(request:ride_requests(user_id))`);
+  const [row] = await sdb(`ride_payments?offer_id=eq.${oid}&select=session_id,status,offer:ride_offers(driver_id,request:ride_requests(user_id))`);
   if (!row) return 'no_row';
-  const passenger: string | undefined = row.offer?.request?.user_id;
+  // A15: ja pasažieris dzēsis kontu (user_id = NULL), brauciens otram paliek — pieraksta šofera vārdā (un otrādi)
+  const passenger: string | undefined = row.offer?.request?.user_id ?? row.offer?.driver_id ?? undefined;
   if (!passenger) return 'no_offer';
   let info = await payInfo(row.session_id, oid);
   if (!info.paid && sessionHint && sessionHint !== row.session_id) {
