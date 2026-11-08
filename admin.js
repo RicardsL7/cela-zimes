@@ -1,5 +1,5 @@
 // Ceļa Zīmes — administrēšanas lapa (admin.html). Tikai lietotnes īpašniekam (app_admins, supabase/stats-f16.sql).
-// Drošību nodrošina serveris: admin_stats / admin_user_reports / ride-pay 'admin_stats' pārbauda is_app_admin().
+// Drošību nodrošina serveris: admin_stats / admin_user_reports / cz_cleanup_status / ride-pay 'admin_stats' pārbauda is_app_admin().
 // Sesija glabājas atsevišķi ('cz.admin.*'), lai pieslēgšanās šeit nemainītu lietotnes kontu tajā pašā pārlūkā.
 
 const ADM_REASONS = { dangerous_driving: 'Bīstama braukšana', behaviour: 'Neatbilstoša uzvedība', no_show: 'Neieradās',
@@ -11,7 +11,7 @@ const admStorage = {
   setItem(k, v) { try { localStorage.setItem('cz.admin.' + k, v); } catch { /* */ } },
   removeItem(k) { try { localStorage.removeItem('cz.admin.' + k); } catch { /* */ } },
 };
-const adm = { auth: null, stats: null, fees: null, reports: null, tab: 'stats', filter: 'all', busy: false, at: null, syncing: false, syncMsg: null };
+const adm = { auth: null, stats: null, fees: null, reports: null, cleanup: null, tab: 'stats', filter: 'all', busy: false, at: null, syncing: false, syncMsg: null };
 const $a = id => document.getElementById(id);
 
 function admEl(tag, attrs = {}, ...kids) {
@@ -87,6 +87,11 @@ async function admSync(btn, msg) {
     btn.disabled = false; btn.lastChild.textContent = 'Sinhronizēt ar Stripe';
   }
 }
+// A11: vecu datu tīrīšanas stāvoklis (supabase/cleanup-1.sql). Funkcijas vēl nav (fails nav palaists) → { missing: true }.
+async function admCleanup() {
+  try { return await admRpc('cz_cleanup_status'); }
+  catch (e) { return e.status === 404 ? { missing: true } : { error: e.message }; }
+}
 async function admFees() {
   try {
     const token = await adm.auth.token();
@@ -120,8 +125,8 @@ async function admLoad() {
     const ok = await admRpc('is_app_admin');
     if (ok !== true) { admSay(''); admShow('denied'); return; }
     if (!adm.stats) { admSay(''); admShow('panel'); admSkeleton(); }
-    const [stats, reports, fees] = await Promise.all([admRpc('admin_stats'), admRpc('admin_user_reports', { lim: 200 }), admFees()]);
-    adm.stats = stats; adm.reports = reports || []; adm.fees = fees;
+    const [stats, reports, fees, cleanup] = await Promise.all([admRpc('admin_stats'), admRpc('admin_user_reports', { lim: 200 }), admFees(), admCleanup()]);
+    adm.stats = stats; adm.reports = reports || []; adm.fees = fees; adm.cleanup = cleanup;
     adm.at = new Date(); admSay(''); admShow('panel'); admRender();
     $a('admUpdated').textContent = 'Atjaunots ' + adm.at.toLocaleTimeString('lv-LV', { hour: '2-digit', minute: '2-digit' });
   } catch (e) {
@@ -199,10 +204,33 @@ function admRow(label, arr, fmt = admNum, opts = {}) {
   };
   return admEl('tr', {}, first, cell(0), cell(1), cell(2, 'total'));
 }
+// A11: vecu datu tīrīšana — ja nestrādā, brīdinājums paneļa augšā; ja strādā, piezīme apakšā
+const ADM_CLEAN_LABELS = { reports: 'ziņojumi', traffic_samples: 'ātruma mērījumi', traffic_quota: 'mērījumu skaitītāji',
+  user_presence: 'vietas kartē', account_transfers: 'pārneses kodi', stripe_events: 'Stripe notikumi',
+  rides_expired: 'novecojuši braucieni', cron_history: 'plānotāja vēsture' };
+function admAgo(ts) {
+  const m = Math.max(0, Math.round((Date.now() - Date.parse(ts)) / 60000));
+  return m < 60 ? m + ' min' : m < 1440 ? Math.round(m / 60) + ' h' : Math.round(m / 1440) + ' d.';
+}
+function admCleanupBlock(c) {
+  if (!c) return null;
+  if (c.missing) return admEl('p', { class: 'adm-msg info', role: 'status', text: 'Vecu datu tīrīšana vēl nav ieslēgta — Supabase SQL redaktorā jāpalaiž supabase/cleanup-1.sql.' });
+  if (c.error) return admEl('p', { class: 'adm-msg bad', role: 'alert', text: 'Vecu datu tīrīšanas stāvokli neizdevās nolasīt (' + c.error + ').' });
+  const del = Object.entries(c.deleted_24h || {}).filter(([, n]) => Number(n) > 0).map(([k, n]) => admNum(n) + ' ' + (ADM_CLEAN_LABELS[k] || k)).join(', ');
+  if (c.healthy) return admEl('p', { class: 'fine', text: 'Vecu datu tīrīšana strādā: pēdējo reizi pirms ' + admAgo(c.last_ok_at) +
+    (del ? '; 24 h izdzēsti: ' + del + '.' : '; 24 h nekas nebija jādzēš.') });
+  const why = !c.scheduled ? 'nav ieplānota (pg_cron darbs „cz-cleanup” nav atrasts — palaid supabase/cleanup-1.sql vēlreiz)'
+    : !c.last_ok_at ? 'vēl ne reizi nav izdevusies'
+    : 'pēdējā veiksmīgā pirms ' + admAgo(c.last_ok_at);
+  return admEl('div', { class: 'adm-msg bad', role: 'alert' }, 'Vecu datu tīrīšana nestrādā: ' + why + '.',
+    c.last_errors ? admEl('div', { class: 'sub', text: 'Pēdējā kļūda: ' + c.last_errors }) : null);
+}
 function admRenderStats() {
   const a = adm.stats, box = $a('admStats');
   box.replaceChildren();
   if (!a) return;
+  const clean = admCleanupBlock(adm.cleanup);
+  if (clean && !(adm.cleanup && adm.cleanup.healthy)) box.append(clean);
   const u = a.users || {}, f = adm.fees;
   const pct = (f && f.fee_pct) ?? RIDE_FEE_PCT;
   const feeMonth = f && f.fees ? admEur(f.fees.month) : '≈ ' + admEur(Math.round((Number(a.turnover && a.turnover[1]) || 0) * pct / 100));
@@ -252,6 +280,7 @@ function admRenderStats() {
 
   box.append(admEl('div', { class: 'adm-notes' },
     admEl('p', { class: 'fine', text: `Ceļa ziņojumi un apstiprinājumi skaitīti no ${admDate(a.since)}.` }),
+    adm.cleanup && adm.cleanup.healthy ? clean : null,
     f && f.fees ? (f.total_partial ? admEl('p', { class: 'fine', text: '* Komisija „Kopā” — pēdējās 2000 maksas.' }) : null)
       : admEl('p', { class: 'fine', text: 'Komisija aprēķināta no apgrozījuma (Stripe dati nav pieejami' + (f && f.error ? ': ' + f.error : '') + ').' })));
 }

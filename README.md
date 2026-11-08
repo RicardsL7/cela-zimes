@@ -42,6 +42,8 @@ demo režīms tikai šajā pārlūkā).
 - Shēmu maina tikai `supabase/*.sql` faili, ko īpašnieks palaiž Supabase SQL redaktorā **secībā no `supabase/ORDER.txt`**.
   Vai produkcija sakrīt ar repozitoriju — `supabase/status.sql` (tikai lasa). Viss par migrācijām, jaunu projektu un
   rezerves kopijām — [`supabase/MIGRATIONS.md`](supabase/MIGRATIONS.md).
+- Vecus datus (privātuma politikas termiņi) ik 5 min dzēš datubāzes plānotājs (`supabase/cleanup-1.sql`, pg_cron);
+  vai tas strādā — `admin.html` un GitHub Actions „Uzraudzība” (reizi stundā; ja nestrādā — e-pasts no GitHub).
 - Servera funkcijas izvieto īpašnieks (`ride-pay`; `stripe-webhook` ar `--no-verify-jwt`). Slepenās atslēgas
   (Stripe, `service_role`) — tikai Supabase Secrets, **nekad** šajā repozitorijā vai pārlūkā.
 

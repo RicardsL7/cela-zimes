@@ -225,3 +225,24 @@
   atgriež tukšu (`auth.uid()`), `report_type_ttl` / `coin_trust_factor` — tikai aprēķini bez datiem. Datu noplūdes nav;
   tiesību sakārtošana (atsaukt anon palīgfunkcijām) — atsevišķs mazs darbs.
 - Versijas: `guard.js?v=151`, `maplibre-load.js?v=151`, `app-gl.js?v=151`.
+
+## A11 — regulāra vecu datu tīrīšana un brīdinājums par kļūmēm (audits 08.11.2026)
+
+- Problēma: veci dati tika dzēsti tikai tad, kad kāds rakstīja jaunus (`report_create`, `traffic_report`, `presence_update`);
+  ja neviens neraksta — dati palika ilgāk, nekā solīts `privacy.html` 9. punktā.
+- `supabase/cleanup-1.sql` (ORDER.txt Nr. 27; pirmā migrācija ar `cz_migration_begin/done`):
+  - `cz_cleanup()` — ziņojumi (ar atzīmēm, kaskādē) derīguma beigas + 2 d., ātruma mērījumi 28 d., mērījumu skaitītāji 1 d.,
+    vieta citu kartē 5 min bez atjaunošanas, konta pārneses kodi pēc derīguma, Stripe notikumu ID 90 d., novecojuši braucieni
+    (`ride_expire`), pg_cron vēsture 7 d. Katrs solis savā blokā — kļūda vienā neaptur pārējos, tiek pierakstīta.
+  - pg_cron darbs `cz-cleanup` ik 5 min (tātad vieta kartē pazūd ≤ 10 min — kā solīts); fails pats ieslēdz pg_cron.
+  - `cz_cleanup_runs` — katra palaišana (laiks, cik izdzēsts, kļūdas), 7 dienas; lietotnei neredzama.
+  - `cz_cleanup_status()` (tikai īpašniekam) — `admin.html` augšā sarkans brīdinājums, ja darbs nav ieplānots vai pēdējā
+    veiksmīgā > 20 min (ar pēdējo kļūdu); ja strādā — piezīme apakšā (cik 24 h izdzēsts). Fails vēl nav palaists → paskaidrojums.
+  - `cz_health()` (anon, bez datiem) — `.github/workflows/monitor.yml` „Uzraudzība” reizi stundā; ja tīrīšana nestrādā →
+    darbs neizdodas → GitHub e-pasts. Kamēr fails produkcijā nav palaists — tikai brīdinājums.
+  - `status.sql` (ģenerēts) — jauna pārbaude „plānotājs … nav ieplānots”.
+- Testi: `tests/cleanup-test.sql` (34: ko dzēš / ko atstāj katrā tabulā, kaskāde, braucieni, pieraksts, tiesības, kļūda vienā
+  solī, brīdinājums pēc 20 min, darbs noņemts); `supabase-stub.sql` — pg_cron aizstājējs; SQL 247/247, JS 167/167.
+- Privātuma politika nav mainīta (termiņi tie paši — tagad tos ievēro arī tad, ja neviens neraksta).
+- Versija: `admin.js?v=152`.
+- Produkcijā: pēc 22–26 palaist `cleanup-1.sql`, tad `status.sql` (ar īpašnieka atļauju).
