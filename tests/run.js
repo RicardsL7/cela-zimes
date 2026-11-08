@@ -3073,10 +3073,12 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/create extension if not exists pg_cron with schema pg_catalog;/.test(cl) && /Integrations → Cron/.test(cl), 'pg_cron ieslēdz pats vai skaidri pasaka, ko darīt');
     const stub = fs.readFileSync(path.join(__dirname, 'sql', 'supabase-stub.sql'), 'utf8');
     ok(/create function cron\.schedule\(job_name text, schedule text, command text\)/.test(stub) && /on conflict \(jobname\) do update/.test(stub), 'testos pg_cron aizstājējs (tas pats nosaukums aizstāj darbu)');
+    ok(/create extension if not exists pgcrypto with schema extensions;/.test(stub), 'testos pgcrypto shēmā extensions — kā Supabase (status.sql negaida to public shēmā)');
     const sh = fs.readFileSync(path.join(__dirname, 'run-sql.sh'), 'utf8');
     ok(/s:cleanup-1\.sql s:cleanup-1\.sql\s*\n\s*t:cleanup-test\.sql/.test(sh), 'run-sql.sh: divreiz + scenārijs');
     const gs = fs.readFileSync(path.join(__dirname, 'gen-status.sh'), 'utf8'), st = fs.readFileSync(path.join(ROOT, 'supabase', 'status.sql'), 'utf8');
     ok(/'plānotājs'/.test(gs) && /\('cz-cleanup', '\*\/5 \* \* \* \*'\)/.test(st), 'status.sql pārbauda, ka darbs ieplānots');
+    ok(!/pgp_sym_encrypt|gen_salt\(/.test(st), 'status.sql negaida paplašinājumu (pgcrypto) funkcijas public shēmā');
     const wf = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'monitor.yml'), 'utf8');
     ok(/schedule:\s*\n\s*- cron: '23 \* \* \* \*'/.test(wf) && /rpc\/cz_health/.test(wf) && /permissions:\s*\n\s*contents: read/.test(wf) && !/secrets\./.test(wf), 'monitor.yml: reizi stundā, tikai cz_health, bez slepenām atslēgām');
     ok(/PGRST202/.test(wf) && /"cleanup_ok" \*: \*true/.test(wf) && /exit 1/.test(wf), 'monitor.yml: neizdodas, ja tīrīšana nestrādā; tikai brīdina, ja fails vēl nav palaists');
@@ -3086,7 +3088,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/'Vecu datu tīrīšana nestrādā: '/.test(aj) && /if \(clean && !\(adm\.cleanup && adm\.cleanup\.healthy\)\) box\.append\(clean\);/.test(aj), 'admin.js: brīdinājums paneļa augšā');
     ok(/admin\.js\?v=152/.test(fs.readFileSync(path.join(ROOT, 'admin.html'), 'utf8')), 'admin.html: jauna admin.js versija');
     const md = fs.readFileSync(path.join(ROOT, 'supabase', 'MIGRATIONS.md'), 'utf8');
-    ok(/## Vecu datu tīrīšana un uzraudzība \(A11\)/.test(md) && /\*\*22–27 vēl jāpalaiž\*\*/.test(md), 'MIGRATIONS.md');
+    ok(/## Vecu datu tīrīšana un uzraudzība \(A11\)/.test(md) && /palaisti visi 1–27/.test(md), 'MIGRATIONS.md');
   });
 }
 
