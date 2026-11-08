@@ -1175,8 +1175,8 @@ function ridesAccountView() {
     } });
     wrap.append(rEl('div', { class: 'r-acc-danger' },
       rEl('b', { text: 'Dzēst kontu?' }),
-      rEl('p', { text: 'Tiks dzēsts: tavs vārds, tālrunis, auto apraksts, braucienu pieprasījumi un piedāvājumi, čata ziņas, tavi ziņojumi uz ceļa un atzīmes, piekrišanu ieraksti un e-pasta / Google piesaiste. Ja esi šoferis — kartes maksājumu (Stripe) konts tiks slēgts.' }),
-      rEl('p', { text: 'Paliek: ar karti veikto maksājumu ieraksti Stripe sistēmā (tos prasa grāmatvedības likumi) un anonīmie sastrēgumu mērījumi (tajos nav tava vārda vai konta). Šo darbību nevar atsaukt.' }),
+      rEl('p', { text: 'Tiks dzēsts: tavs vārds, tālrunis, auto apraksts, braucieni, kurus neviens nebija pieņēmis, tavas čata ziņas, tavi ziņojumi uz ceļa un atzīmes, piekrišanu ieraksti un e-pasta / Google piesaiste. Ja esi šoferis — kartes maksājumu (Stripe) konts tiks slēgts.' }),
+      rEl('p', { text: 'Otram brauciena dalībniekam paliek notikušā brauciena ieraksts bez tava vārda: datums, cena, maksājuma statuss un aptuvens maršruts (~1 km, bez adreses). Paliek arī ar karti veikto maksājumu ieraksti Stripe sistēmā (tos prasa grāmatvedības likumi) un anonīmie sastrēgumu mērījumi. Kamēr ir aktīvs brauciens vai nepabeigta atmaksa, kontu dzēst nevar. Šo darbību nevar atsaukt.' }),
       rEl('div', { class: 'r-actions' }, rEl('button', { class: 'btn ghost', type: 'button', text: 'Atcelt', onclick: () => { rides.accountMode = null; rides.accountMsg = null; ridesRender(true); } }), yes)), msg);
     return wrap;
   }
@@ -1223,14 +1223,38 @@ function ridesAccountView() {
   wrap.append(rEl('button', { class: 'link-btn danger', type: 'button', text: 'Dzēst kontu', onclick: () => { rides.accountMode = 'delete'; rides.accountMsg = null; ridesRender(true); } }), legal);
   return wrap;
 }
+// A15: kāpēc kontu vēl nevar dzēst (account_delete_check) — teksts lietotājam
+function rideDeleteBlockText(blockers) {
+  const out = [], seen = new Set();
+  for (const b of blockers || []) {
+    const key = b.kind + ':' + b.offer_id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const when = b.depart_at ? ' (' + rideDateText(b.depart_at) + ')' : '';
+    if (b.kind === 'active_ride') out.push(`Brauciens${when} vēl nav beidzies — pabeidz vai atcel to.`);
+    else if (b.kind === 'payment_open') {
+      const t = b.until ? new Date(b.until) : null;
+      out.push(`Brauciena${when} maksājuma lapa vēl ir atvērta` + (t && !isNaN(t) ? ` — mēģini pēc ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` + (t - Date.now() > 20 * 3600000 ? ' rīt' : '') : '') + '.');
+    } else if (b.kind === 'refund_due') out.push(`Atmaksa par atcelto braucienu${when} vēl nav pabeigta — pagaidi dažas minūtes.`);
+  }
+  return 'Kontu vēl nevar dzēst. ' + (out.length ? out.join(' ') : 'Ir nepabeigts brauciens vai maksājums.');
+}
 async function ridesDeleteAccount(say) {
   const a = rides.store.auth;
   try {
+    // A15: vispirms pārbaude (pirms Stripe konta slēgšanas). Nepabeigtu atmaksu mēģina pabeigt uzreiz.
+    let chk = rides.store.deleteCheck ? await rides.store.deleteCheck() : { ok: true, blockers: [] };
+    if (chk.missing) { say('Konta dzēšana pašlaik nav pieejama — lietotne tiek atjaunināta. Mēģini vēlāk vai raksti uz support.travel24@gmail.com.'); return; }
+    if (!chk.ok && (chk.blockers || []).some(b => b.kind === 'refund_due') && ridesPayOn()) {
+      try { rides.refundAt = 0; await rides.store.pay('refund_sync'); } catch { /* pārbauda vēlreiz */ }
+      chk = await rides.store.deleteCheck();
+    }
+    if (!chk.ok) { say(rideDeleteBlockText(chk.blockers)); return; }
     let unclosed = null;
     const acct = await rides.store.hasDriverAccount().catch(() => null);
     if (acct) {
       try { const r = await rides.store.pay('close'); if (!r || !(r.closed || r.none)) unclosed = acct; }
-      catch { unclosed = acct; }
+      catch (e) { if (e.status === 409) throw e; unclosed = acct; }   // 409 — ride-pay: aktīvs brauciens (A15), kontu neslēdz
     }
     await rides.store.deleteAccount(unclosed);
     a.forgetLocal(); ridesSetSignedOut(true);
@@ -1241,6 +1265,11 @@ async function ridesDeleteAccount(say) {
     ridesRender(true);
   } catch (e) {
     console.warn('Konta dzēšana', e);
+    if (e.code === 'busy' || e.status === 409) {                // tikko sākās brauciens / maksājums
+      const chk = await rides.store.deleteCheck().catch(() => null);
+      say(rideDeleteBlockText(chk && chk.blockers));
+      return;
+    }
     say('Kontu neizdevās dzēst. Pārbaudi internetu un mēģini vēlreiz.');
   }
 }
@@ -1326,7 +1355,8 @@ function ridesStars(value, onPick) {
 // Kopsavilkums: h — vēstures ieraksts (piedāvājums + pieprasījums + mana loma). inHistory — atvērts no „Mani braucieni”.
 function ridesSummaryCard(h, inHistory = false) {
   const id = h.offer_id, done = h.status === 'done';
-  const other = { name: h.other_name || (h.offer_id ? 'Lietotājs' : ''), car: h.other_car };
+  const gone = rideOtherDeleted(h);                                   // A15: otrs dzēsa kontu
+  const other = { name: gone ? 'Dzēsts lietotājs' : h.other_name || (h.offer_id ? 'Lietotājs' : ''), car: gone ? '' : h.other_car };
   const card = rEl('div', { class: 'r-card r-summary' + (done ? ' r-ok' : '') },
     rEl('div', { class: 'r-card-top' },
       rEl('span', { class: 'r-badge', text: done ? '✓ Brauciens pabeigts' : rideHistWithdrawn(h) ? 'Pieprasījums atsaukts' : 'Brauciens atcelts' }),
@@ -1336,6 +1366,7 @@ function ridesSummaryCard(h, inHistory = false) {
     ridesRoute(h));
   if (h.offer_id) card.append(ridesPerson(other, '', h.role === 'driver' ? 'Pasažieris' : 'Šoferis', h.other_id));
   else card.append(rEl('p', { class: 'fine', text: 'Neviens šoferis braucienu nepieņēma.' }));
+  if (gone) card.append(rEl('p', { class: 'fine r-gone', text: (h.role === 'driver' ? 'Pasažieris' : 'Šoferis') + ' dzēsa savu kontu — saglabāts tikai brauciena ieraksts bez personas datiem' + (h.role === 'driver' ? ' (maršruts aptuveni).' : '.') }));
   if (h.price_cents) {
     const live = rides.pay[id];
     const pay = ridePayText(h, live);
@@ -1349,7 +1380,7 @@ function ridesSummaryCard(h, inHistory = false) {
     card.append(rEl('div', { class: 'r-rated' },
       rEl('span', { text: 'Tavs vērtējums: ' }), rEl('b', { class: 'r-stars-text', 'aria-label': h.my_stars + ' no 5', text: rideStarsText(h.my_stars) }),
       h.my_comment ? rEl('p', { class: 'r-note', text: '“' + h.my_comment + '”' }) : null));
-  } else if (done) card.append(ridesRateForm(h, inHistory));
+  } else if (done && !gone) card.append(ridesRateForm(h, inHistory));
   // Ziņot par problēmu
   if (h.reported) card.append(rEl('p', { class: 'fine r-reported', text: '✓ Ziņojums par šo braucienu nosūtīts. Paldies!' }));
   else if (rides.reportOpen === id) card.append(ridesReportForm(h));
@@ -1454,7 +1485,7 @@ function ridesHistoryView() {
       h.status === 'done' ? (h.my_stars ? rideStarsText(h.my_stars) : 'nav novērtēts') : ''].filter(Boolean).join(' · ');
     const row = rEl('button', { class: 'r-hist-item' + (open ? ' open' : '') + (h.status === 'done' ? '' : ' cancelled'), type: 'button', 'aria-expanded': open ? 'true' : 'false',
       onclick: () => { rides.historyOpen = open ? null : key; rides.reportOpen = null; ridesRender(true); } },
-      rEl('span', { class: 'r-hist-top' }, rEl('b', { text: rideDateText(h.depart_at) }), rEl('span', { class: 'r-hist-who', text: h.other_name || '' })),
+      rEl('span', { class: 'r-hist-top' }, rEl('b', { text: rideDateText(h.depart_at) }), rEl('span', { class: 'r-hist-who', text: rideOtherDeleted(h) ? 'Dzēsts lietotājs' : h.other_name || '' })),
       rEl('span', { class: 'r-hist-route', text: (h.from_name || 'Sākums') + ' → ' + (h.to_name || 'Galamērķis') }),
       rEl('small', { text: meta }));
     wrap.append(row);

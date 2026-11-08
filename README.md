@@ -44,6 +44,9 @@ demo režīms tikai šajā pārlūkā).
   rezerves kopijām — [`supabase/MIGRATIONS.md`](supabase/MIGRATIONS.md).
 - Vecus datus (privātuma politikas termiņi) ik 5 min dzēš datubāzes plānotājs (`supabase/cleanup-1.sql`, pg_cron);
   vai tas strādā — `admin.html` un GitHub Actions „Uzraudzība” (reizi stundā; ja nestrādā — e-pasts no GitHub).
+- Konta dzēšana (`supabase/account-1-delete.sql`, A15): nav iespējama aktīva brauciena, atvērtas maksājuma lapas vai
+  nepabeigtas atmaksas laikā; otram brauciena dalībniekam paliek anonīms brauciena ieraksts (datums, cena, maksājums,
+  maršruts ~1 km) — sīkāk `supabase/MIGRATIONS.md` un `privacy.html` 9. punkts.
 - Servera funkcijas izvieto īpašnieks (`ride-pay`; `stripe-webhook` ar `--no-verify-jwt`). Slepenās atslēgas
   (Stripe, `service_role`) — tikai Supabase Secrets, **nekad** šajā repozitorijā vai pārlūkā.
 

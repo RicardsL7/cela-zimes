@@ -319,3 +319,29 @@
   pārlūka GPS. Tagad abi lieto `registerPlugin`, ja ir, citādi `Capacitor.Plugins.*`; `addWatcher` id der gan tieši,
   gan kā Promise. Ierīces tests pārbauda arī `[cz-native] gatavs` (app-native.js lietotnē redz spraudni).
 - Versija: `app-native.js?v=156`, `app-gl.js?v=156`; Android `versionName` 0.2.0.
+
+## A15 — konta dzēšana neizdzēš otra dalībnieka braucienu un maksājumu (audits 08.11.2026)
+
+- **Problēma:** dzēšot kontu, datubāze kaskādē izdzēsa arī otra cilvēka datus — pasažiera braucienu ar šoferu
+  piedāvājumiem, šofera braucienus ar pasažieru maksājuma ierakstiem (`ride_payments` — saite ar Stripe), čatu, vērtējumus.
+  Kontu varēja dzēst arī brauciena vidū vai nepabeigtas atmaksas laikā.
+- **Īpašnieka lēmums (08.11.2026):** „anonīms ieraksts” + jauna privātuma politikas un noteikumu versija.
+- **`supabase/account-1-delete.sql` (Nr. 28):**
+  - `account_delete_check()` / `delete_my_account()` — nedzēš, ja ir aktīvs brauciens, maksājuma lapa atvērta < 24 h
+    vai samaksāts brauciens atcelts pirms iekāpšanas, bet atmaksa nav pabeigta (`account_busy`); viena dzēšana vienlaikus.
+  - Trigeris `profiles_erase_rides` (darbojas arī, ja lietotāju dzēš Supabase panelī) + ārējās atslēgas `ON DELETE SET NULL`:
+    braucieni bez vēstures — dzēsti; ar vēsturi — otram paliek bez dzēstā ID, adreses, piezīmes, precīzām koordinātām
+    (~1 km) un pēdējām atrašanās vietām; maksājuma ieraksts paliek. Dzēstā čata ziņas, tālrunis, profils, Stripe piesaiste,
+    vērtējumi par viņu — dzēsti; viņa doto vērtējumu zvaigznes paliek bez komentāra un autora. Ja abi dzēsuši — brauciens dzēsts.
+  - Vērtēt dzēstu lietotāju nevar (`other_deleted`); ziņot par braucienu — var.
+  - `status.sql` tagad pārbauda arī ārējo atslēgu darbību (CASCADE / SET NULL).
+- **Edge funkcijas** (jāizvieto): `ride-pay` `close` pārbauda `account_delete_check` pirms Stripe konta slēgšanas (409);
+  `stripe-webhook` un `sync` — ja pasažieris dzēsts, maksājumu pieraksta šofera vārdā.
+- **Lietotne v157** (`rides.js`, `rides-ui.js`, `auth.js`): dzēšot — vispirms pārbaude (nepabeigtu atmaksu mēģina pabeigt
+  uzreiz), iemesli latviski; tad Stripe konts, tad dzēšana. Ja datubāzē vēl nav Nr. 28 — nedzēš (vecā versija dzēstu otra
+  datus) un iesaka rakstīt atbalstam. Vēsturē — „Dzēsts lietotājs”, bez vērtēšanas formas.
+- **Politika:** `privacy.html` un `terms.html` versija 2026-11-08 (visiem vienreiz piekrišanas logs) — kas paliek otram,
+  kad kontu nevar dzēst.
+- Testi: `tests/account-delete-test.sql` (42), `run.js` +6 (187/187), `run-sql.sh` 290/290; vecākie migrāciju faili
+  ar `cz_migration_begin` (27) tagad paši atsakās palaisties pēc 28 (pārbaudīts).
+

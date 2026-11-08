@@ -248,6 +248,8 @@ function rideHistoryFromOffer(o, req, role, other) {
     other_id: role === 'driver' ? req.user_id : o.driver_id, other_name: (other && other.name) || '', other_car: (other && other.car) || '',
     my_stars: null, my_comment: '', reported: false };
 }
+// A15: vēstures ierakstā otrs brauciena dalībnieks dzēsis kontu (ieraksts palika bez viņa ID — supabase/account-1-delete.sql)
+function rideOtherDeleted(h) { return !!(h && h.offer_id && !h.other_id); }
 function rideRateErr(e) { return /409|23505|duplicate/.test(String(e && (e.code || e.message))) ? 'duplicate' : null; }
 
 // ---------- Demo krātuve (tikai šajā ierīcē) ----------
@@ -507,8 +509,16 @@ LocalRideStore.prototype.expire = async function () { return 0; };
 LocalRideStore.prototype.hasAccount = function () { return true; };
 LocalRideStore.prototype.ensureAccount = async function () { };
 // Konta dzēšana (supabase/rides-7-account.sql → delete_my_account). unclosedAcct — Stripe konts, ko neizdevās slēgt.
-SupabaseRideStore.prototype.deleteAccount = function (unclosedAcct = null) {
-  return this._rest('rpc/delete_my_account', { method: 'POST', body: JSON.stringify({ p_unclosed_acct: unclosedAcct }) });
+// A15 (supabase/account-1-delete.sql): datubāze nedzēš, kamēr ir aktīvs brauciens vai nepabeigts maksājums → e.code = 'busy'.
+SupabaseRideStore.prototype.deleteAccount = async function (unclosedAcct = null) {
+  try { return await this._rest('rpc/delete_my_account', { method: 'POST', body: JSON.stringify({ p_unclosed_acct: unclosedAcct }) }); }
+  catch (e) { if (/account_busy/.test(e.body || '')) e.code = 'busy'; throw e; }
+};
+// A15: vai kontu drīkst dzēst → { ok, blockers: [{ kind: 'active_ride' | 'payment_open' | 'refund_due', offer_id, role, depart_at, until }] }.
+// missing — datubāzē vēl nav A15 labojuma: tad nedzēš (vecā versija izdzēstu arī otra brauciena dalībnieka datus).
+SupabaseRideStore.prototype.deleteCheck = async function () {
+  try { return await this._rest('rpc/account_delete_check', { method: 'POST', body: '{}' }); }
+  catch (e) { if (e.status === 404 || /PGRST202|account_delete_check/.test(e.body || '')) return { ok: false, missing: true, blockers: [] }; throw e; }
 };
 SupabaseRideStore.prototype.hasDriverAccount = async function () {
   const rows = await this._rest(`driver_accounts?user_id=eq.${this.id}&select=acct`);
@@ -651,6 +661,6 @@ function createRideStore(cfg) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { rideRefundInfo, rideTripCheck, RIDE_TRIP_ORDER, rideFareCapCents, rideParsePrice, rideMoney, rideSplit, RIDE_FEE_PCT, rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
+  module.exports = { rideOtherDeleted, rideRefundInfo, rideTripCheck, RIDE_TRIP_ORDER, rideFareCapCents, rideParsePrice, rideMoney, rideSplit, RIDE_FEE_PCT, rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
     rideTimeText, rideDistText, rideStage, rideFresh, rideEtaMinutes, ridePassengerStatus, rideDriverStatus, rideUnread, rideMsgTime, rideStatsEmpty, rideHistWithdrawn, RIDE_DECLINED_SHOW_MS, rideDeclinedAt, rideDeclinedRecent, rideDeclinedText, RIDE_REPORT_REASONS, rideCountText, rideRatingText, rideStarsText, rideAvg, rideDateText, ridePayText, rideSummaryPending, rideHistoryFromOffer, rideRateErr, rideRpcMissing, rideErrorText, LocalRideStore, SupabaseRideStore, createRideStore, RIDE_OFFER_STATUS };
 }
