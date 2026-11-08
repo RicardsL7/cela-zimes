@@ -46,10 +46,18 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 26 | rides-17-migrations.sql | A09: migrāciju uzskaite | jā |
 | 27 | cleanup-1.sql | A11: vecu datu tīrīšana ik 5 min (pg_cron), uzraudzība | **nē — aizsargāts** (pēc 28) |
 | 28 | account-1-delete.sql | A15: konta dzēšana — pārbaudes; otram dalībniekam paliek anonīms brauciena ieraksts | **nē — aizsargāts** (pēc 29) |
-| 29 | presence-2-privacy.sql | A16: citu braucēju punkti — atsevišķa izvēle, ~150 m, redz tikai braucot ≤ 15 km | jā (kamēr nav jaunāku) |
+| 29 | presence-2-privacy.sql | A16: citu braucēju punkti — atsevišķa izvēle, ~150 m, redz tikai braucot ≤ 15 km | **nē — aizsargāts** (pēc 30) |
+| 30 | rides-18-open-privacy.sql | B02: atvērtie braucieni šoferiem aptuveni (~1 km, bez vārda/adreses/piezīmes) | jā (kamēr nav jaunāku) |
 
 **Produkcijā:** palaisti visi 1–29 (22–29 — 08.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
 Faili ar `cz_migration_begin` (27–…) atkārtoti palaižami tikai, kamēr nav palaists jaunāks (tad tie paši atsakās).
+
+## Atvērtie braucieni (B02)
+
+- `rides-18-open-privacy.sql`: tabulu `ride_requests` redz tikai pasažieris un šoferis, kura piedāvājums pieņemts
+  (`ride_request_exact` — `was_accepted`). Šoferu sarakstam — `ride_requests_open(laukums)` un `ride_requests_coarse(id)`:
+  ~1 km (1/100°, 1/60°), apdzīvotā vieta (`ride_area`), laiks, vietas, statuss, pasažiera vērtējums; bez vārda,
+  adreses, piezīmes un konta ID; tikai `authenticated`.
 
 ## Citi braucēji kartē (A16)
 
@@ -94,7 +102,7 @@ palaid **visus failus no tā, kas definē šo funkciju jaunāko versiju, līdz b
 ## Jauns Supabase projekts (atjaunošana no nulles)
 
 1. Supabase → New project (reģions ES).
-2. SQL Editor: visi faili no `ORDER.txt` pēc kārtas (1 → 29); beigās `status.sql` → „VISS KĀRTĪBĀ”. (`cleanup-1.sql` pats
+2. SQL Editor: visi faili no `ORDER.txt` pēc kārtas (1 → 30); beigās `status.sql` → „VISS KĀRTĪBĀ”. (`cleanup-1.sql` pats
    ieslēdz plānotāju pg_cron; ja Supabase to neļauj — Integrations → Cron → ieslēgt, un palaist failu vēlreiz.)
 3. Authentication: kā aprakstīts `AUTH-IESTATIJUMI.md` (Site URL, Redirect URLs, anonīmie konti, Google, SMTP).
 4. Servera funkcijas (Edge Functions): `ride-pay` un `stripe-webhook` (pēdējo — ar `--no-verify-jwt`).
