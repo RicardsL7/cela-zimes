@@ -875,9 +875,13 @@ test('V. Sastrēgumi: anonīmi mērījumi, privātuma zonas, līmeņi, maršruta
   eq(T.trRouteDelay(coords.slice().reverse(), jams).sec, 0, 'pretējā virzienā sastrēguma nav');
 });
 
-test('W. Kopbraucienu cena: griesti 300 €, ievade, komisija', async () => {
+test('W. Kopbraucienu cena: griesti — ceļa izdevumu daļa (B03), ievade, komisija', async () => {
   const cap = G('rideFareCapCents'), parse = G('rideParsePrice'), money = G('rideMoney'), split = G('rideSplit');
-  eq(cap({ from_lat: 56.95, from_lng: 24.1, to_lat: 56.951, to_lng: 24.1 }), 30000, 'griesti 300 € (arī īsam braucienam)');
+  eq(cap({ from_lat: 56.95, from_lng: 24.1, to_lat: 56.951, to_lng: 24.1 }), 200, 'īsam braucienam — vismaz 2 €');
+  const rl = cap({ from_lat: 56.9496, from_lng: 24.1052, to_lat: 56.5047, to_lng: 21.0108 });
+  ok(rl > 2850 && rl < 3050, 'Rīga → Liepāja ≈ 29–30 € (attālums × 1,3 × 12 c/km): ' + rl);
+  eq(cap({ cap_cents: 1234, from_lat: 1, from_lng: 1, to_lat: 2, to_lng: 2 }), 1234, 'servera precīzais maksimums (noapaļotai vietai)');
+  eq(cap(null), 200, 'nav datu — minimums');
   eq(parse('300'), 30000); eq(parse('50'), 5000);
   eq(parse('4,50'), 450); eq(parse(' 4 € '), 400); eq(parse('4.5'), 450); eq(parse(''), null);
   ok(Number.isNaN(parse('abc')) && Number.isNaN(parse('4,555')) && Number.isNaN(parse('-3')), 'nederīgas cenas');
@@ -2803,7 +2807,7 @@ test('A03: SQL labojums un lietotnes pogas', () => {
     ok(/else if \(r && r\.pending && !r\.already\)/.test(ui), 'automātiskā atmaksa apstrādē — atsevišķa ziņa');
     for (const f of ['index.html', 'index-gl.html']) {
       const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-      ok(/rides\.js\?v=(149|15\d)/.test(h) && /rides-ui\.js\?v=(149|15\d)/.test(h), f + ': rides v149+');
+      ok(/rides\.js\?v=(149|1[5-9]\d)/.test(h) && /rides-ui\.js\?v=(149|1[5-9]\d)/.test(h), f + ': rides v149+');
     }
   });
 }
@@ -2826,7 +2830,7 @@ test('A06: noteikumi un privātuma politika — sniedzējs, kontakts, nekas nav 
   const pr = fs.readFileSync(path.join(__dirname, '..', 'privacy.html'), 'utf8');
   eq((pr.match(/support\.travel24@gmail\.com<\/a>/g) || []).length, 2, 'privacy.html: pārzinis un tiesību punkts');
   // Versijas nemainītas: tikai identitātes aizpildīšana, lietotājiem atkārtoti piekrist nav jāprasa
-  { const tv = (fs.readFileSync(path.join(__dirname, '..', 'auth.js'), 'utf8').match(/CZ_TERMS_VERSION = '([\d-]+)'/) || [])[1];
+  { const tv = (fs.readFileSync(path.join(__dirname, '..', 'auth.js'), 'utf8').match(/CZ_TERMS_VERSION = '([\w-]+)'/) || [])[1];
     ok(tv && tv >= '2026-10-23' && t.includes('Versija ' + tv), 'noteikumu versija sakrīt ar auth.js'); }
   { const pv = (fs.readFileSync(path.join(__dirname, '..', 'auth.js'), 'utf8').match(/CZ_PRIVACY_VERSION = '([\w-]+)'/) || [])[1];
     ok(pv && pv >= '2026-11-01' && pr.includes('Versija ' + pv), 'politikas versija sakrīt ar auth.js'); }
@@ -3447,14 +3451,14 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   test('A15: politika un noteikumi — kas paliek, kad nevar dzēst; jauna versija', () => {
     const pr = fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8'), te = fs.readFileSync(path.join(ROOT, 'terms.html'), 'utf8');
     const au = fs.readFileSync(path.join(ROOT, 'auth.js'), 'utf8');
-    ok(/CZ_PRIVACY_VERSION = '2026-11-08b?'/.test(au) && /CZ_TERMS_VERSION = '2026-11-08'/.test(au), 'jaunas versijas → piekrišanas logs');
+    ok(/CZ_PRIVACY_VERSION = '2026-11-08b?'/.test(au) && /CZ_TERMS_VERSION = '2026-11-08b?'/.test(au), 'jaunas versijas → piekrišanas logs');
     ok(/Kas paliek otram brauciena dalībniekam/.test(pr) && /~1 km/.test(pr) && /kontu dzēst nevar/.test(pr), 'privacy.html');
     ok(/izņemot, kamēr ir aktīvs brauciens/.test(te), 'terms.html');
     const ui = fs.readFileSync(path.join(ROOT, 'rides-ui.js'), 'utf8');
     ok(/Otram brauciena dalībniekam paliek notikušā brauciena ieraksts bez tava vārda/.test(ui), 'dzēšanas apstiprinājuma teksts');
     for (const f of ['index.html', 'index-gl.html']) {
       const h = fs.readFileSync(path.join(ROOT, f), 'utf8');
-      ok(/auth\.js\?v=15[7-9]/.test(h) && /rides\.js\?v=15[7-9]/.test(h) && /rides-ui\.js\?v=15[7-9]/.test(h), f + ': v157+');
+      ok(/auth\.js\?v=(15[7-9]|1[6-9]\d)/.test(h) && /rides\.js\?v=(15[7-9]|1[6-9]\d)/.test(h) && /rides-ui\.js\?v=(15[7-9]|1[6-9]\d)/.test(h), f + ': v157+');
     }
   });
 }
@@ -3605,7 +3609,53 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/ridesCoarseRatings\(\[\.\.\.rides\.openList/.test(ui), 'vērtējumi no servera');
     ok(/Precīzu vietu, vārdu un piezīmi redz tikai šoferis, kura piedāvājumu pieņemsi/.test(ui), 'pasažierim paskaidrots formā');
     ok(/Kamēr brauciens gaida šoferi, citi pieteikušies lietotāji redz tikai aptuvenu vietu/.test(fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8')), 'privātuma politika');
-    for (const f of ['index.html', 'index-gl.html']) ok(/rides\.js\?v=159/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /rides-ui\.js\?v=159/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': v159');
+    for (const f of ['index.html', 'index-gl.html']) ok(/rides\.js\?v=(159|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /rides-ui\.js\?v=(159|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': v159+');
+  });
+}
+
+// ---------- B03 (audits 2): kopbrauciena maksa — ceļa izdevumu daļa, ne peļņa ----------
+// Uzvedību datubāzē pārbauda tests/cost-share-test.sql (run-sql.sh); šeit — fails, formula, teksti, noteikumi.
+{
+  const ROOT = path.join(__dirname, '..'), SUP = path.join(ROOT, 'supabase');
+  test('B03: SQL — griesti attālums × 1,3 × 12 c/km (≥ 2 €), cap_cents šoferu sarakstā', () => {
+    const sql = fs.readFileSync(path.join(SUP, 'rides-19-cost-share.sql'), 'utf8');
+    ok(/^31 rides-19-cost-share\.sql$/m.test(fs.readFileSync(path.join(SUP, 'ORDER.txt'), 'utf8')), 'ORDER.txt: 31');
+    ok(/cz_migration_begin\(31, 'rides-19-cost-share\.sql'\)/.test(sql) && /cz_migration_done\(31,/.test(sql), 'uzskaite');
+    ok(/greatest\(200,/.test(sql) && /\* 1\.3 \* 12\)\)::int/.test(sql) && /6371/.test(sql), 'formula');
+    ok(/function public\.ride_fare_cap_cents\(rid uuid\)[\s\S]*?ride_cost_cap\(from_lat, from_lng, to_lat, to_lng\)/.test(sql), 'trigeris izmanto jauno formulu');
+    ok(!/select 30000/.test(sql), 'vairs ne 300 €');
+    for (const fn of ['ride_requests_open', 'ride_requests_coarse']) {
+      const body = sql.slice(sql.indexOf('create function public.' + fn + '('), sql.indexOf('revoke all on function public.' + fn));
+      ok(/pas_rides int, cap_cents int\)/.test(body) && /ride_cost_cap\(r\.from_lat, r\.from_lng, r\.to_lat, r\.to_lng\)/.test(body), fn + ': cap_cents no precīzās vietas');
+      ok(!/r\.note|r\.user_id,|profiles/.test(body), fn + ': B02 privātums saglabāts');
+      ok(new RegExp('revoke all on function public\\.' + fn + '\\([^)]*\\) from public, anon;').test(sql), fn + ': ne anon');
+    }
+    const steps = fs.readFileSync(path.join(__dirname, 'run-sql.sh'), 'utf8');
+    ok(/s:rides-19-cost-share\.sql s:rides-19-cost-share\.sql/.test(steps) && /t:cost-share-test\.sql/.test(steps), 'run-sql.sh');
+    ok(/\| 31 \| rides-19-cost-share\.sql/.test(fs.readFileSync(path.join(SUP, 'MIGRATIONS.md'), 'utf8')), 'MIGRATIONS.md');
+  });
+  test('B03: lietotne — tā pati formula, servera cap_cents priekšroka', () => {
+    const cap = G('rideFareCapCents'), conv = G('rideCoarseToReq');
+    eq(G('RIDE_CENTS_PER_KM'), 12, '12 c/km');
+    const c = conv({ id: 'q', from_lat: 56.95, from_lng: 24.1, to_lat: 56.5, to_lng: 21.0, cap_cents: '3044', mine: false }, 'me');
+    eq(c.cap_cents, 3044, 'cap_cents pārnests');
+    eq(cap(c), 3044, 'noapaļotai vietai — servera precīzais skaitlis');
+    eq(conv({ id: 'q', mine: false }, 'me').cap_cents, undefined, 'vecā datubāze — bez cap_cents');
+    eq(cap({ from_lat: 56.9496, from_lng: 24.1052, to_lat: 56.5047, to_lng: 21.0108 }), 3044, 'sakrīt ar SQL (Rīga → Liepāja 3044)');
+  });
+  test('B03: teksti — „ceļa izdevumu daļa”, noteikumi, versijas', () => {
+    const ui = fs.readFileSync(path.join(ROOT, 'rides-ui.js'), 'utf8');
+    ok(/Ceļa izdevumu daļa \(neobligāti, līdz \$\{rideMoney\(cap\)\}\)/.test(ui), 'cenas lauks');
+    ok(/kopbrauciens nav peļņas pārvadājums/.test(ui) && /Summa pārsniedz ceļa izmaksas/.test(ui), 'paziņojumi');
+    ok(!/līdz 300 €/.test(ui), 'vairs nav 300 €');
+    for (const f of ['index.html', 'index-gl.html']) {
+      const h = fs.readFileSync(path.join(ROOT, f), 'utf8');
+      ok(/ne vairāk kā aptuvenās ceļa izmaksas \(~12 c\/km\)/.test(h), f + ': noteikumi lietotnē');
+      ok(/rides\.js\?v=1[6-9]\d/.test(h) && /rides-ui\.js\?v=1[6-9]\d/.test(h) && /auth\.js\?v=1[6-9]\d/.test(h), f + ': v160+');
+    }
+    const t = fs.readFileSync(path.join(ROOT, 'terms.html'), 'utf8');
+    ok(/Kopbraucieni ir izdevumu dalīšana, ne peļņas pārvadājumi/.test(t) && /attālums × 1,3 × 12 c\/km, vismaz 2 €/.test(t), 'terms.html');
+    ok(/CZ_TERMS_VERSION = '2026-11-08b'/.test(fs.readFileSync(path.join(ROOT, 'auth.js'), 'utf8')), 'jauna noteikumu versija → piekrišana no jauna');
   });
 }
 

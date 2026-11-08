@@ -44,6 +44,9 @@ STEPS=(
   # B02 (audits 2): atvērtie braucieni — šoferiem aptuveni, precīzi tikai pieņemtajam šoferim (palaižama atkārtoti)
   s:rides-18-open-privacy.sql s:rides-18-open-privacy.sql
   t:open-privacy-test.sql
+  # B03 (audits 2): kopbrauciena maksa — ceļa izdevumu daļa (palaižama atkārtoti)
+  s:rides-19-cost-share.sql s:rides-19-cost-share.sql
+  t:cost-share-test.sql
 )
 
 fail=0; pass=0
