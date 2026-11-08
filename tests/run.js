@@ -1903,7 +1903,7 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
     const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'mobile', 'capacitor.config.json'), 'utf8'));
     ok(cfg.server.url === 'https://growlab.cc' && cfg.android.useLegacyBridge === true && cfg.appId === 'cc.growlab.celazimes', 'Android lietotne atver growlab.cc; fonā neapstājas pēc 5 min');
     const wf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'android.yml'), 'utf8');
-    ok(/tag_name: android-test/.test(wf) && /files: mobile\/cela-zimes\.apk/.test(wf) && /assembleDebug/.test(wf), 'GitHub pats uzbūvē APK un ieliek to lapā android-test');
+    ok(/tag_name: android-test/.test(wf) && /files: out\/cela-zimes\.apk/.test(wf) && /assembleDebug/.test(wf), 'GitHub pats uzbūvē APK un ieliek to lapā android-test');
     const ps = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'scripts', 'patch-android.js'), 'utf8');
     ok(/FOREGROUND_SERVICE_LOCATION/.test(ps) && /POST_NOTIFICATIONS/.test(ps) && !/ACCESS_BACKGROUND_LOCATION/.test(ps), 'atļaujas: priekšplāna serviss ar atrašanās vietu, bez „vienmēr” atļaujas');
     for (const f of ['index.html', 'index-gl.html'])
@@ -2997,7 +2997,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const scripts = [...h.matchAll(/<script defer src="([\w.-]+\.js)\?v=/g)].map(m => m[1]);
     ok(scripts.length >= 25, 'lietotnes skripti');
     // Saites (href), attēli (<img>/Image — img-src https:) un kešatmiņas atslēgas — nav fetch
-    const NOT_FETCH = /^(www\.openstreetmap\.org|openfreemap\.org|www\.openmaptiles\.org|cdn\.jsdelivr\.net|cela-zimes\.cache|dom|operations\.osmfoundation\.org)$/;
+    const NOT_FETCH = /^(www\.openstreetmap\.org|openfreemap\.org|www\.openmaptiles\.org|cdn\.jsdelivr\.net|cela-zimes\.cache|dom|operations\.osmfoundation\.org|growlab\.cc)$/;
     const brands = new Set();
     const pl = fs.readFileSync(path.join(ROOT, 'places.js'), 'utf8');
     for (const m of pl.matchAll(/\[\/[^\n]*?, (?:'[^']+'|"[^"]+"), 'https:\/\/([a-z0-9.-]+)\//g)) brands.add(m[1]);
@@ -3226,6 +3226,98 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/__czNetWrapped/.test(ms), 'kartes tests pārbauda, ka netguard ir ieslēgts');
     const rd = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
     ok(/## Mērogošana un ārējie servisi \(A13\)/.test(rd), 'README: aprēķins un robežas');
+  });
+}
+
+// ---------- A14 (audits 08.11.2026): Android — lockfile + npm ci, parakstīts laidiens, ierīces tests, saites lietotnē ----------
+{
+  const ROOT = path.join(__dirname, '..'), MOB = path.join(ROOT, 'mobile');
+  test('A14: atkarības — lockfile un npm ci; App spraudnis; Node 22', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(MOB, 'package.json'), 'utf8'));
+    for (const d of ['@capacitor/android', '@capacitor/core', '@capacitor/app', '@capacitor-community/background-geolocation']) ok(pkg.dependencies[d], 'atkarība ' + d);
+    const wf = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'android.yml'), 'utf8');
+    ok(/npm ci --no-audit --no-fund --legacy-peer-deps/.test(wf) && !/npm install/.test(wf), 'android.yml: tikai npm ci');
+    ok(/if \[ ! -f package-lock\.json \]/.test(wf), 'bez lockfile — skaidra kļūda');
+    ok(/node-version: 22/.test(wf), 'Node 22');
+    const lk = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'android-lock.yml'), 'utf8');
+    ok(/npm install --package-lock-only --ignore-scripts/.test(lk) && /git add package-lock\.json/.test(lk) && /npm ci --ignore-scripts/.test(lk) && !/secrets\./.test(lk), 'android-lock.yml: tikai lockfile, bez instalēšanas skriptiem un atslēgām');
+    if (fs.existsSync(path.join(MOB, 'package-lock.json'))) {
+      const lock = JSON.parse(fs.readFileSync(path.join(MOB, 'package-lock.json'), 'utf8'));
+      for (const d of Object.keys(pkg.dependencies)) ok(lock.packages && lock.packages['node_modules/' + d] && lock.packages['node_modules/' + d].integrity, 'lockfile: ' + d + ' ar kontrolsummu');
+    }
+  });
+  test('A14: android.yml — paraksts tikai no Secrets, ierīces tests pirms publicēšanas, assetlinks', () => {
+    const wf = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'android.yml'), 'utf8');
+    const secrets = [...wf.matchAll(/secrets\.([A-Z0-9_]+)/g)].map(m => m[1]);
+    ok(secrets.length >= 4 && secrets.every(x => /^ANDROID_(KEYSTORE_BASE64|KEYSTORE_PASSWORD|KEY_ALIAS|KEY_PASSWORD)$/.test(x)), 'tikai ANDROID_* atslēgas: ' + [...new Set(secrets)].join(', '));
+    ok(!/echo "\$\{\{ secrets/.test(wf) && !/::add-mask::|set -x/.test(wf), 'atslēgas neizdrukā');
+    ok(/rm -f "\$RUNNER_TEMP\/release\.jks"/.test(wf) && /if: always\(\)\n\s*run: rm -f/.test(wf), 'atslēgas fails izdzēsts arī kļūdas gadījumā');
+    ok(/assembleRelease bundleRelease/.test(wf) && /cela-zimes\.aab/.test(wf), 'parakstīts APK + AAB (Play)');
+    ok(/CZ_VERSION_CODE: \$\{\{ github\.run_number \}\}/.test(wf), 'versionCode aug ar katru būvējumu');
+    ok(/needs: \[build, device\]/.test(wf) && /bash mobile\/scripts\/device-test\.sh out\/cela-zimes-debug\.apk/.test(wf) && /android-emulator-runner@v2/.test(wf), 'publicē tikai pēc ierīces testa');
+    ok(/sha256_cert_fingerprints/.test(wf) && /\(\[0-9A-F\]\{2\}:\)\{31\}\[0-9A-F\]\{2\}/.test(wf) && /git add \.well-known\/assetlinks\.json/.test(wf), 'assetlinks.json no sertifikāta (pārbaudīts formāts)');
+    ok(/^include:\n  - \.well-known/m.test(fs.readFileSync(path.join(ROOT, '_config.yml'), 'utf8')), '_config.yml: GitHub Pages publicē .well-known');
+  });
+  test('A14: patch-android.js — atļaujas, App Links, versija, paraksts (uz parauga projekta), atkārtoti bez dublikātiem', () => {
+    const os = require('os'), cp = require('child_process');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cz-a14-'));
+    const w = (p, t) => { fs.mkdirSync(path.dirname(path.join(tmp, p)), { recursive: true }); fs.writeFileSync(path.join(tmp, p), t); };
+    w('scripts/patch-android.js', fs.readFileSync(path.join(MOB, 'scripts', 'patch-android.js'), 'utf8'));
+    w('package.json', fs.readFileSync(path.join(MOB, 'package.json'), 'utf8'));
+    w('android/app/src/main/AndroidManifest.xml', '<?xml version="1.0" encoding="utf-8"?>\n<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <application android:label="@string/app_name">\n        <activity android:name=".MainActivity" android:launchMode="singleTask" android:exported="true">\n            <intent-filter>\n                <action android:name="android.intent.action.MAIN" />\n                <category android:name="android.intent.category.LAUNCHER" />\n            </intent-filter>\n        </activity>\n    </application>\n    <uses-permission android:name="android.permission.INTERNET" />\n</manifest>\n');
+    w('android/app/build.gradle', "android {\n    namespace \"cc.growlab.celazimes\"\n    defaultConfig {\n        versionCode 1\n        versionName \"1.0\"\n    }\n    buildTypes {\n        release {\n            minifyEnabled false\n        }\n    }\n}\n");
+    w('android/app/src/main/res/values/strings.xml', '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="app_name">X</string>\n</resources>\n');
+    const run = env => cp.execFileSync(process.execPath, [path.join(tmp, 'scripts', 'patch-android.js')], { env: Object.assign({}, process.env, env), stdio: 'pipe' });
+    run({ CZ_VERSION_CODE: '42', CZ_KEYSTORE_FILE: '/x/release.jks' });
+    run({ CZ_VERSION_CODE: '42', CZ_KEYSTORE_FILE: '/x/release.jks' });
+    const man = fs.readFileSync(path.join(tmp, 'android/app/src/main/AndroidManifest.xml'), 'utf8');
+    const gr = fs.readFileSync(path.join(tmp, 'android/app/build.gradle'), 'utf8');
+    for (const p of ['ACCESS_FINE_LOCATION', 'FOREGROUND_SERVICE_LOCATION', 'POST_NOTIFICATIONS']) eq((man.match(new RegExp('android.permission.' + p + '"', 'g')) || []).length, 1, 'atļauja ' + p + ' vienreiz');
+    eq((man.match(/android:autoVerify="true"/g) || []).length, 1, 'App Links filtrs vienreiz');
+    ok(/<data android:scheme="https" android:host="growlab\.cc" \/>/.test(man) && man.indexOf('autoVerify') < man.indexOf('</activity>'), 'App Links — MainActivity');
+    ok(/versionCode 42\b/.test(gr) && new RegExp('versionName "' + JSON.parse(fs.readFileSync(path.join(MOB, 'package.json'), 'utf8')).version.replace(/\./g, '\\.') + '"').test(gr), 'versija');
+    eq((gr.match(/signingConfigs \{/g) || []).length, 1, 'paraksta konfigurācija vienreiz');
+    ok(/storeFile file\(System\.getenv\("CZ_KEYSTORE_FILE"\)\)/.test(gr) && /signingConfig signingConfigs\.release/.test(gr) && !/storePassword "/.test(gr), 'paraksts no vides mainīgajiem (bez parolēm failā)');
+    let bad = null; try { run({ CZ_VERSION_CODE: 'abc' }); } catch (e) { bad = e; }
+    ok(bad, 'nederīgs versionCode — kļūda');
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+  test('A14: app-native.js — growlab.cc saite atveras lietotnē; svešas adreses nē; atslēgas žurnālā nerāda', () => {
+    const vm = require('vm');
+    const src = fs.readFileSync(path.join(ROOT, 'app-native.js'), 'utf8');
+    const mk = (launch) => {
+      const log = [], store = {}, listeners = {};
+      const loc = { origin: 'https://growlab.cc', pathname: '/', search: '', href: 'https://growlab.cc/', reloads: 0, reload() { this.reloads++; } };
+      const ctx = { URL, Promise, console: { log: m => log.push(m) }, location: loc,
+        sessionStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } },
+        window: { Capacitor: { isNativePlatform: () => true, registerPlugin: () => ({ addListener: (n, f) => { listeners[n] = f; }, getLaunchUrl: () => Promise.resolve(launch ? { url: launch } : null) }) } } };
+      Object.defineProperty(loc, 'href', { get() { return this._h || 'https://growlab.cc/'; }, set(v) { this._h = v; } });
+      vm.runInNewContext(src, ctx);
+      return { log, loc, listeners, store };
+    };
+    const a = mk(null);
+    a.listeners.appUrlOpen({ url: 'https://evil.example/#access_token=x' });
+    eq(a.loc._h, undefined, 'svešu adresi neatver');
+    a.listeners.appUrlOpen({ url: 'https://growlab.cc/#access_token=SECRET&refresh_token=R' });
+    eq(a.loc._h, 'https://growlab.cc/#access_token=SECRET&refresh_token=R', 'atver savu adresi');
+    eq(a.loc.reloads, 1, 'tikai #… mainās — pārlādē, lai auth.js to apstrādā');
+    ok(a.log.length === 1 && /^\[cz-native\] appUrlOpen https:\/\/growlab\.cc\/ #…$/.test(a.log[0]) && !/SECRET/.test(a.log.join()), 'žurnālā bez atslēgām: ' + a.log[0]);
+    a.listeners.appUrlOpen({ url: 'https://growlab.cc/#access_token=SECRET&refresh_token=R' });
+    eq(a.loc.reloads, 1, 'to pašu adresi otrreiz neatver (nav pārlādes cilpas)');
+    const n = mk(null); delete n.loc._h;
+    const plain = { URL, console, location: {}, window: {} }; vm.runInNewContext(src, plain);
+    ok(true, 'pārlūkā (bez Capacitor) nedara neko');
+    const tpl = fs.readFileSync(path.join(MOB, 'scripts', 'device-test.sh'), 'utf8');
+    ok(tpl.includes('"\\[cz-native\\] appUrlOpen https://growlab.cc/ ?…"') && /czapptest=1/.test(tpl), 'ierīces tests meklē tieši šo žurnāla rindu');
+    const h = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const sc = [...h.matchAll(/<script defer src="([\w.-]+\.js)\?v=/g)].map(m => m[1]);
+    ok(sc.indexOf('app-native.js') >= 0 && sc.indexOf('app-native.js') < sc.indexOf('auth.js'), 'app-native.js pirms auth.js');
+  });
+  test('A14: dokumentācija — paraksts, Play, ierīces tests ar roku; atslēgas nav repozitorijā', () => {
+    const md = fs.readFileSync(path.join(MOB, 'README.md'), 'utf8');
+    ok(/keytool -genkeypair/.test(md) && /ANDROID_KEYSTORE_BASE64/.test(md) && /App signing key SHA-256/.test(md) && /Ierīces tests ar roku/.test(md), 'mobile/README.md');
+    const walk = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.name === '.git' || e.name === 'node_modules' ? [] : e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
+    ok(!walk(ROOT).some(f => /\.(jks|keystore|p12|pem)$/i.test(f)), 'nav atslēgu failu repozitorijā');
   });
 }
 
