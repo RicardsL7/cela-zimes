@@ -121,6 +121,8 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
   res.overscale = await page.evaluate(() => String(map._zoomLevelsToOverscale));
   res.images = await page.evaluate(() => { try { return map.listImages().length; } catch (e) { return 'ERR ' + e.message; } });
   res.csp = await page.evaluate(() => window.__csp || ['nav __csp']);
+  // A13: visi lapas pieprasījumi iet caur netguard.js (mērīšana, rinda, pauze)
+  res.net = await page.evaluate(() => ({ on: !!window.__czNetWrapped, hosts: window.czNet ? window.czNet.stats().map(r => r.host + ':' + r.today) : [] }));
   res.worker = [...served].filter(p => /maplibre-gl-worker\.mjs$/.test(p));
   await page.evaluate(() => { map.jumpTo({ center: [24.101, 56.951], zoom: 16, pitch: 0, bearing: 0 }); });
   await page.waitForTimeout(2500);
@@ -208,6 +210,7 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
   if (res.csp.length) bad.push('CSP pārkāpumi: ' + res.csp.slice(0, 5).join(' | '));
   for (const l of logs) if (/Content Security Policy/i.test(l)) bad.push('CSP konsolē: ' + l.slice(0, 200));
   if (!res.worker.length) bad.push('kartes worker netika ielādēts no lapas adreses (vendor/)');
+  if (!res.net || !res.net.on || !res.net.hosts.some(x => /^app\.test:\d+/.test(x))) bad.push('netguard.js nav ieslēgts / neskaita pieprasījumus: ' + JSON.stringify(res.net));
   for (const [p, r] of Object.entries(res.pages)) {
     if (r.csp.length) bad.push(p + ': CSP pārkāpumi: ' + r.csp.slice(0, 3).join(' | '));
     if (r.errs.length) bad.push(p + ': ' + r.errs[0]);

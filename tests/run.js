@@ -2798,7 +2798,7 @@ test('A03: SQL labojums un lietotnes pogas', () => {
     ok(/else if \(r && r\.pending && !r\.already\)/.test(ui), 'automātiskā atmaksa apstrādē — atsevišķa ziņa');
     for (const f of ['index.html', 'index-gl.html']) {
       const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-      ok(/rides\.js\?v=149/.test(h) && /rides-ui\.js\?v=149/.test(h), f + ': rides v149');
+      ok(/rides\.js\?v=149/.test(h) && /rides-ui\.js\?v=(149|15\d)/.test(h), f + ': rides v149');
     }
   });
 }
@@ -2844,7 +2844,7 @@ test('A07: MapLibre 6.15.0 — ES modulis pirms visiem skriptiem, pārējie defe
     ok(tags.length >= 25, f + ': skripti pēc moduļa');
     ok(tags.every(t => /\sdefer\s/.test(t) && /\ssrc="/.test(t)), f + ': visi nākamie skripti ir defer (izpildās pēc moduļa, tajā pašā secībā)');
     ok(!/<script>/.test(h), f + ': nav iekļautu (inline) klasisko skriptu, kas izpildītos ārpus secības');
-    ok(/app-gl\.js\?v=151/.test(h) && /signs-gl\.js\?v=150/.test(h), f + ': mainītie faili ar jaunu versiju');
+    ok(/app-gl\.js\?v=15[1-9]/.test(h) && /signs-gl\.js\?v=150/.test(h), f + ': mainītie faili ar jaunu versiju');
   }
 });
 test('A07: trūkstošie attēli (MapLibre 6) un skaidra ziņa, ja karte neielādējas', () => {
@@ -2997,7 +2997,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const scripts = [...h.matchAll(/<script defer src="([\w.-]+\.js)\?v=/g)].map(m => m[1]);
     ok(scripts.length >= 25, 'lietotnes skripti');
     // Saites (href), attēli (<img>/Image — img-src https:) un kešatmiņas atslēgas — nav fetch
-    const NOT_FETCH = /^(www\.openstreetmap\.org|openfreemap\.org|www\.openmaptiles\.org|cdn\.jsdelivr\.net|cela-zimes\.cache|dom)$/;
+    const NOT_FETCH = /^(www\.openstreetmap\.org|openfreemap\.org|www\.openmaptiles\.org|cdn\.jsdelivr\.net|cela-zimes\.cache|dom|operations\.osmfoundation\.org)$/;
     const brands = new Set();
     const pl = fs.readFileSync(path.join(ROOT, 'places.js'), 'utf8');
     for (const m of pl.matchAll(/\[\/[^\n]*?, (?:'[^']+'|"[^"]+"), 'https:\/\/([a-z0-9.-]+)\//g)) brands.add(m[1]);
@@ -3131,7 +3131,101 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/h2\[tabindex="-1"\]:focus/.test(css), 'virsrakstam fokusa rāmis nav jārāda');
     const ms = fs.readFileSync(path.join(__dirname, 'map-smoke.js'), 'utf8');
     ok(/res\.a11y = \{\}/.test(ms) && /Tab izgāja no paneļa/.test(ms) && /piekrišana aizvērās ar Esc/.test(ms) && /Garāžas dialogs aizverot/.test(ms), 'kartes tests pārbauda ar tastatūru');
-    for (const f of ['index.html', 'index-gl.html']) ok(/sheets\.js\?v=153/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /style-gl\.css\?v=153/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': jaunas versijas');
+    for (const f of ['index.html', 'index-gl.html']) ok(/sheets\.js\?v=153/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /style-gl\.css\?v=15[3-9]/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': jaunas versijas');
+  });
+}
+
+// ---------- A13 (audits 08.11.2026): ārējo servisu kvotas — mērīšana, rinda, pauze (backoff), fona cilnes ----------
+{
+  const ROOT = path.join(__dirname, '..');
+  const ng = require(path.join(ROOT, 'netguard.js'));
+  const calls = [];
+  let reply = () => ({ status: 200, ok: true, headers: { get: () => null } });
+  ng.czNet.native = async (u) => { calls.push({ u: String(u), t: Date.now() }); return reply(String(u)); };
+  // Asinhronie testi šeit kopīgo calls/reply — izpilda pēc kārtas
+  let chain = Promise.resolve();
+  const tseq = (name, fn) => test(name, () => { const p = chain.then(fn); chain = p.catch(() => {}); return p; });
+  tseq('A13: „par daudz” (429) → pauze, pauzes laikā serveri netraucē; veiksme pauzi noņem', async () => {
+    calls.length = 0;
+    reply = () => ({ status: 429, ok: false, headers: { get: () => null } });
+    const r = await ng.czNetFetch('https://overpass-api.de/api/interpreter', {});
+    eq(r.status, 429, 'atbilde tiek atdota izsaucējam');
+    ok(ng.czNetCooling('overpass-api.de'), 'serveris pauzē');
+    let err = null; try { await ng.czNetFetch('https://overpass-api.de/api/interpreter', {}); } catch (e) { err = e; }
+    ok(err && err.netguard && err.status === 429, 'pauzē — uzreiz kļūda');
+    eq(calls.length, 1, 'otrs pieprasījums serverī nenonāca');
+    const h = ng.czNetHost('overpass-api.de'); h.until = 0;
+    reply = () => ({ status: 200, ok: true, headers: { get: () => null } });
+    await ng.czNetFetch('https://overpass-api.de/api/interpreter', {});
+    eq(h.fail, 0, 'pēc veiksmes kļūmju skaits nulle');
+    ok(!ng.czNetCooling('overpass-api.de'), 'pauzes nav');
+  });
+  test('A13: pauze pieaug 5 s → 10 s → 20 s, līdz 5 min; Retry-After ievēro (līdz 10 min)', () => {
+    const h = { fail: 0, until: 0 };
+    const d = () => Math.round((h.until - Date.now()) / 1000);
+    ng.czNetBackoff(h, null); eq(d(), 5, '1.'); ng.czNetBackoff(h, null); eq(d(), 10, '2.'); ng.czNetBackoff(h, null); eq(d(), 20, '3.');
+    for (let i = 0; i < 10; i++) ng.czNetBackoff(h, null);
+    eq(d(), 300, 'griesti 5 min');
+    ng.czNetBackoff(h, '30'); eq(d(), 30, 'Retry-After 30 s');
+    ng.czNetBackoff(h, '99999'); eq(d(), 600, 'Retry-After griesti 10 min');
+    const o = { fail: 0, until: 0 }; ng.czNetBackoff(o, null, 30000); eq(Math.round((o.until - Date.now()) / 1000), 30, 'Overpass pēc 429 — vismaz 30 s');
+    eq(ng.CZ_NET_POLICY['overpass-api.de'].minPause, 30000, 'Overpass minPause');
+  });
+  tseq('A13: Nominatim — ne biežāk kā reizi 1,1 s (lietošanas noteikumi: 1/s)', async () => {
+    calls.length = 0;
+    await Promise.all([ng.czNetFetch('https://nominatim.openstreetmap.org/search?q=a'), ng.czNetFetch('https://nominatim.openstreetmap.org/search?q=b')]);
+    eq(calls.length, 2, 'abi aizgāja');
+    ok(calls[1].t - calls[0].t >= 1050, 'starpība ' + (calls[1].t - calls[0].t) + ' ms');
+  });
+  tseq('A13: Supabase un citus tikai skaita — 503 neaptur nākamos pieprasījumus', async () => {
+    calls.length = 0;
+    reply = () => ({ status: 503, ok: false, headers: { get: () => null } });
+    await ng.czNetFetch('https://pkqusuoicxmwcgwsrdqy.supabase.co/rest/v1/rpc/x');
+    await ng.czNetFetch('https://pkqusuoicxmwcgwsrdqy.supabase.co/rest/v1/rpc/x');
+    eq(calls.length, 2, 'abi pieprasījumi aizgāja');
+    ok(!ng.czNetCooling('pkqusuoicxmwcgwsrdqy.supabase.co'), 'pauzes nav');
+    reply = () => ({ status: 200, ok: true, headers: { get: () => null } });
+    const st = ng.czNetStats().find(r => r.host === 'pkqusuoicxmwcgwsrdqy.supabase.co');
+    ok(st && st.today >= 2 && st.r429 >= 2, 'saskaitīts');
+  });
+  tseq('A13: atcelts pieprasījums rindā — AbortError, rinda turpinās', async () => {
+    const c = new AbortController();
+    const p1 = ng.czNetFetch('https://api.openstreetmap.org/api/0.6/a');
+    const p2 = ng.czNetFetch('https://api.openstreetmap.org/api/0.6/b', { signal: c.signal });
+    c.abort();
+    await p1;
+    let e2 = null; try { await p2; } catch (e) { e2 = e; }
+    ok(e2 && e2.name === 'AbortError', 'AbortError');
+    await ng.czNetFetch('https://api.openstreetmap.org/api/0.6/c');
+  });
+  test('A13: katram bezmaksas serverim CSP sarakstā ir ierobežojums; netguard.js ielādējas pirmais', () => {
+    const h = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const csp = (h.match(/connect-src ([^;]+);/) || [])[1].split(/\s+/).filter(x => /^https:\/\//.test(x)).map(x => x.slice(8));
+    const COUNT_ONLY = /\.supabase\.co$|^tiles\.openfreemap\.org$|^tile\.openstreetmap\.org$/;
+    for (const host of csp) if (!COUNT_ONLY.test(host)) ok(ng.CZ_NET_POLICY[host], host + ': ierobežojums netguard.js');
+    eq(ng.CZ_NET_POLICY['nominatim.openstreetmap.org'].conc, 1, 'Nominatim — viens vienlaikus');
+    const scripts = [...h.matchAll(/<script (?:defer |type="module" )src="([\w.-]+\.js)\?v=/g)].map(m => m[1]);
+    eq(scripts[0], 'netguard.js', 'pirmais pēc guard.js (pirms MapLibre un cache.js)');
+    eq(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'), fs.readFileSync(path.join(ROOT, 'index-gl.html'), 'utf8'), 'index = index-gl');
+    ok(/id="netStats"/.test(h), 'tabula iestatījumos (?dev=1)');
+  });
+  test('A13: Overpass vairs nejautā abiem serveriem reizē; fona cilnē laikapstākļus un „Kopā” nepieprasa', () => {
+    const a = fs.readFileSync(path.join(ROOT, 'app-gl.js'), 'utf8');
+    const fo = a.slice(a.indexOf('function fetchOverpass('), a.indexOf('// ---------- OSM dati pa šūnām'));
+    ok(/const OVERPASS_HEDGE_MS = 4000;/.test(a) && /hedge = setTimeout\(start, OVERPASS_HEDGE_MS\)/.test(fo) && !/OVERPASS_URLS\.map\(async/.test(fo), 'rezerves serveris tikai pēc 4 s vai kļūdas');
+    ok(/overpassOrder\(OVERPASS_URLS\)/.test(fo) && /czNet\.health/.test(a), 'vispirms veselākais serveris');
+    ok(/state\.mlyRetryMs = state\.mlyFailed \? Math\.min\(120000/.test(a) && /setTimeout\(loadMapillaryForView, state\.mlyRetryMs \|\| 100\)/.test(a), 'Mapillary flīzes: kļūmes gadījumā pauze, nevis ik 100 ms');
+    ok(/setInterval\(\(\) => \{ if \(!document\.hidden\) loadWeather\(false\); \}, 60000\)/.test(a), 'laikapstākļi tikai redzamā cilnē');
+    const rs = a.slice(a.indexOf('async function runSearch('), a.indexOf('function showResults('));
+    ok(/if \(enter\) \{ try \{ items = await searchNominatim\(q\)/.test(rs), 'Nominatim tikai pēc „Meklēt” (noteikumi aizliedz autocomplete)');
+    const r = fs.readFileSync(path.join(ROOT, 'rides-ui.js'), 'utf8');
+    ok(/const idleHidden = document\.hidden && !trip;/.test(r) && /idleHidden \? 60000/.test(r) && /ridesSchedule\(300\)/.test(r), '„Kopā”: fonā bez brauciena — nepieprasa, atgriežoties uzreiz; aktīvā braucienā — turpina');
+    for (const [f, re] of [['presence.js', /document\.hidden\) return/], ['traffic-gl.js', /if \(!document\.hidden\) trRefresh\(true\)/], ['app-gl.js', /if \(!document\.hidden\) loadReports\(true\)/]])
+      ok(re.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': fona cilnē neaptaujā');
+    const ms = fs.readFileSync(path.join(__dirname, 'map-smoke.js'), 'utf8');
+    ok(/__czNetWrapped/.test(ms), 'kartes tests pārbauda, ka netguard ir ieslēgts');
+    const rd = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+    ok(/## Mērogošana un ārējie servisi \(A13\)/.test(rd), 'README: aprēķins un robežas');
   });
 }
 
