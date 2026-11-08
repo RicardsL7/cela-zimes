@@ -1,0 +1,37 @@
+# A11: uzraudzība — reizi stundā pārbauda, vai produkcijā strādā vecu datu tīrīšana (supabase/cleanup-1.sql, pg_cron).
+# Izsauc tikai public.cz_health() ar lapas publisko atslēgu no rides-config.js (tā pati, ko redz katrs pārlūks);
+# atbildē nav datu — tikai „strādā / nestrādā” un pirms cik minūtēm pēdējo reizi izdevās.
+# Ja nestrādā, darbs neizdodas, un GitHub atsūta e-pastu tam, kas pēdējais mainīja šo failu (repozitorija īpašniekam).
+# Kamēr cleanup-1.sql produkcijā nav palaists, darbs tikai brīdina (neizdodas tikai, ja tīrīšana ir, bet apstājusies).
+# Var palaist ar roku: Actions → "Uzraudzība" → Run workflow. Slepenās atslēgas neizmanto, neko nemaina.
+name: Uzraudzība
+
+on:
+  schedule:
+    - cron: '23 * * * *'   # katru stundu :23
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    name: Vecu datu tīrīšana (produkcija)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: cz_health()
+        run: |
+          URL=$(sed -n "s/^ *url: '\(https:\/\/[a-z0-9]*\.supabase\.co\)',.*/\1/p" rides-config.js)
+          KEY=$(sed -n "s/^ *anonKey: '\([^']*\)',.*/\1/p" rides-config.js)
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then echo "::warning::rides-config.js: nav servera adreses / publiskās atslēgas — nav ko pārbaudīt"; exit 0; fi
+          code=$(curl -sS --retry 3 --retry-delay 10 -o body.json -w '%{http_code}' -X POST "$URL/rest/v1/rpc/cz_health" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" -H 'content-type: application/json' -d '{}') || code=000
+          echo "HTTP $code: $(head -c 300 body.json 2>/dev/null)"
+          if [ "$code" = 404 ] && grep -q 'PGRST202' body.json; then
+            echo "::warning::Produkcijā vēl nav palaists supabase/cleanup-1.sql — tīrīšana nav ieslēgta."; exit 0; fi
+          if [ "$code" != 200 ]; then echo "::error::Supabase neatbild (HTTP $code) — pārbaudi projektu Supabase panelī."; exit 1; fi
+          if grep -q '"cleanup_ok" *: *true' body.json; then echo "Tīrīšana strādā."; exit 0; fi
+          echo "::error::Vecu datu tīrīšana nestrādā (pēdējā veiksmīgā: $(sed -n 's/.*"cleanup_minutes" *: *\([0-9a-z]*\).*/\1/p' body.json) min). Atver admin.html vai Supabase → Integrations → Cron."
+          exit 1
