@@ -1,0 +1,11 @@
+# A10: trešo pušu bibliotēkas, ko lietotne ielādē no savas lapas (growlab.cc), nevis no CDN (unpkg u.c.).
+# Mainīt TIKAI šo failu (un HTML ceļus). GitHub Actions „Bibliotēkas (vendor)” (.github/workflows/vendor.yml) pēc izmaiņas
+# lejupielādē arhīvu, pārbauda SHA-256 un saglabā failus mapē vendor/<nosaukums>-<versija>/ (ar roku tos nelabo).
+# Pārbaude bez tīkla: bash tools/vendor.sh --check  (tests/run.js to pārbauda arī pats).
+#
+# zip  <nosaukums> <versija> <URL>          <arhīva SHA-256>
+# file <nosaukums> <versija> <ceļš arhīvā>  <faila SHA-256>   → vendor/<nosaukums>-<versija>/<faila vārds>
+zip  maplibre-gl 6.15.0 https://github.com/maplibre/maplibre-gl-js/releases/download/v6.15.0/dist.zip 5a6a71290ca4be2bef034df57156ebc2dc86e7e34b7149f88e708989685fea6a
+file maplibre-gl 6.15.0 dist/maplibre-gl.mjs        41198b23679a7d8892183408bbef2eabdc74745beb90261f6be0f660b7aeb2fd
+file maplibre-gl 6.15.0 dist/maplibre-gl-worker.mjs 1c69066368331aae63967ed24a9affcf962cf55fcc6d8f532a8b040f736dbcfa
+file maplibre-gl 6.15.0 dist/maplibre-gl.css        a90798a1953017790e590f7e1bd35ff103a8a4263972cb47290b78adf86f8c20
