@@ -1,0 +1,87 @@
+# Automātiskie testi (audits A08): katrai izmaiņai main zarā un katram pull request.
+#   js   — node tests/run.js uz Linux UN Windows (rindu beigas / ceļi nedrīkst ietekmēt rezultātu)
+#   sql  — visa datubāzes shēma (supabase/*.sql) tīrā PostgreSQL 16 + drošības scenāriji A01–A04 (tests/run-sql.sh)
+#   map  — kartes dūmu tests ar to pašu MapLibre versiju, ko lieto lietotne (tests/map-smoke.js, Chromium)
+# Neizmanto nekādas slepenās atslēgas un nesaskaras ar Supabase / Stripe produkciju.
+name: Testi
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  js:
+    name: JS testi (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tests/run.js
+
+  sql:
+    name: Datubāzes testi (PostgreSQL 16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - run: psql --version
+      - run: bash tests/run-sql.sh
+
+  map:
+    name: Kartes dūmu tests (MapLibre)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: MapLibre (tā pati versija, kas index-gl.html)
+        run: |
+          V=$(grep -o 'maplibre-gl@[0-9.]*/dist/maplibre-gl.mjs' index-gl.html | head -1 | sed 's#maplibre-gl@##; s#/dist.*##')
+          echo "MapLibre $V"
+          curl -sSfL -o "$RUNNER_TEMP/maplibre.zip" "https://github.com/maplibre/maplibre-gl-js/releases/download/v$V/dist.zip"
+          unzip -q "$RUNNER_TEMP/maplibre.zip" -d "$RUNNER_TEMP/maplibre"
+      - name: Playwright + Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.0
+          npx playwright install --with-deps chromium
+      - run: node tests/map-smoke.js . "$RUNNER_TEMP/maplibre/dist" "$RUNNER_TEMP/smoke"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kartes-tests
+          path: |
+            ${{ runner.temp }}/smoke.png
+            ${{ runner.temp }}/smoke.json
+          if-no-files-found: ignore
