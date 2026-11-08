@@ -32,6 +32,9 @@ STEPS=(
   t:skins-test.sql
   # A09: migrāciju uzskaite (palaižama atkārtoti)
   s:rides-17-migrations.sql s:rides-17-migrations.sql
+  # A11: regulāra vecu datu tīrīšana (pg_cron — testos aizstājējs no supabase-stub.sql)
+  s:cleanup-1.sql s:cleanup-1.sql
+  t:cleanup-test.sql
 )
 
 fail=0; pass=0
@@ -97,7 +100,7 @@ status_check() {   # $1 — gaidītais: ok | <teksts, kam jābūt rezultātā>
 gen=$(bash tests/gen-status.sh 2>&1) && [ "$gen" = "$(cat supabase/status.sql)" ] && ok_ "supabase/status.sql ir aktuāls" \
   || bad_ "supabase/status.sql nav aktuāls — palaid: PGDATABASE=<uzbūvēta datubāze> bash tests/gen-status.sh > supabase/status.sql" "$(diff <(echo "$gen") supabase/status.sql | head -10)"
 out=$(status_check ok) && ok_ "status.sql: VISS KĀRTĪBĀ" || bad_ "status.sql atrada problēmas" "$out"
-for f in "${ORDER[@]:21}"; do   # 22–26: drošības labojumi un uzskaite — drīkst palaist atkārtoti
+for f in "${ORDER[@]:21}"; do   # 22–…: drošības labojumi, uzskaite, tīrīšana — drīkst palaist atkārtoti
   out=$(psql -X -q -v ON_ERROR_STOP=1 -f "supabase/$f" 2>&1) && ok_ "atkārtoti: $f" || bad_ "atkārtoti: $f" "$out"
 done
 out=$(status_check ok) && ok_ "status.sql pēc atkārtošanas: VISS KĀRTĪBĀ" || bad_ "status.sql pēc atkārtošanas" "$out"

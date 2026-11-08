@@ -2903,7 +2903,11 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const files = fs.readdirSync(SUP).filter(f => f.endsWith('.sql') && f !== 'status.sql').sort();
     eq(order.map(x => x.f).slice().sort().join(','), files.join(','), 'ORDER.txt = visi supabase/*.sql (izņemot status.sql)');
     eq(new Set(order.map(x => x.f)).size, order.length, 'bez dublikātiem');
-    eq(order[order.length - 1].f, 'rides-17-migrations.sql', 'pēdējā — migrāciju uzskaite');
+    eq((order.find(x => x.f === 'rides-17-migrations.sql') || {}).n, 26, 'migrāciju uzskaite — Nr. 26');
+    for (const x of order.filter(x => x.n > 26)) {   // A11+: katra jaunā migrācija pati pierakstās cz_migrations
+      const t = fs.readFileSync(path.join(SUP, x.f), 'utf8');
+      ok(t.includes(`select public.cz_migration_begin(${x.n}, '${x.f}');`) && t.includes(`select public.cz_migration_done(${x.n}, '${x.f}');`), x.f + ': cz_migration_begin / done ar savu numuru');
+    }
     // run-sql.sh 1. daļā shēmas faili tajā pašā secībā (izņemot coins-3: testu dēļ pēc kopbraucienu scenārijiem — neatkarīgi)
     const sh = fs.readFileSync(path.join(__dirname, 'run-sql.sh'), 'utf8');
     const steps = [...((sh.match(/STEPS=\(([\s\S]*?)\n\)/) || [])[1] || '').matchAll(/\bs:([\w.-]+\.sql)/g)].map(m => m[1]);
@@ -3038,6 +3042,51 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/maplibre-gl-worker/.test(ms) && /evil\.test/.test(ms) && /res\.framed !== 'none'/.test(ms), 'worker no lapas adreses, rāmī paslēpts');
     ok(/for \(const p of \['admin\.html', 'privacy\.html', 'terms\.html'\]\)/.test(ms), 'arī pārējās lapas');
     ok(!/unpkg/.test(ms), 'tests neizmanto CDN');
+  });
+}
+
+// ---------- A11 (audits 08.11.2026): regulāra vecu datu tīrīšana (pg_cron) un brīdinājums par kļūmēm ----------
+{
+  const ROOT = path.join(__dirname, '..');
+  const cl = fs.readFileSync(path.join(ROOT, 'supabase', 'cleanup-1.sql'), 'utf8');
+  const fn = cl.slice(cl.indexOf('create or replace function public.cz_cleanup()'), cl.indexOf('revoke all on function public.cz_cleanup()'));
+  test('A11: cz_cleanup dzēš tieši pēc privātuma politikas termiņiem, katrs solis atsevišķi', () => {
+    const pv = fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8');
+    ok(/vēl 2 dienas, tad tiek dzēsti/.test(pv) && /delete from reports where expires_at < now\(\) - interval '2 days';/.test(fn), 'ziņojumi: derīguma beigas + 2 dienas');
+    ok(/Ātruma mērījumi — 28 dienas; mērījumu skaita ieraksts — 1 diena/.test(pv) && /delete from traffic_samples where at < now\(\) - interval '28 days';/.test(fn)
+      && /delete from traffic_quota where window_start < now\(\) - interval '1 day';/.test(fn), 'mērījumi 28 d., skaitītāji 1 d.');
+    ok(/10 minūtes pēc pēdējā atjauninājuma/.test(pv) && /delete from user_presence where updated_at < now\(\) - interval '5 minutes';/.test(fn)
+      && /select cron\.schedule\('cz-cleanup', '\*\/5 \* \* \* \*', 'select public\.cz_cleanup\(\)'\);/.test(cl), 'vieta kartē: 5 min + ik 5 min palaišana ≤ 10 min');
+    ok(/delete from account_transfers where expires_at < now\(\);/.test(fn) && /delete from stripe_events where created_at < now\(\) - interval '90 days';/.test(fn), 'pārneses kodi, Stripe notikumi');
+    ok(/k := ride_expire\(\);/.test(fn) && /cron\.job_run_details where end_time < now\(\) - interval ''7 days''/.test(fn), 'braucieni, plānotāja vēsture');
+    const steps = fn.match(/\n  begin\b/g) || [], handlers = fn.match(/exception when others then errs := errs \|\| \('[a-z_]+: ' \|\| sqlerrm\); end;/g) || [];
+    ok(steps.length >= 8 && handlers.length === steps.length, 'katrs solis savā blokā ar kļūdas pierakstu (' + steps.length + ')');
+    ok(!/delete from (profiles|ride_requests|ride_offers|ride_messages|coin_ledger|user_wallet|user_consents)\b/.test(fn), 'līdz konta dzēšanai glabājamos datus neaiztiek');
+    ok(/ok = cardinality\(errs\) = 0/.test(fn) && /delete from cz_cleanup_runs where started_at < now\(\) - interval '7 days';/.test(fn), 'pieraksts: ok/kļūdas, 7 dienas');
+  });
+  test('A11: tiesības, plānotājs, uzraudzība un brīdinājums paneļā', () => {
+    ok(/revoke all on function public\.cz_cleanup\(\) from public, anon, authenticated;/.test(cl), 'cz_cleanup — tikai plānotājs / īpašnieks SQL');
+    ok(/revoke all on public\.cz_cleanup_runs from public, anon, authenticated;/.test(cl) && /alter table public\.cz_cleanup_runs enable row level security;/.test(cl), 'pieraksts lietotnei neredzams');
+    ok(/if not is_app_admin\(\) then raise exception 'forbidden'; end if;/.test(cl.slice(cl.indexOf('function public.cz_cleanup_status()'))), 'cz_cleanup_status — tikai īpašniekam');
+    const h = cl.slice(cl.indexOf('function public.cz_health()'), cl.indexOf('grant execute on function public.cz_health()'));
+    ok(/jsonb_build_object\(\s*'cleanup_ok'[\s\S]*'cleanup_minutes'/.test(h) && !/user_id|lat|lng|email/.test(h), 'cz_health — tikai strādā/nestrādā');
+    ok(/create extension if not exists pg_cron with schema pg_catalog;/.test(cl) && /Integrations → Cron/.test(cl), 'pg_cron ieslēdz pats vai skaidri pasaka, ko darīt');
+    const stub = fs.readFileSync(path.join(__dirname, 'sql', 'supabase-stub.sql'), 'utf8');
+    ok(/create function cron\.schedule\(job_name text, schedule text, command text\)/.test(stub) && /on conflict \(jobname\) do update/.test(stub), 'testos pg_cron aizstājējs (tas pats nosaukums aizstāj darbu)');
+    const sh = fs.readFileSync(path.join(__dirname, 'run-sql.sh'), 'utf8');
+    ok(/s:cleanup-1\.sql s:cleanup-1\.sql\s*\n\s*t:cleanup-test\.sql/.test(sh), 'run-sql.sh: divreiz + scenārijs');
+    const gs = fs.readFileSync(path.join(__dirname, 'gen-status.sh'), 'utf8'), st = fs.readFileSync(path.join(ROOT, 'supabase', 'status.sql'), 'utf8');
+    ok(/'plānotājs'/.test(gs) && /\('cz-cleanup', '\*\/5 \* \* \* \*'\)/.test(st), 'status.sql pārbauda, ka darbs ieplānots');
+    const wf = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'monitor.yml'), 'utf8');
+    ok(/schedule:\s*\n\s*- cron: '23 \* \* \* \*'/.test(wf) && /rpc\/cz_health/.test(wf) && /permissions:\s*\n\s*contents: read/.test(wf) && !/secrets\./.test(wf), 'monitor.yml: reizi stundā, tikai cz_health, bez slepenām atslēgām');
+    ok(/PGRST202/.test(wf) && /"cleanup_ok" \*: \*true/.test(wf) && /exit 1/.test(wf), 'monitor.yml: neizdodas, ja tīrīšana nestrādā; tikai brīdina, ja fails vēl nav palaists');
+    ok(!/sb_publishable_|eyJ[A-Za-z0-9_-]{20,}/.test(wf), 'atslēga netiek ierakstīta darbplūsmā (ņem no rides-config.js)');
+    const aj = fs.readFileSync(path.join(ROOT, 'admin.js'), 'utf8');
+    ok(/admRpc\('cz_cleanup_status'\)/.test(aj) && /e\.status === 404 \? \{ missing: true \}/.test(aj), 'admin.js: stāvoklis, fails vēl nav palaists → paskaidrojums');
+    ok(/'Vecu datu tīrīšana nestrādā: '/.test(aj) && /if \(clean && !\(adm\.cleanup && adm\.cleanup\.healthy\)\) box\.append\(clean\);/.test(aj), 'admin.js: brīdinājums paneļa augšā');
+    ok(/admin\.js\?v=152/.test(fs.readFileSync(path.join(ROOT, 'admin.html'), 'utf8')), 'admin.html: jauna admin.js versija');
+    const md = fs.readFileSync(path.join(ROOT, 'supabase', 'MIGRATIONS.md'), 'utf8');
+    ok(/## Vecu datu tīrīšana un uzraudzība \(A11\)/.test(md) && /\*\*22–27 vēl jāpalaiž\*\*/.test(md), 'MIGRATIONS.md');
   });
 }
 

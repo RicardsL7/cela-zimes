@@ -17,6 +17,7 @@ cat <<'EOF'
 --   cita versija      — funkcija atšķiras no repozitorija (palaists vecs fails pēc jaunāka vai labots ar roku)
 --   tiesības          — lietotnei (anon / authenticated) ir citas tiesības nekā paredzēts
 --   migrācija         — fails nav atzīmēts cz_migrations (pēc rides-17-migrations.sql)
+--   plānotājs         — regulārais darbs (piem. vecu datu tīrīšana cz-cleanup) nav ieplānots pg_cron
 -- Papildu objekti (piem. paša pievienoti) netiek ziņoti.
 with
 EOF
@@ -74,7 +75,18 @@ q "select format('  (%L, %L, %L, %s)', table_name, column_name, r, has_column_pr
    where table_schema = 'public' and table_name in ('ride_offers', 'ride_requests', 'ride_payments') order by 1" | sep
 echo "),"
 
+# A11: plānotāja (pg_cron) darbi, ko izveido repozitorija faili (nosaukums cz-…)
+echo "exp_cron(name, sched) as (values"
+crons=$(q "select format('  (%L, %L)', jobname, schedule) from cron.job where jobname like 'cz-%' order by 1" 2>/dev/null || true)
+if [ -n "$crons" ]; then echo "$crons" | sep; else echo "  (null::text, null::text)"; fi
+echo "),"
+
 cat <<'EOF'
+act_cron as (
+  select (xpath('/row/jobname/text()', x))[1]::text name, (xpath('/row/schedule/text()', x))[1]::text sched
+  from unnest(xpath('/table/row', case when to_regclass('cron.job') is not null
+         then query_to_xml('select jobname, schedule from cron.job where active', false, false, '') end)) x
+),
 -- cz_migrations var vēl nebūt (pirms rides-17) — nolasa dinamiski, lai vaicājums nekristu
 act_mig as (
   select (xpath('/row/seq/text()', x))[1]::text::int seq, (xpath('/row/name/text()', x))[1]::text name
@@ -116,6 +128,9 @@ problems(kas, objekts, problema) as (
     from exp_cpriv e
     where case when exists (select 1 from information_schema.columns x where x.table_schema = 'public' and x.table_name = e.t and x.column_name = e.c)
                then has_column_privilege(e.r, to_regclass('public.' || quote_ident(e.t)), e.c, 'UPDATE') <> e.ok end
+  union all
+  select 'plānotājs', e.name || ' (' || e.sched || ')', 'nav ieplānots (pg_cron)' from exp_cron e
+    where e.name is not null and not exists (select 1 from act_cron a where a.name = e.name and a.sched = e.sched)
   union all
   select 'migrācija', e.seq || ' ' || e.name, 'nav atzīmēts cz_migrations' from exp_mig e
     where not exists (select 1 from act_mig m where m.seq = e.seq and m.name = e.name)
