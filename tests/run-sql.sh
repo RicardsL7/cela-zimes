@@ -38,6 +38,9 @@ STEPS=(
   # A15: konta dzēšana — pārbaudes un anonīms brauciena ieraksts otram (palaižama atkārtoti)
   s:account-1-delete.sql s:account-1-delete.sql
   t:account-delete-test.sql
+  # A16: citu braucēju punkti — atsevišķa izvēle, ~150 m, redz tikai braucot (palaižama atkārtoti)
+  s:presence-2-privacy.sql s:presence-2-privacy.sql
+  t:presence-privacy-test.sql
 )
 
 fail=0; pass=0

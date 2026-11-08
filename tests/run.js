@@ -2101,13 +2101,13 @@ test('v124: citi braucēji — tikai ar „Palīdzēt citiem” (jaunā versija)
   ok(!/returns table \([^)]*user_id/.test(nb) && /user_id is distinct from auth\.uid\(\)/.test(nb), 'neatdod ID, neatdod mani');
   ok(/revoke all on function public\.presence_update\([^)]*\) from public, anon/.test(sql) && /grant execute on function public\.presence_nearby\([^)]*\) to anon, authenticated/.test(sql), 'tiesības');
   const tr = fs.readFileSync(path.join(__dirname, '..', 'traffic-gl.js'), 'utf8');
-  ok(/TR_SHARE_VERSION = '2026-11-01'/.test(tr) && /const trShareCurrent = /.test(tr) && /Garāžas tēlu/.test(tr), 'piekrišanas teksts un versija');
-  ok(/presenceStop\(\)/.test(tr), 'izslēdzot — noņem no kartes uzreiz');
+  ok(/TR_SHARE_VERSION = '2026-11-01'/.test(tr) && /const trShareCurrent = /.test(tr) && /Tava vieta citiem braucējiem kartē netiek rādīta/.test(tr), 'piekrišanas teksts un versija (A16: bez vietas citu kartē)');
   const pj = fs.readFileSync(path.join(__dirname, '..', 'presence.js'), 'utf8');
-  ok(/trShareCurrent\(\)/.test(pj) && /!state\.testMode/.test(pj) && /PRESENCE_MIN_KMH = 15/.test(pj), 'sūta tikai ar piekrišanu, braucot, ne testa režīmā');
+  ok(/if \(!yes\) presenceStop\(\);/.test(pj), 'izslēdzot — noņem no kartes uzreiz (A16: savs slēdzis)');
+  ok(/presenceShowOn\(\) &&/.test(pj) && /!state\.testMode/.test(pj) && /PRESENCE_MIN_KMH = 15/.test(pj), 'sūta tikai ar piekrišanu, braucot, ne testa režīmā');
   ok(G('CZ_PRIVACY_VERSION') >= '2026-11-01', 'privātuma versija (v124 vai jaunāka)');
   const pr = fs.readFileSync(path.join(__dirname, '..', 'privacy.html'), 'utf8');
-  ok(/Versija 2026-11-(01|08)/.test(pr) && /monētu atlikums/.test(pr) && /uzticamības rādītājs/.test(pr) && /Tava vieta citu kartē/.test(pr), 'privātuma politika');
+  ok(/Versija 2026-11-\d\db?/.test(pr) && /monētu atlikums/.test(pr) && /uzticamības rādītājs/.test(pr) && /Tava vieta citu kartē/.test(pr), 'privātuma politika');
   for (const f of ['index.html', 'index-gl.html']) {
     const html = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     ok(/id="garageBtn"[\s\S]{0,700}Garāža[\s\S]{0,200}id="garageBal"/.test(html), f + ': poga „Garāža” ar atlikumu');
@@ -2828,7 +2828,7 @@ test('A06: noteikumi un privātuma politika — sniedzējs, kontakts, nekas nav 
   // Versijas nemainītas: tikai identitātes aizpildīšana, lietotājiem atkārtoti piekrist nav jāprasa
   { const tv = (fs.readFileSync(path.join(__dirname, '..', 'auth.js'), 'utf8').match(/CZ_TERMS_VERSION = '([\d-]+)'/) || [])[1];
     ok(tv && tv >= '2026-10-23' && t.includes('Versija ' + tv), 'noteikumu versija sakrīt ar auth.js'); }
-  { const pv = (fs.readFileSync(path.join(__dirname, '..', 'auth.js'), 'utf8').match(/CZ_PRIVACY_VERSION = '([\d-]+)'/) || [])[1];
+  { const pv = (fs.readFileSync(path.join(__dirname, '..', 'auth.js'), 'utf8').match(/CZ_PRIVACY_VERSION = '([\w-]+)'/) || [])[1];
     ok(pv && pv >= '2026-11-01' && pr.includes('Versija ' + pv), 'politikas versija sakrīt ar auth.js'); }
 });
 
@@ -3093,7 +3093,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const aj = fs.readFileSync(path.join(ROOT, 'admin.js'), 'utf8');
     ok(/admRpc\('cz_cleanup_status'\)/.test(aj) && /e\.status === 404 \? \{ missing: true \}/.test(aj), 'admin.js: stāvoklis, fails vēl nav palaists → paskaidrojums');
     ok(/'Vecu datu tīrīšana nestrādā: '/.test(aj) && /if \(clean && !\(adm\.cleanup && adm\.cleanup\.healthy\)\) box\.append\(clean\);/.test(aj), 'admin.js: brīdinājums paneļa augšā');
-    ok(/admin\.js\?v=152/.test(fs.readFileSync(path.join(ROOT, 'admin.html'), 'utf8')), 'admin.html: jauna admin.js versija');
+    ok(/admin\.js\?v=1(5[2-9]|[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, 'admin.html'), 'utf8')), 'admin.html: jauna admin.js versija');
     const md = fs.readFileSync(path.join(ROOT, 'supabase', 'MIGRATIONS.md'), 'utf8');
     ok(/## Vecu datu tīrīšana un uzraudzība \(A11\)/.test(md) && /palaisti (visi )?1–27/.test(md), 'MIGRATIONS.md');
   });
@@ -3227,7 +3227,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/if \(enter\) \{ try \{ items = await searchNominatim\(q\)/.test(rs), 'Nominatim tikai pēc „Meklēt” (noteikumi aizliedz autocomplete)');
     const r = fs.readFileSync(path.join(ROOT, 'rides-ui.js'), 'utf8');
     ok(/const idleHidden = document\.hidden && !trip;/.test(r) && /idleHidden \? 60000/.test(r) && /ridesSchedule\(300\)/.test(r), '„Kopā”: fonā bez brauciena — nepieprasa, atgriežoties uzreiz; aktīvā braucienā — turpina');
-    for (const [f, re] of [['presence.js', /document\.hidden\) return/], ['traffic-gl.js', /if \(!document\.hidden\) trRefresh\(true\)/], ['app-gl.js', /if \(!document\.hidden\) loadReports\(true\)/]])
+    for (const [f, re] of [['presence.js', /document\.hidden( \|\| presence\.polling)?\) return/], ['traffic-gl.js', /if \(!document\.hidden\) trRefresh\(true\)/], ['app-gl.js', /if \(!document\.hidden\) loadReports\(true\)/]])
       ok(re.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': fona cilnē neaptaujā');
     const ms = fs.readFileSync(path.join(__dirname, 'map-smoke.js'), 'utf8');
     ok(/__czNetWrapped/.test(ms), 'kartes tests pārbauda, ka netguard ir ieslēgts');
@@ -3447,15 +3447,114 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   test('A15: politika un noteikumi — kas paliek, kad nevar dzēst; jauna versija', () => {
     const pr = fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8'), te = fs.readFileSync(path.join(ROOT, 'terms.html'), 'utf8');
     const au = fs.readFileSync(path.join(ROOT, 'auth.js'), 'utf8');
-    ok(/CZ_PRIVACY_VERSION = '2026-11-08'/.test(au) && /CZ_TERMS_VERSION = '2026-11-08'/.test(au), 'jaunas versijas → piekrišanas logs');
+    ok(/CZ_PRIVACY_VERSION = '2026-11-08b?'/.test(au) && /CZ_TERMS_VERSION = '2026-11-08'/.test(au), 'jaunas versijas → piekrišanas logs');
     ok(/Kas paliek otram brauciena dalībniekam/.test(pr) && /~1 km/.test(pr) && /kontu dzēst nevar/.test(pr), 'privacy.html');
     ok(/izņemot, kamēr ir aktīvs brauciens/.test(te), 'terms.html');
     const ui = fs.readFileSync(path.join(ROOT, 'rides-ui.js'), 'utf8');
     ok(/Otram brauciena dalībniekam paliek notikušā brauciena ieraksts bez tava vārda/.test(ui), 'dzēšanas apstiprinājuma teksts');
     for (const f of ['index.html', 'index-gl.html']) {
       const h = fs.readFileSync(path.join(ROOT, f), 'utf8');
-      ok(/auth\.js\?v=157/.test(h) && /rides\.js\?v=157/.test(h) && /rides-ui\.js\?v=157/.test(h), f + ': v157');
+      ok(/auth\.js\?v=15[7-9]/.test(h) && /rides\.js\?v=15[7-9]/.test(h) && /rides-ui\.js\?v=15[7-9]/.test(h), f + ': v157+');
     }
+  });
+}
+
+// ---------- A16 (audits): citu braucēju punkti — atsevišķa izvēle, ~150 m, redz tikai braucot ap sevi ----------
+// Uzvedību datubāzē pārbauda tests/presence-privacy-test.sql (tests/run-sql.sh); šeit — faili un lietotnes loģika.
+{
+  const ROOT = path.join(__dirname, '..'), SUP = path.join(ROOT, 'supabase');
+  test('A16: SQL — piekrišana show_on_map, ~150 m, 60 s, tikai braucot ≤ 15 km, bez anon', () => {
+    const sql = fs.readFileSync(path.join(SUP, 'presence-2-privacy.sql'), 'utf8');
+    ok(/^29 presence-2-privacy\.sql$/m.test(fs.readFileSync(path.join(SUP, 'ORDER.txt'), 'utf8')), 'ORDER.txt: 29');
+    ok(/cz_migration_begin\(29, 'presence-2-privacy\.sql'\)/.test(sql) && /cz_migration_done\(29, 'presence-2-privacy\.sql'\)/.test(sql), 'uzskaite');
+    ok(/check \(kind in \('terms', 'privacy', 'speed_share', 'show_on_map'\)\)/.test(sql), 'jauns piekrišanas veids');
+    const al = sql.slice(sql.indexOf('function public.presence_allowed'), sql.indexOf('$$;', sql.indexOf('function public.presence_allowed')));
+    ok(/kind = 'show_on_map'/.test(al) && !/speed_share/.test(al) && /version >= '2026-11-08'/.test(al), 'rāda tikai ar savu izvēli (ne ar ātruma dalīšanu)');
+    ok(/round\(p_lat::numeric \* 700\) \/ 700/.test(sql) && /round\(p_lng::numeric \* 400\) \/ 400/.test(sql), '~150 m');
+    ok(/interval '25 seconds'/.test(sql) && /started_at <= now\(\) - interval '60 seconds'/.test(sql), 'ne biežāk kā 25 s; redzams pēc 60 s');
+    ok(/drop function if exists public\.presence_nearby\(float8, float8, float8, float8\)/.test(sql), 'vecā publiskā funkcija dzēsta');
+    ok(/revoke all on function public\.presence_nearby\(float8, float8, float8\) from public, anon/.test(sql)
+       && /grant execute on function public\.presence_nearby\(float8, float8, float8\) to authenticated;/.test(sql), 'tikai pieteicies');
+    const nb = sql.slice(sql.indexOf('function public.presence_nearby(p_lat'), sql.indexOf('revoke all on function public.presence_nearby(float8, float8, float8)'));
+    ok(/p_speed_kmh < 15/.test(nb) && /interval '12 seconds'/.test(nb) && /<= 15000/.test(nb) && /< 200/.test(nb) && /> 250/.test(nb), 'braucot, ≥ 12 s, ≤ 15 km, iesildīšanās, lēciens');
+    ok(!/'user_id'/.test(nb) && /p\.user_id <> me/.test(nb), 'neatdod ID, neatdod mani');
+    ok(/create table if not exists public\.presence_viewers/.test(sql) && /revoke all on public\.presence_viewers from public, anon, authenticated/.test(sql), 'skatītāju vietas — tikai serverim');
+    ok(/delete from presence_viewers where last_at < now\(\) - interval '10 minutes'/.test(sql.slice(sql.indexOf('function public.cz_cleanup'))), 'tīrīšana 10 min');
+    ok(/delete from public\.user_presence p where not public\.presence_allowed\(p\.user_id\)/.test(sql), 'līdzšinējie punkti bez jaunās izvēles — dzēsti');
+    const steps = fs.readFileSync(path.join(__dirname, 'run-sql.sh'), 'utf8');
+    ok(/s:presence-2-privacy\.sql s:presence-2-privacy\.sql/.test(steps) && /t:presence-privacy-test\.sql/.test(steps), 'run-sql.sh');
+  });
+
+  const loadPresence = (over = {}) => {
+    const store = {}, calls = [], drawn = [], toasts = [];
+    const box = vm.createContext(Object.assign({
+      console: { warn() {} }, Date, Math, Promise, setInterval: () => 1, clearInterval() {}, setTimeout,
+      localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } },
+      document: { hidden: false, getElementById: () => null, addEventListener() {}, createElement: () => ({ appendChild() {}, querySelector: () => null, dataset: {}, style: {} }) },
+      state: { testMode: false }, map: { getZoom: () => 14, getBearing: () => 0, on() {} },
+      maplibregl: { Marker: class { constructor() {} setLngLat(p) { drawn.push(p); return this; } addTo() { return this; } remove() {} getElement() { return { querySelector: () => null, dataset: {} }; } } },
+      czConsentOk: () => true, czToast: t => toasts.push(t), trShareCurrent: () => true,
+      czAuthGet: () => ({ token: async () => { calls.push('token'); return 't'; }, syncTermsConsent: async () => {}, syncConsent: async (k, v, a) => { calls.push(`consent:${k}:${v}:${a}`); } }),
+    }, over));
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'presence.js'), 'utf8').replace(/if \(typeof module[\s\S]*$/, ''), box);
+    return { box, store, calls, drawn, toasts };
+  };
+  test('A16: lietotne — savs slēdzis (noklusēti izslēgts), ātruma dalīšana neieslēdz', async () => {
+    const P = loadPresence();
+    ok(!vm.runInContext('presenceShowOn()', P.box) && !vm.runInContext('presenceSharing()', P.box), 'noklusēti izslēgts, arī ja ātruma dalīšana ieslēgta');
+    await vm.runInContext('presenceShowChoice(true, false)', P.box);
+    ok(vm.runInContext('presenceSharing()', P.box) && P.calls.includes('consent:show_on_map:2026-11-08:true') && P.calls.includes('token'), 'ieslēdzot — piekrišana serverī (show_on_map)');
+    let cleared = 0;
+    P.box.reportsApi = { presenceClear: async () => { cleared++; } };
+    vm.runInContext('presence.shown = true', P.box);
+    await vm.runInContext('presenceShowChoice(false, false)', P.box);
+    ok(!vm.runInContext('presenceShowOn()', P.box) && cleared === 1 && P.calls.includes('consent:show_on_map:2026-11-08:false'), 'izslēdzot — noņem uzreiz un pieraksta „nē”');
+    P.store['cz.presence.show'] = 'yes'; P.store['cz.presence.showVer'] = '2026-11-01';
+    ok(!vm.runInContext('presenceShowOn()', P.box), 'vecāka teksta „jā” neder');
+    P.store['cz.presence.showVer'] = '2026-11-08'; P.box.state.testMode = true;
+    ok(!vm.runInContext('presenceSharing()', P.box), 'testa režīmā nerāda');
+  });
+  test('A16: lietotne — citus redz tikai braucot, ar savu vietu; „throttled” saglabā punktus', async () => {
+    const P = loadPresence();
+    const asked = [];
+    let reply = { ok: true, points: [{ lat: 56.95, lng: 24.1, heading: 90, skin: null, age_s: 10 }] };
+    P.box.reportsApi = { presenceNearby: async p => { asked.push(p); return reply; } };
+    await vm.runInContext('presencePoll()', P.box);
+    ok(asked.length === 0, 'bez GPS — nejautā serverim');
+    vm.runInContext('presence.me = { lat: 56.9512345, lng: 24.1056789, kmh: 8, acc: 10, t: Date.now() }', P.box);
+    await vm.runInContext('presencePoll()', P.box);
+    ok(asked.length === 0, 'stāvot / lēni — nejautā');
+    vm.runInContext('presence.me.kmh = 52.4', P.box);
+    await vm.runInContext('presencePoll()', P.box);
+    ok(asked.length === 1 && asked[0].p_lat === 56.95123 && asked[0].p_speed_kmh === 52 && !('min_lat' in asked[0]), 'braucot — sava vieta un ātrums (nevis kartes laukums)');
+    ok(P.drawn.length === 1, 'punkts uzzīmēts');
+    reply = { ok: false, reason: 'throttled', points: [] };
+    await vm.runInContext('presencePoll()', P.box);
+    ok(vm.runInContext('presence.markers.length', P.box) === 1, 'throttled — punkti paliek');
+    reply = { ok: false, reason: 'warming_up', points: [] };
+    await vm.runInContext('presencePoll()', P.box);
+    ok(vm.runInContext('presence.markers.length', P.box) === 0, 'iesildās — nekas nav redzams');
+    vm.runInContext('presence.me.t = Date.now() - 60000', P.box);
+    await vm.runInContext('presencePoll()', P.box);
+    ok(asked.length === 3, 'novecojis GPS — nejautā');
+    const R = G('ReportsApi');
+    const api = Object.create(R.prototype); api.auth = { hasSession: () => false };
+    api._rpc = async () => { throw new Error('nedrīkst'); };
+    const r = await api.presenceNearby({ p_lat: 1, p_lng: 2, p_speed_kmh: 50 });
+    ok(r.ok === false && r.reason === 'no_account', 'bez konta — pieprasījums netiek sūtīts');
+  });
+  test('A16: teksti — iestatījumi, Garāža, ātruma dalīšana, privātuma politika', () => {
+    for (const f of ['index.html', 'index-gl.html']) {
+      const h = fs.readFileSync(path.join(ROOT, f), 'utf8');
+      ok(/<b>Rādīt mani citu kartē<\/b>/.test(h) && /<input type="checkbox" id="presenceShow" class="switch">/.test(h), f + ': slēdzis (bez checked)');
+      ok(!/kad brauc un ir ieslēgts „Palīdzēt citiem”/.test(h) && /ieslēgts „Rādīt mani citu kartē”/.test(h), f + ': Garāžas teksts');
+      ok(/presence\.js\?v=158/.test(h) && /reports\.js\?v=158/.test(h) && /traffic-gl\.js\?v=158/.test(h) && /garage\.js\?v=158/.test(h), f + ': v158');
+    }
+    const tr = fs.readFileSync(path.join(ROOT, 'traffic-gl.js'), 'utf8');
+    ok(!/citi braucēji kartē redz/.test(tr) && !/presenceStop/.test(tr), 'ātruma dalīšana vairs nerāda tevi citiem');
+    const pr = fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8');
+    ok(/~150 m/.test(pr) && /Citu braucēju redzēšana/.test(pr) && /līdz 15 km/.test(pr) && /noklusēti izslēgta/.test(pr), 'privacy.html §6');
+    ok(/CZ_PRIVACY_VERSION = '2026-11-08b'/.test(fs.readFileSync(path.join(ROOT, 'auth.js'), 'utf8')) && /Versija 2026-11-08b/.test(pr), 'jauna politikas versija');
   });
 }
 
