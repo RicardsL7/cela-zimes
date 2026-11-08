@@ -1,5 +1,5 @@
 -- Ceļa Zīmes — kopīgs radaru (ātruma kameru) saraksts.
--- Supabase → SQL Editor → New query → ielīmē visu → Run. Var palaist atkārtoti.
+-- Supabase → SQL Editor → New query → ielīmē visu → Run. Var palaist atkārtoti (tikai kamēr nav palaisti jaunāki faili — A09).
 --
 -- Kā tas strādā:
 --   • Kad kāda lietotāja telefons Mapillary datos atrod ātruma kameras zīmi, tas paziņo tās
@@ -8,6 +8,18 @@
 --     eksistē un kur tā ir (koordinātas ņem no Mapillary, ne no šīs tabulas). Tāpēc viltotu radaru
 --     iesūtīt nevar — tas vienkārši netiks parādīts, un telefons to atzīmē kā nederīgu (radar_bad).
 --   • Nekāda informācija par lietotājiem netiek glabāta.
+
+-- A09: aizsardzība. Šo vecāko failu nedrīkst palaist vēlreiz, ja pēc tā jau palaisti jaunāki — tas atjaunotu vecākas
+-- funkciju versijas un atceltu vēlākos labojumus. Tukšā datubāzē (pirmā uzstādīšana pēc supabase/ORDER.txt) un pirms
+-- rides-17-migrations.sql šī pārbaude neko nedara. Sk. supabase/MIGRATIONS.md.
+do $$ begin
+  if to_regclass('public.cz_migrations') is not null then   -- (atsevišķs if: tabulas var vēl nebūt)
+    if exists (select 1 from public.cz_migrations where seq > 8)
+       and coalesce(current_setting('cz.allow_rerun', true), '') <> 'on' then
+      raise exception 'radars.sql (Nr. 8) ir vecs migrācijas fails, un pēc tā jau palaisti jaunāki — atkārtoti to palaist nedrīkst (atceltu vēlākos labojumus). Sk. supabase/MIGRATIONS.md.';
+    end if;
+  end if;
+end $$;
 
 create table if not exists public.radar_signs (
   mly_id     text primary key check (mly_id ~ '^[0-9]{6,20}$'),

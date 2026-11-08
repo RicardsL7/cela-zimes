@@ -1,7 +1,7 @@
 -- Ceļa Zīmes — kopīgi ziņojumi uz ceļa (policija, negadījums, kamera u.c.), labojums F10.
 --
 -- KĀ PALAIST: Supabase → SQL Editor → New query → ielīmē visu šo failu → Run.
--- Failu var palaist atkārtoti (dati netiek dzēsti). Jāpalaiž PĒC rides-7-account.sql.
+-- Failu var palaist atkārtoti (tikai kamēr nav palaisti jaunāki faili — A09) (dati netiek dzēsti). Jāpalaiž PĒC rides-7-account.sql.
 --
 -- Kā tas strādā:
 --   • Ziņojumu izveido tikai lietotājs ar sesiju (arī anonīms konts) — caur report_create.
@@ -13,6 +13,18 @@
 --   • Viltojumu ierobežošana: līdz 10 jauniem ziņojumiem stundā uz kontu, līdz 60 balsojumiem stundā,
 --     tikai Latvijas robežās, viens balsojums uz lietotāju, dublikāti 150 m attālumā tiek apvienoti.
 --   • Tabulas tieši lasīt / rakstīt nevar (RLS bez politikām) — tikai caur funkcijām zemāk.
+
+-- A09: aizsardzība. Šo vecāko failu nedrīkst palaist vēlreiz, ja pēc tā jau palaisti jaunāki — tas atjaunotu vecākas
+-- funkciju versijas un atceltu vēlākos labojumus. Tukšā datubāzē (pirmā uzstādīšana pēc supabase/ORDER.txt) un pirms
+-- rides-17-migrations.sql šī pārbaude neko nedara. Sk. supabase/MIGRATIONS.md.
+do $$ begin
+  if to_regclass('public.cz_migrations') is not null then   -- (atsevišķs if: tabulas var vēl nebūt)
+    if exists (select 1 from public.cz_migrations where seq > 11)
+       and coalesce(current_setting('cz.allow_rerun', true), '') <> 'on' then
+      raise exception 'reports.sql (Nr. 11) ir vecs migrācijas fails, un pēc tā jau palaisti jaunāki — atkārtoti to palaist nedrīkst (atceltu vēlākos labojumus). Sk. supabase/MIGRATIONS.md.';
+    end if;
+  end if;
+end $$;
 
 -- ---------- Derīgums pēc veida (minūtēs). Tiem pašiem veidiem kā pogā „Ziņot” (alerts.js) ----------
 create or replace function public.report_ttl(t text) returns int

@@ -9,6 +9,18 @@
 --   • Ierakstīt var tikai caur funkciju traffic_report (pārbauda datus un ierobežo apjomu);
 --     lasīt — tikai apkopotus datus caur traffic_now (vismaz 2 mērījumi uz šūnu).
 
+-- A09: aizsardzība. Šo vecāko failu nedrīkst palaist vēlreiz, ja pēc tā jau palaisti jaunāki — tas atjaunotu vecākas
+-- funkciju versijas un atceltu vēlākos labojumus. Tukšā datubāzē (pirmā uzstādīšana pēc supabase/ORDER.txt) un pirms
+-- rides-17-migrations.sql šī pārbaude neko nedara. Sk. supabase/MIGRATIONS.md.
+do $$ begin
+  if to_regclass('public.cz_migrations') is not null then   -- (atsevišķs if: tabulas var vēl nebūt)
+    if exists (select 1 from public.cz_migrations where seq > 9)
+       and coalesce(current_setting('cz.allow_rerun', true), '') <> 'on' then
+      raise exception 'traffic.sql (Nr. 9) ir vecs migrācijas fails, un pēc tā jau palaisti jaunāki — atkārtoti to palaist nedrīkst (atceltu vēlākos labojumus). Sk. supabase/MIGRATIONS.md.';
+    end if;
+  end if;
+end $$;
+
 create table if not exists public.traffic_samples (
   id   bigserial primary key,
   cell text      not null check (cell ~ '^-?[0-9]{1,7}_-?[0-9]{1,7}$'),

@@ -10,6 +10,18 @@
 --   • Vai samaksāts — servera funkcija katru reizi jautā Stripe (datubāzei te netic).
 --   • Cenu pēc piedāvājuma nosūtīšanas mainīt nevar neviens.
 
+-- A09: aizsardzība. Šo vecāko failu nedrīkst palaist vēlreiz, ja pēc tā jau palaisti jaunāki — tas atjaunotu vecākas
+-- funkciju versijas un atceltu vēlākos labojumus. Tukšā datubāzē (pirmā uzstādīšana pēc supabase/ORDER.txt) un pirms
+-- rides-17-migrations.sql šī pārbaude neko nedara. Sk. supabase/MIGRATIONS.md.
+do $$ begin
+  if to_regclass('public.cz_migrations') is not null then   -- (atsevišķs if: tabulas var vēl nebūt)
+    if exists (select 1 from public.cz_migrations where seq > 3)
+       and coalesce(current_setting('cz.allow_rerun', true), '') <> 'on' then
+      raise exception 'rides-3-pay.sql (Nr. 3) ir vecs migrācijas fails, un pēc tā jau palaisti jaunāki — atkārtoti to palaist nedrīkst (atceltu vēlākos labojumus). Sk. supabase/MIGRATIONS.md.';
+    end if;
+  end if;
+end $$;
+
 alter table public.ride_offers add column if not exists price_cents int
   check (price_cents is null or price_cents between 0 and 10000);
 

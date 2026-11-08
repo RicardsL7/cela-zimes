@@ -1,5 +1,17 @@
 -- Ceļa Zīmes — kopbraucieni, 2. daļa: čats un brauciena gaita.
--- Palaid PĒC rides.sql (Supabase → SQL Editor → Run). Var palaist atkārtoti.
+-- Palaid PĒC rides.sql (Supabase → SQL Editor → Run). Var palaist atkārtoti (tikai kamēr nav palaisti jaunāki faili — A09).
+
+-- A09: aizsardzība. Šo vecāko failu nedrīkst palaist vēlreiz, ja pēc tā jau palaisti jaunāki — tas atjaunotu vecākas
+-- funkciju versijas un atceltu vēlākos labojumus. Tukšā datubāzē (pirmā uzstādīšana pēc supabase/ORDER.txt) un pirms
+-- rides-17-migrations.sql šī pārbaude neko nedara. Sk. supabase/MIGRATIONS.md.
+do $$ begin
+  if to_regclass('public.cz_migrations') is not null then   -- (atsevišķs if: tabulas var vēl nebūt)
+    if exists (select 1 from public.cz_migrations where seq > 2)
+       and coalesce(current_setting('cz.allow_rerun', true), '') <> 'on' then
+      raise exception 'rides-2-chat-trip.sql (Nr. 2) ir vecs migrācijas fails, un pēc tā jau palaisti jaunāki — atkārtoti to palaist nedrīkst (atceltu vēlākos labojumus). Sk. supabase/MIGRATIONS.md.';
+    end if;
+  end if;
+end $$;
 
 -- Brauciena gaita un dzīvā atrašanās vieta (tikai saskaņotam braucienam)
 alter table public.ride_offers add column if not exists trip text not null default ''

@@ -1,7 +1,7 @@
 -- Ceļa Zīmes — sastrēgumu karte, 2. daļa (labojums F15): „Šobrīd palīdz: N braucēji”.
 --
 -- KĀ PALAIST: Supabase → SQL Editor → New query → ielīmē visu šo failu → Run.
--- Jāpalaiž PĒC traffic.sql. Var palaist atkārtoti (dati netiek dzēsti).
+-- Jāpalaiž PĒC traffic.sql. Var palaist atkārtoti (tikai kamēr nav palaisti jaunāki faili — A09) (dati netiek dzēsti).
 --
 -- Ko tas dara:
 --   • Apjoma ierobežojuma tabulā traffic_quota (viena rinda uz kontu, dzēsta pēc diennakts) pieraksta
@@ -9,6 +9,18 @@
 --   • traffic_helpers() atgriež TIKAI vienu skaitli — cik dažādu kontu pēdējās 15 minūtēs sūtījuši
 --     mērījumus. Nekādus citus datus (ne ID, ne vietas) tā neatdod. Lasīt var ikviens (arī bez konta).
 --   • traffic_report — tā pati funkcija kā traffic.sql, tikai papildus atjauno last_at.
+
+-- A09: aizsardzība. Šo vecāko failu nedrīkst palaist vēlreiz, ja pēc tā jau palaisti jaunāki — tas atjaunotu vecākas
+-- funkciju versijas un atceltu vēlākos labojumus. Tukšā datubāzē (pirmā uzstādīšana pēc supabase/ORDER.txt) un pirms
+-- rides-17-migrations.sql šī pārbaude neko nedara. Sk. supabase/MIGRATIONS.md.
+do $$ begin
+  if to_regclass('public.cz_migrations') is not null then   -- (atsevišķs if: tabulas var vēl nebūt)
+    if exists (select 1 from public.cz_migrations where seq > 10)
+       and coalesce(current_setting('cz.allow_rerun', true), '') <> 'on' then
+      raise exception 'traffic-2-helpers.sql (Nr. 10) ir vecs migrācijas fails, un pēc tā jau palaisti jaunāki — atkārtoti to palaist nedrīkst (atceltu vēlākos labojumus). Sk. supabase/MIGRATIONS.md.';
+    end if;
+  end if;
+end $$;
 
 alter table public.traffic_quota add column if not exists last_at timestamptz;
 create index if not exists traffic_quota_last on public.traffic_quota (last_at);

@@ -1,7 +1,7 @@
 -- Ceļa Zīmes — statistika (labojums F16): īpašnieka statistika un „Mana statistika”.
 --
 -- KĀ PALAIST: Supabase → SQL Editor → New query → ielīmē visu šo failu → Run.
--- Jāpalaiž PĒC visiem pārējiem failiem (rides*.sql, reports.sql, radars.sql, traffic*.sql). Var palaist atkārtoti.
+-- Jāpalaiž PĒC visiem pārējiem failiem (rides*.sql, reports.sql, radars.sql, traffic*.sql). Var palaist atkārtoti (tikai kamēr nav palaisti jaunāki faili — A09).
 --
 -- KĀ SEVI PADARĪT PAR ĪPAŠNIEKU (vienreiz, SQL Editor, ar SAVU e-pastu — repozitorijā to neieraksti):
 --   insert into public.app_admins select id from auth.users where email = '[TAVS E-PASTS]' on conflict do nothing;
@@ -16,6 +16,18 @@
 --   • Skaitītāji sāk skaitīt no šī faila palaišanas dienas (stat_meta 'since') — agrākas vēstures tajos nav.
 -- Esošās funkcijas report_create, report_vote, radar_report, traffic_report pārrakstītas tikai ar skaitītāju
 -- palielināšanu — pārbaudes, limiti un pārējā loģika nav mainīti.
+
+-- A09: aizsardzība. Šo vecāko failu nedrīkst palaist vēlreiz, ja pēc tā jau palaisti jaunāki — tas atjaunotu vecākas
+-- funkciju versijas un atceltu vēlākos labojumus. Tukšā datubāzē (pirmā uzstādīšana pēc supabase/ORDER.txt) un pirms
+-- rides-17-migrations.sql šī pārbaude neko nedara. Sk. supabase/MIGRATIONS.md.
+do $$ begin
+  if to_regclass('public.cz_migrations') is not null then   -- (atsevišķs if: tabulas var vēl nebūt)
+    if exists (select 1 from public.cz_migrations where seq > 15)
+       and coalesce(current_setting('cz.allow_rerun', true), '') <> 'on' then
+      raise exception 'stats-f16.sql (Nr. 15) ir vecs migrācijas fails, un pēc tā jau palaisti jaunāki — atkārtoti to palaist nedrīkst (atceltu vēlākos labojumus). Sk. supabase/MIGRATIONS.md.';
+    end if;
+  end if;
+end $$;
 
 -- ---------- Tabulas ----------
 create table if not exists public.app_admins (

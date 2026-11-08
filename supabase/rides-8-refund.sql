@@ -1,7 +1,7 @@
 -- Ceļa Zīmes — kopbraucienu maksājumu atmaksa (labojums F14).
 --
 -- KĀ PALAIST: Supabase → SQL Editor → New query → ielīmē visu šo failu → Run.
--- Jāpalaiž PĒC rides-3-pay.sql. Var palaist atkārtoti (dati netiek dzēsti).
+-- Jāpalaiž PĒC rides-3-pay.sql. Var palaist atkārtoti (tikai kamēr nav palaisti jaunāki faili — A09) (dati netiek dzēsti).
 --
 -- Kā tas strādā:
 --   • Atmaksu veic servera funkcija ride-pay (darbība "refund") — Stripe Refund ar reverse_transfer
@@ -9,6 +9,18 @@
 --   • Patiesība par maksājumu vienmēr ir Stripe; šīs kolonnas ir pieraksts lietotnei un īpašniekam.
 --   • Statusu maina TIKAI ar funkciju ride_payment_mark (kopš v113 — tikai servera funkcija ride-pay, rides-11-paymark.sql; tikai uz priekšu:
 --     created → paid → refunded). Atmaksu pašu var veikt tikai servera funkcija ar Stripe atslēgu.
+
+-- A09: aizsardzība. Šo vecāko failu nedrīkst palaist vēlreiz, ja pēc tā jau palaisti jaunāki — tas atjaunotu vecākas
+-- funkciju versijas un atceltu vēlākos labojumus. Tukšā datubāzē (pirmā uzstādīšana pēc supabase/ORDER.txt) un pirms
+-- rides-17-migrations.sql šī pārbaude neko nedara. Sk. supabase/MIGRATIONS.md.
+do $$ begin
+  if to_regclass('public.cz_migrations') is not null then   -- (atsevišķs if: tabulas var vēl nebūt)
+    if exists (select 1 from public.cz_migrations where seq > 12)
+       and coalesce(current_setting('cz.allow_rerun', true), '') <> 'on' then
+      raise exception 'rides-8-refund.sql (Nr. 12) ir vecs migrācijas fails, un pēc tā jau palaisti jaunāki — atkārtoti to palaist nedrīkst (atceltu vēlākos labojumus). Sk. supabase/MIGRATIONS.md.';
+    end if;
+  end if;
+end $$;
 
 alter table public.ride_payments add column if not exists status text not null default 'created'
   check (status in ('created', 'paid', 'refunded'));

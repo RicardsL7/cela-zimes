@@ -2,7 +2,7 @@
 -- „Mani braucieni” (vēsture).
 --
 -- KĀ PALAIST: Supabase → SQL Editor → New query → ielīmē visu šo failu → Run.
--- Jāpalaiž PĒC rides.sql … rides-8-refund.sql (un reports.sql, ja tas ir palaists). Var palaist atkārtoti.
+-- Jāpalaiž PĒC rides.sql … rides-8-refund.sql (un reports.sql, ja tas ir palaists). Var palaist atkārtoti (tikai kamēr nav palaisti jaunāki faili — A09).
 --
 -- Kā tas strādā:
 --   • ride_ratings — pēc pabeigta brauciena pasažieris vērtē šoferi un šoferis pasažieri (1–5 zvaigznes,
@@ -13,6 +13,18 @@
 --     klienta sūtītajai vērtībai netic.
 --   • rating_summary(ids) — vidējais vērtējums un pabeigto braucienu skaits (bez atsevišķiem komentāriem).
 --   • my_ride_history(lim) — mani pabeigtie un atceltie braucieni abās lomās (ar otras puses vārdu).
+
+-- A09: aizsardzība. Šo vecāko failu nedrīkst palaist vēlreiz, ja pēc tā jau palaisti jaunāki — tas atjaunotu vecākas
+-- funkciju versijas un atceltu vēlākos labojumus. Tukšā datubāzē (pirmā uzstādīšana pēc supabase/ORDER.txt) un pirms
+-- rides-17-migrations.sql šī pārbaude neko nedara. Sk. supabase/MIGRATIONS.md.
+do $$ begin
+  if to_regclass('public.cz_migrations') is not null then   -- (atsevišķs if: tabulas var vēl nebūt)
+    if exists (select 1 from public.cz_migrations where seq > 13)
+       and coalesce(current_setting('cz.allow_rerun', true), '') <> 'on' then
+      raise exception 'rides-9-ratings.sql (Nr. 13) ir vecs migrācijas fails, un pēc tā jau palaisti jaunāki — atkārtoti to palaist nedrīkst (atceltu vēlākos labojumus). Sk. supabase/MIGRATIONS.md.';
+    end if;
+  end if;
+end $$;
 
 -- ---------- Vai piedāvājums kādreiz bija pieņemts (tad tas ir „brauciens”, nevis tikai piedāvājums) ----------
 alter table public.ride_offers add column if not exists was_accepted boolean not null default false;

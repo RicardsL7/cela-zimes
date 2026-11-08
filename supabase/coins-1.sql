@@ -1,7 +1,7 @@
 -- Ceļa Zīmes — community road reports with confirmations, coins and the "Garāža" skin shop.
 --
 -- HOW TO RUN: Supabase → SQL Editor → New query → paste this whole file → Run.
--- Safe to re-run (no data is deleted). Must run AFTER reports.sql, stats-f16.sql and rides-9-ratings.sql.
+-- Safe to re-run (tikai kamēr nav palaisti jaunāki faili — A09) (no data is deleted). Must run AFTER reports.sql, stats-f16.sql and rides-9-ratings.sql.
 --
 -- Overview
 --   • report_types   — per-type config (label, lifetime, question, reward …). Adding a type = one row here
@@ -16,6 +16,18 @@
 -- Every coin award is decided here, on the server, from the evidence the client sends (position, speed,
 -- heading, accuracy) plus server-side history (one award per report, daily cap, trust, GPS jump check).
 -- Coins can be EARNED by any account (also anonymous) but SPENT only by an account with a confirmed e-mail.
+
+-- A09: aizsardzība. Šo vecāko failu nedrīkst palaist vēlreiz, ja pēc tā jau palaisti jaunāki — tas atjaunotu vecākas
+-- funkciju versijas un atceltu vēlākos labojumus. Tukšā datubāzē (pirmā uzstādīšana pēc supabase/ORDER.txt) un pirms
+-- rides-17-migrations.sql šī pārbaude neko nedara. Sk. supabase/MIGRATIONS.md.
+do $$ begin
+  if to_regclass('public.cz_migrations') is not null then   -- (atsevišķs if: tabulas var vēl nebūt)
+    if exists (select 1 from public.cz_migrations where seq > 19)
+       and coalesce(current_setting('cz.allow_rerun', true), '') <> 'on' then
+      raise exception 'coins-1.sql (Nr. 19) ir vecs migrācijas fails, un pēc tā jau palaisti jaunāki — atkārtoti to palaist nedrīkst (atceltu vēlākos labojumus). Sk. supabase/MIGRATIONS.md.';
+    end if;
+  end if;
+end $$;
 
 -- ======================================================================================================
 -- 1. Report types (config)

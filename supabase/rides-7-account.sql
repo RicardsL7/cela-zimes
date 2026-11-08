@@ -1,8 +1,20 @@
 -- Ceļa Zīmes — 7. daļa (F1): piekrišanas, anonīmā konta datu pārcelšana un konta dzēšana.
--- Supabase → SQL Editor → Run. Var palaist atkārtoti. Esošās tabulas netiek mainītas destruktīvi.
+-- Supabase → SQL Editor → Run. Var palaist atkārtoti (tikai kamēr nav palaisti jaunāki faili — A09). Esošās tabulas netiek mainītas destruktīvi.
 --
 -- Kāpēc SQL funkcijas (security definer), nevis servisa atslēga: lietotne ir statiska lapa; pārlūkā nedrīkst būt
 -- servisa atslēgas. Šīs funkcijas pašas pārbauda, kas ir pieteicies (auth.uid()), un dara tikai ar viņa datiem.
+
+-- A09: aizsardzība. Šo vecāko failu nedrīkst palaist vēlreiz, ja pēc tā jau palaisti jaunāki — tas atjaunotu vecākas
+-- funkciju versijas un atceltu vēlākos labojumus. Tukšā datubāzē (pirmā uzstādīšana pēc supabase/ORDER.txt) un pirms
+-- rides-17-migrations.sql šī pārbaude neko nedara. Sk. supabase/MIGRATIONS.md.
+do $$ begin
+  if to_regclass('public.cz_migrations') is not null then   -- (atsevišķs if: tabulas var vēl nebūt)
+    if exists (select 1 from public.cz_migrations where seq > 7)
+       and coalesce(current_setting('cz.allow_rerun', true), '') <> 'on' then
+      raise exception 'rides-7-account.sql (Nr. 7) ir vecs migrācijas fails, un pēc tā jau palaisti jaunāki — atkārtoti to palaist nedrīkst (atceltu vēlākos labojumus). Sk. supabase/MIGRATIONS.md.';
+    end if;
+  end if;
+end $$;
 
 -- ---------- Piekrišanas (noteikumi, privātums, ātruma dalīšana) ----------
 create table if not exists public.user_consents (
