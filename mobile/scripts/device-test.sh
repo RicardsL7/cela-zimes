@@ -3,7 +3,7 @@
 # Lietošana: bash mobile/scripts/device-test.sh <apk> [izvades mape]   (vajag adb un palaistu emulatoru vai telefonu)
 # Pārbauda: instalēšana; atļaujas (vieta, fona vieta, paziņojumi); App Links filtrs growlab.cc; palaišana bez avārijas;
 # ielādē https://growlab.cc; Capacitor spraudņi (BackgroundGeolocation, App); https://growlab.cc saite atveras lietotnē
-# (app-native.js žurnālā „[cz-native] appUrlOpen”). Izvadē: package.txt, logcat*.txt, start.png, link.png.
+# (app-native.js žurnālā „[cz-native] gatavs” un „[cz-native] appUrlOpen”). Izvadē: package.txt, logcat*.txt, start.png, link.png.
 # Testa (debug) APK — tikai tajā Capacitor raksta žurnālu (logcat), ko tests lasa.
 set -u
 APK=${1:?apk}; OUT=${2:-device-test}; PKG=cc.growlab.celazimes
@@ -35,6 +35,9 @@ grep -q "FATAL EXCEPTION" "$OUT/logcat.txt" && { grep -A15 "FATAL EXCEPTION" "$O
 grep -q "https://growlab.cc" "$OUT/logcat.txt" && ok "ielādē https://growlab.cc" || bad "nav pazīmju, ka ielādē https://growlab.cc"
 grep -q "BackgroundGeolocation" "$OUT/logcat.txt" && ok "spraudnis BackgroundGeolocation" || bad "nav spraudņa BackgroundGeolocation"
 grep -Eq "plugin instance: App\b|Registering plugin.*App[^a-zA-Z]|App\.getLaunchUrl|appUrlOpen" "$OUT/logcat.txt" && ok "spraudnis App" || echo "  · spraudņa App pieraksts žurnālā nav atrasts (pārbauda saites tests)"
+# app-native.js lapā redz Capacitor un spraudni App (lapa nāk no growlab.cc bez @capacitor/core — tikai Capacitor.Plugins)
+grep -q "\[cz-native\] gatavs" "$OUT/logcat.txt" && ok "app-native.js lietotnē darbojas (Capacitor.Plugins.App)" \
+  || { grep -E "cz-native|Capacitor/Console" "$OUT/logcat.txt" | tail -8; bad "app-native.js lietotnē nedarbojas (nav [cz-native] gatavs)"; }
 
 # Saite uz growlab.cc → lietotnē (appUrlOpen → app-native.js)
 adb logcat -c
@@ -42,8 +45,8 @@ adb shell am start -W -a android.intent.action.VIEW -d "https://growlab.cc/?czap
 sleep 20
 adb logcat -d > "$OUT/logcat-link.txt"
 adb exec-out screencap -p > "$OUT/link.png" 2>/dev/null || true
-grep -q "\[cz-native\] appUrlOpen https://growlab.cc/ ?…" "$OUT/logcat-link.txt" && ok "https://growlab.cc saite atveras lietotnē (appUrlOpen)" \
-  || { grep -i "cz-native\|Capacitor/Console" "$OUT/logcat-link.txt" | tail -10; bad "saite neatvērās lietotnē (nav [cz-native] appUrlOpen)"; }
+grep -Eq "\[cz-native\] (appUrlOpen|launchUrl) https://growlab.cc/ \?…" "$OUT/logcat-link.txt" && ok "https://growlab.cc saite atveras lietotnē ($(grep -Eo 'cz-native\] (appUrlOpen|launchUrl)' "$OUT/logcat-link.txt" | head -1 | cut -d' ' -f2))" \
+  || { cat "$OUT/link.txt"; grep -E "cz-native|Capacitor|ActivityTaskManager: START" "$OUT/logcat-link.txt" | tail -25; bad "saite neatvērās lietotnē (nav [cz-native] appUrlOpen)"; }
 adb shell pidof "$PKG" > /dev/null && ok "lietotne darbojas pēc saites" || bad "lietotne nedarbojas pēc saites"
 grep -q "FATAL EXCEPTION" "$OUT/logcat-link.txt" && bad "avārija pēc saites" || true
 
