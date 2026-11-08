@@ -155,6 +155,7 @@ async function ridesRefresh(first) {
     rides.myOffers = await rides.store.myOffers();
     ridesDeclinedTrack(wasPending);
     if (rides.open && rides.tab === 'drive') rides.openList = await rides.store.openRequests(ridesBox());
+    ridesCoarseRatings([...rides.openList, ...rides.myOffers.map(o => o.request).filter(Boolean)]);
     // Čata ziņas visiem aktīvajiem piedāvājumiem (gaida atbildi vai pieņemti)
     const ids = ridesChatOffers().map(x => x.o.id);
     const msgs = {};
@@ -417,6 +418,7 @@ function ridesNeedForm() {
       rEl('div', {}, rEl('label', { class: 'r-label', for: 'rqWhen', text: 'Kad' }), when, at),
       rEl('div', {}, rEl('label', { class: 'r-label', for: 'rqSeats', text: 'Cik cilvēku' }), seats)),
     rEl('label', { class: 'r-label', for: 'rqNote', text: 'Piezīme (neobligāti)' }), note,
+    rEl('p', { class: 'fine', text: 'Šoferi redz tikai aptuvenu vietu (~1 km), laiku un tavu vērtējumu. Precīzu vietu, vārdu un piezīmi redz tikai šoferis, kura piedāvājumu pieņemsi.' }),
     err,
     rEl('button', { class: 'btn primary r-wide', type: 'button', onclick: submit, text: 'Meklēt šoferi' }));
 }
@@ -425,6 +427,16 @@ function ridesRoute(r) {
     rEl('div', { class: 'r-stop' }, rEl('span', { class: 'r-dot r-dot-a' }), rEl('span', { text: r.from_name || 'Sākums' })),
     rEl('div', { class: 'r-stop' }, rEl('span', { class: 'r-dot r-dot-b' }), rEl('span', { text: r.to_name || 'Galamērķis' })));
 }
+// B02: aptuvenam pieprasījumam pasažiera ID nav — vērtējums nāk līdzi no servera, glabā zem 'req:<id>'
+function ridesCoarseRatings(reqs) {
+  let next = null;
+  for (const r of reqs) if (r && r.coarse && r.rating) (next || (next = { ...rides.ratingSum }))['req:' + r.id] = r.rating;
+  if (next) rides.ratingSum = next;
+}
+function ridesReqPerson(r, p, phone, extra) {      // pasažieris šofera kartītē (aptuveni — bez vārda)
+  return r.coarse ? ridesPerson({ name: 'Pasažieris' }, '', extra, 'req:' + r.id) : ridesPerson(p, phone, extra, r.user_id);
+}
+const RIDES_COARSE_HINT = 'Vieta rādīta aptuveni (~1 km). Precīzu vietu, vārdu un piezīmi redzēsi, kad pasažieris pieņems tavu piedāvājumu.';
 function ridesPerson(p, phone, extra, userId) {
   const sum = userId ? rides.ratingSum[userId] : undefined;          // F13: vidējais vērtējums
   return rEl('div', { class: 'r-person' },
@@ -544,14 +556,15 @@ function ridesOpenCard(x) {
   const meta = [rideTimeText(r.depart_at), r.seats + ' cilv.',
     x.match ? `+${x.match.detourMin} min apkārtceļš` : x.dist != null ? rideDistText(x.dist) + ' no tevis' : ''].filter(Boolean).join(' · ');
   return rEl('div', { class: 'r-card' },
-    ridesPerson(r.passenger, '', meta, r.user_id),
+    ridesReqPerson(r, r.passenger, '', meta),
     ridesRoute(r),
     r.note ? rEl('p', { class: 'r-note', text: '“' + r.note + '”' }) : null,
+    r.coarse ? rEl('p', { class: 'fine r-coarse', text: RIDES_COARSE_HINT }) : null,
     rEl('label', { class: 'r-price-row' },
       rEl('span', { text: `Cena (neobligāti, līdz ${rideMoney(cap)})` }),
       rEl('span', { class: 'r-price-box' }, price, rEl('b', { text: '€' }))),
     rEl('div', { class: 'r-actions' },
-      rEl('button', { class: 'btn ghost', type: 'button', text: 'Kartē', onclick: () => { map.easeTo({ center: [r.from_lng, r.from_lat], zoom: 15 }); } }),
+      rEl('button', { class: 'btn ghost', type: 'button', text: 'Kartē', onclick: () => { map.easeTo({ center: [r.from_lng, r.from_lat], zoom: r.coarse ? 13 : 15 }); } }),
       rEl('button', { class: 'btn primary', type: 'button', text: 'Paņemšu', onclick: async e => {
         const say = (text, bad = true) => { msg.textContent = text; msg.className = 'r-msg' + (bad ? ' bad' : ''); msg.hidden = false; setStatus(text); };
         const cents = rideParsePrice(price.value);
@@ -584,8 +597,9 @@ function ridesMyOfferCard(o) {
     rEl('div', { class: 'r-card-top' },
       rEl('span', { class: 'r-badge', text: badge }),
       rEl('span', { class: 'r-when', text: rideTimeText(r.depart_at) })),
-    ridesPerson(o.passenger, ok ? o.phone : '', '', r.user_id),
+    ridesReqPerson(r, o.passenger, ok ? o.phone : '', ''),
     ridesRoute(r));
+  if (r.coarse) card.append(rEl('p', { class: 'fine r-coarse', text: RIDES_COARSE_HINT }));
   if (ok) card.append(rEl('p', { class: 'r-trip', id: 'trip-' + o.id, text: rideDriverStatus(o, state.me) }));
   if (o.price_cents) card.append(ridesDriverPayLine(o, ok));
   const acts = rEl('div', { class: 'r-actions' });
@@ -654,7 +668,7 @@ function ridesDeclinedCard(o) {
     rEl('div', { class: 'r-card-top' },
       rEl('span', { class: 'r-badge', text: 'Piedāvājums noraidīts' }),
       rEl('span', { class: 'r-when', text: rideTimeText(r.depart_at) })),
-    ridesPerson(o.passenger, '', ''),
+    r.coarse ? ridesPerson({ name: 'Pasažieris' }, '', '') : ridesPerson(o.passenger, '', ''),
     ridesRoute(r),
     rEl('p', { class: 'r-declined-msg', text: rideDeclinedText(o) }),
     rEl('div', { class: 'r-actions' }, rEl('button', { class: 'btn ghost', type: 'button', text: 'Labi', onclick: () => ridesDeclinedOk(o.id) })));

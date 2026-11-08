@@ -371,6 +371,18 @@ class LocalRideStore {
 // Drošību nodrošina datubāzes RLS noteikumi (skat. supabase/rides.sql): katrs var mainīt tikai
 // savus ierakstus, un tālruni redz tikai tas, ar kuru brauciens ir saskaņots.
 // Vai servera funkcijas (RPC) vēl nav — SQL fails nav palaists (PostgREST: 404 + PGRST202)?
+// B02 (audits 2): atvērtie braucieni šoferiem nāk aptuveni (supabase/rides-18-open-privacy.sql) — ~1 km, bez adreses,
+// piezīmes, vārda un konta ID. Pārveido par parastā pieprasījuma formu, lai saraksts un karte strādā kā līdz šim.
+function rideCoarseToReq(x, myId = null) {
+  const area = (a, d) => (a ? 'Ap ' + a : d) + ' (~1 km)';
+  return {
+    id: x.id, from_lat: Number(x.from_lat), from_lng: Number(x.from_lng), from_name: area(x.from_area, 'Sākums'),
+    to_lat: Number(x.to_lat), to_lng: Number(x.to_lng), to_name: area(x.to_area, 'Galamērķis'),
+    depart_at: x.depart_at, seats: x.seats, status: x.status, created_at: x.created_at,
+    note: '', user_id: x.mine ? myId : null, passenger: null, coarse: true,
+    rating: { avg: x.pas_avg != null ? Number(x.pas_avg) : null, count: x.pas_count || 0, rides: x.pas_rides || 0 },
+  };
+}
 function rideRpcMissing(e, name) {
   return !!e && e.status === 404 && /PGRST202|Could not find the function/.test(e.body || '') && (!name || (e.body || '').includes(name));
 }
@@ -445,6 +457,12 @@ class SupabaseRideStore {
     await this._rest(`ride_requests?id=eq.${id}&user_id=eq.${this.id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
   }
   async openRequests(box) {
+    // B02: aptuvenais saraksts no servera funkcijas; ja tās vēl nav (SQL Nr. 30 nav palaists) — vecais ceļš
+    try {
+      const rows = await this._rest('rpc/ride_requests_open', { method: 'POST',
+        body: JSON.stringify(box ? { p_s: box.s, p_w: box.w, p_n: box.n, p_e: box.e } : {}) });
+      return (rows || []).map(x => rideCoarseToReq(x, this.id));
+    } catch (e) { if (!rideRpcMissing(e, 'ride_requests_open')) throw e; }
     let q = `ride_requests?status=eq.open&select=*,passenger:profiles(name,car)&order=depart_at&limit=200`;
     q += `&depart_at=gte.${encodeURIComponent(new Date(Date.now() - RIDE_STALE_MS).toISOString())}`;
     if (box) q += `&from_lat=gte.${box.s}&from_lat=lte.${box.n}&from_lng=gte.${box.w}&from_lng=lte.${box.e}`;
@@ -465,6 +483,15 @@ class SupabaseRideStore {
   }
   async myOffers() {
     const list = await this._rest(`ride_offers?driver_id=eq.${this.id}&status=neq.cancelled&select=*,request:ride_requests(*,passenger:profiles(name,car))&order=created_at.desc`);
+    // B02: kamēr pasažieris piedāvājumu nav pieņēmis, precīzais pieprasījums šoferim nav redzams — ņem aptuveno
+    const need = list.filter(o => !o.request).map(o => o.request_id);
+    if (need.length) {
+      try {
+        const rows = await this._rest('rpc/ride_requests_coarse', { method: 'POST', body: JSON.stringify({ ids: [...new Set(need)].slice(0, 100) }) });
+        const by = Object.fromEntries((rows || []).map(x => [x.id, rideCoarseToReq(x, this.id)]));
+        for (const o of list) if (!o.request && by[o.request_id]) o.request = by[o.request_id];
+      } catch (e) { if (!rideRpcMissing(e, 'ride_requests_coarse')) throw e; }
+    }
     const ok = list.filter(o => o.request && (o.status === 'declined' || (o.request.status !== 'cancelled' && o.request.status !== 'done')));   // F12: noraidītos arī
     const ph = await this._phones(ok.filter(o => o.status === 'accepted').map(o => o.request.user_id));
     return ok.map(o => ({ ...o, passenger: o.request.passenger, phone: ph[o.request.user_id] || '' }));
@@ -661,6 +688,6 @@ function createRideStore(cfg) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { rideOtherDeleted, rideRefundInfo, rideTripCheck, RIDE_TRIP_ORDER, rideFareCapCents, rideParsePrice, rideMoney, rideSplit, RIDE_FEE_PCT, rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
+  module.exports = { rideCoarseToReq, rideOtherDeleted, rideRefundInfo, rideTripCheck, RIDE_TRIP_ORDER, rideFareCapCents, rideParsePrice, rideMoney, rideSplit, RIDE_FEE_PCT, rideDist, rideProject, rideMatchRoute, rideIsLive, rideListForDriver, rideValidate, rideProfileValid,
     rideTimeText, rideDistText, rideStage, rideFresh, rideEtaMinutes, ridePassengerStatus, rideDriverStatus, rideUnread, rideMsgTime, rideStatsEmpty, rideHistWithdrawn, RIDE_DECLINED_SHOW_MS, rideDeclinedAt, rideDeclinedRecent, rideDeclinedText, RIDE_REPORT_REASONS, rideCountText, rideRatingText, rideStarsText, rideAvg, rideDateText, ridePayText, rideSummaryPending, rideHistoryFromOffer, rideRateErr, rideRpcMissing, rideErrorText, LocalRideStore, SupabaseRideStore, createRideStore, RIDE_OFFER_STATUS };
 }

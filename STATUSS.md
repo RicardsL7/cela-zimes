@@ -375,3 +375,16 @@
   pieteikšanās atbild 401.
 - Nav pārbaudīts: īsts maksājums / atmaksa Stripe testa režīmā (audits B18) un konta dzēšana ar īstu kontu dzīvajā vietnē.
 
+## B02 (audits 2) — atvērtie braucieni vairs neatklāj precīzu adresi un vārdu (08.11.2026)
+
+- **Problēma:** jebkurš pieteicies konts (arī tikko izveidots anonīms) nolasīja visus atvērtos pieprasījumus ar precīzām
+  koordinātām, adresi, piezīmi un pasažiera vārdu; arī jebkurš piedāvājums atvēra visu.
+- **`supabase/rides-18-open-privacy.sql` (Nr. 30):** `requests_read` — tikai pasažieris un šoferis ar pieņemtu
+  piedāvājumu (`was_accepted`). Šoferu sarakstam `ride_requests_open(laukums)` un `ride_requests_coarse(id)`: ~1 km,
+  apdzīvotā vieta, laiks, vietas, statuss, pasažiera vērtējums — bez vārda, adreses, piezīmes, konta ID; ne anon.
+- **Lietotne v159** (`rides.js`, `rides-ui.js`): saraksts no jaunās funkcijas (pirms SQL Nr. 30 — vecais ceļš);
+  kartītē „Pasažieris”, vieta „Ap Rīga (~1 km)”, vērtējums un paskaidrojums; gaidošie piedāvājumi — aptuveni,
+  pieņemtie — precīzi (navigācija pie pasažiera kā līdz šim). Pasažiera formā paskaidrots, ko šoferi redz.
+- **Politika:** `privacy.html` 3. punkts papildināts (redzamība samazinājās — versija nemainās).
+- Testi: `tests/open-privacy-test.sql` (14), `run.js` +3 (194/194), `run-sql.sh` 333/333.
+
