@@ -46,7 +46,7 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 26 | rides-17-migrations.sql | A09: migrāciju uzskaite | jā |
 | 27 | cleanup-1.sql | A11: vecu datu tīrīšana ik 5 min (pg_cron), uzraudzība | jā (kamēr nav jaunāku) |
 
-**Produkcijā (08.11.2026):** 1–21 palaisti agrāk; **22–27 vēl jāpalaiž** (šādā secībā, ar īpašnieka atļauju).
+**Produkcijā:** palaisti visi 1–27 (22–27 — 08.11.2026, ar īpašnieka atļauju). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
 
 ## Kā palaist migrāciju produkcijā
 
