@@ -18,3 +18,13 @@ alter default privileges in schema public grant all on sequences to authenticate
 grant usage on schema public to anon, authenticated;
 alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
 
+-- A11: kā Supabase pg_cron (lokālajā PostgreSQL tā nav): cron.job, cron.job_run_details, cron.schedule / unschedule.
+-- Darbus šeit neviens nepalaiž — tests tos izsauc pats (tests/cleanup-test.sql).
+create schema cron;
+create table cron.job (jobid bigserial primary key, jobname text unique, schedule text not null, command text not null, active boolean not null default true);
+create table cron.job_run_details (runid bigserial primary key, jobid bigint, status text, return_message text, start_time timestamptz, end_time timestamptz);
+create function cron.schedule(job_name text, schedule text, command text) returns bigint language sql as $$
+  insert into cron.job (jobname, schedule, command) values (job_name, schedule, command)
+  on conflict (jobname) do update set schedule = excluded.schedule, command = excluded.command, active = true returning jobid $$;
+create function cron.unschedule(job_name text) returns boolean language sql as $$
+  with d as (delete from cron.job where jobname = job_name returning 1) select exists (select 1 from d) $$;
