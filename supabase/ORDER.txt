@@ -1,0 +1,29 @@
+# Ceļa Zīmes — datubāzes migrāciju secība (A09). Viens fails rindā, tādā secībā, kādā tie palaižami tukšā datubāzē.
+# Šo sarakstu lieto tests/run-sql.sh (CI) un supabase/status.sql; skaidrojums — supabase/MIGRATIONS.md.
+# Jaunu failu pievieno BEIGĀS (nākamais numurs). Rindas ar # — komentāri.
+1 rides.sql
+2 rides-2-chat-trip.sql
+3 rides-3-pay.sql
+4 rides-4-expire.sql
+5 rides-5-reoffer.sql
+6 rides-6-price.sql
+7 rides-7-account.sql
+8 radars.sql
+9 traffic.sql
+10 traffic-2-helpers.sql
+11 reports.sql
+12 rides-8-refund.sql
+13 rides-9-ratings.sql
+14 rides-10-declined.sql
+15 stats-f16.sql
+16 rides-11-paymark.sql
+17 rides-12-webhook.sql
+18 stats-2-f23.sql
+19 coins-1.sql
+20 coins-2-presence.sql
+21 coins-3-skins.sql
+22 rides-13-guard.sql
+23 rides-14-accept.sql
+24 rides-15-trip.sql
+25 rides-16-checkout.sql
+26 rides-17-migrations.sql
