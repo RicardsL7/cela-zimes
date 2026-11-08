@@ -268,3 +268,28 @@
   jaunam lietotājam (fokuss, fons, Tab 40×, Esc, fokuss atpakaļ, aria-expanded); pretēji pārbaudīts — bez `sheets.js` tests krīt.
   `tests/run.js` +2 (169/169).
 - Versijas: `sheets.js?v=153`, `style-gl.css?v=153`.
+
+## A13 — ārējo servisu kvotas: mērīšana, rinda, pauze, fona cilnes (audits 08.11.2026)
+
+- `netguard.js` (jauns, pirmais skripts): visi lapas `fetch` iet caur to.
+  - Mēra katram serverim (šodien / 7 d., kļūdas, 429/503, aizturēti, vidējais laiks) — iestatījumos ar `?dev=1`
+    („Tīkla pieprasījumi šajā ierīcē”), konsolē `czNet.stats()`; glabā tikai šajā ierīcē (localStorage, 7 dienas).
+  - Bezmaksas serveriem rinda pēc noteikumiem (Nominatim ≤ 1/s un 1 vienlaikus, OSRM ≤ 1/s, Overpass ≤ 2 vienlaikus) un
+    pauze pēc 429/503/502/504 vai kļūmes: 5 s → 10 s → … ≤ 5 min (Retry-After ≤ 10 min; Overpass pēc 429 ≥ 30 s).
+    Pauzē pieprasījumi uzreiz atgriež kļūdu — serveris netiek dauzīts. Bez interneta pauzi neliek.
+  - Supabase un pārējos tikai skaita (maksājumus/kontus neaptur).
+- Overpass: agrāk katrs vaicājums gāja abiem serveriem reizē (2× slodze); tagad veselākajam, otram — tikai pēc 4 s vai kļūdas.
+- **Atrasta kļūda:** ja Mapillary flīze neielādējās (serveris / internets), lietotne to mēģināja atkal ik 100 ms — kartes testā
+  512 pieprasījumi minūtē. Tagad pauze 5 s … 2 min (testā — 7).
+- Nominatim tikai pēc „Meklēt” (tā noteikumi aizliedz meklēšanu rakstīšanas laikā); rakstot — Photon.
+- Fona cilnē nepieprasa: laikapstākļi, „Kopā” bez aktīva brauciena (aktīvā — vieta jāsūta arī fonā); atgriežoties — uzreiz.
+  Ziņojumi, sastrēgumi, citi braucēji fonā neaptaujāja jau agrāk.
+- `README.md` — „Mērogošana un ārējie servisi”: slodze uz lietotāju stundā katram servisam un kur kura servisa robeža.
+  Galvenais: **Overpass publiskais serveris lietotnei kopā atļauj ~100 vaicājumus dienā** — jau ar dažiem desmitiem aktīvu
+  lietotāju jāpāriet uz iepriekš sagatavotiem datiem (kā `data/osm/cameras.json`) vai savu serveri. Mērķa lietotāju skaits —
+  īpašnieka lēmums.
+- Testi: `run.js` +7 (pauze, pieaugums, Retry-After, Nominatim rinda, Supabase neaptur, atcelšana rindā, katram CSP serverim
+  ierobežojums, Overpass/Mapillary/fona cilnes) — 176/176; kartes testā — netguard ieslēgts un skaita.
+- Avoti: Overpass — wiki.openstreetmap.org/wiki/Overpass_API; OSRM — github.com/Project-OSRM/osrm-backend/wiki/API Usage Policy;
+  Photon — github.com/komoot/photon/wiki; OpenFreeMap — openfreemap.org; Nominatim — operations.osmfoundation.org/policies/nominatim.
+- Versijas: `netguard.js?v=154`, `app-gl.js?v=154`, `rides-ui.js?v=154`, `style-gl.css?v=154`.

@@ -61,6 +61,47 @@ demo režīms tikai šajā pārlūkā).
   ziņojumi `report-to`). Meta tags to nespēj. Ja vajag pilnu aizsardzību — vietne aiz Cloudflare (vai cita hostinga), kas
   pievieno galvenes; šī CSP tad pārceļama galvenē bez izmaiņām.
 
+## Mērogošana un ārējie servisi (A13)
+
+**Ko lietotne dara pati** (`netguard.js` — visi lapas `fetch` pieprasījumi):
+- skaita pieprasījumus katram serverim šajā ierīcē (šodien / 7 dienas, kļūdas, 429/503, vidējais laiks) — iestatījumos ar
+  `?dev=1` („Tīkla pieprasījumi šajā ierīcē”) vai konsolē `czNet.stats()`;
+- bezmaksas serveriem ievēro to noteikumus (rinda: Nominatim ≤ 1/s, OSRM ≤ 1/s, Overpass ≤ 2 vienlaikus) un pēc „par daudz”
+  vai kļūmes ieturē pauzi (5 s → 10 s → … ≤ 5 min; Overpass pēc 429 — vismaz 30 s), pauzes laikā serveri netraucē;
+- Overpass jautā vienam serverim (veselākajam), otram — tikai ja pirmais 4 s neatbild vai kļūdās (agrāk — abiem reizē);
+- fona cilnē neaptaujā: ziņojumi, sastrēgumi, citi braucēji, laikapstākļi, „Kopā” (bez aktīva brauciena; braucienā vieta
+  jāsūta arī fonā). Atgriežoties cilnē — dati atjaunojas uzreiz.
+- Jau agrāk: kešatmiņa (OSM šūnas 3 d., meklēšana 1 d., laikapstākļi 10 min), vienādu pieprasījumu apvienošana, meklēšana
+  pēc 300 ms pauzes rakstīšanā.
+
+**Aptuvenā slodze uz vienu lietotāju, kam lietotne atvērta** (aprēķināts no koda intervāliem; īstos skaitļus rāda
+`czNet.stats()` un Supabase → Reports):
+
+| Serviss | Pieprasījumi stundā | No kā atkarīgs |
+|---|---|---|
+| Supabase (mūsu) | ~280; ar „Palīdzēt citiem” ~580; aktīvā kopbraucienā vadītājam +~1400 | citi braucēji ik 20 s, ziņojumi ik 60 s, sastrēgumi ik 90 s, mērījumi ik 30 s, kopbrauciens ik 5 s |
+| Overpass (zīmes, vietas, stāvēšana) | 0 pazīstamā vietā; līdz ~60 braucot pa jaunām vietām | jaunas ~1 km šūnas (kešs 3 d.) |
+| Photon / Nominatim (meklēšana) | dažas | tikai meklējot; Nominatim — tikai ja Photon neatbild |
+| OSRM (maršruts) | dažas | maršruts un pārrēķins, nobraucot no tā |
+| Open-Meteo | ≤ 6 | ik 10 min vai pēc 15 km |
+| OpenFreeMap flīzes | daudz (worker) | kartes pārvietošana; ierobežojumu nav |
+
+**Kur ir robeža** (publisko serveru noteikumi — `STATUSS.md` A13 avoti; lietotāju skaiti — orientējoši):
+- **Overpass** (overpass-api.de): lietotnei visu lietotāju kopsummā regulāri ~100 vaicājumi dienā; komerciālai lietošanai —
+  savs vai maksas serveris. **Jau dažiem desmitiem aktīvu lietotāju dienā** jāplāno: zīmju un ātrumu dati iepriekš sagatavoti
+  (kā `data/osm/cameras.json` — GitHub Actions katru nakti) vai savs Overpass serveris.
+- **Nominatim**: absolūti ≤ 1 pieprasījums sekundē visai lietotnei, meklēšana rakstīšanas laikā aizliegta — lietojam tikai
+  kā rezervi Photon, tikai nospiežot „Meklēt”, ar rindu.
+- **Photon** (komoot): „saprātīgā apjomā”, lielu lietošanu ierobežo — virs dažiem simtiem lietotāju — savs Photon.
+- **OSRM demo / routing.openstreetmap.de**: bez garantijām, pārmērīgu lietošanu bloķē — virs ~100 aktīvu lietotāju — savs
+  OSRM vai maksas maršrutēšana.
+- **Supabase**: ~0,08–0,16 pieprasījumi sekundē uz lietotāju → 100 vienlaicīgi ≈ 8–16/s (bezmaksas plāns), 1000 ≈ 80–160/s
+  (maksas datora izmērs un retāka „citi braucēji” aptauja), 10 000 — jāpārskata arhitektūra (piem. Realtime).
+- **OpenFreeMap**: ierobežojumu nav (tikai bezsaistes lejupielādei); OSM rastra flīzes (izvēle „OSM”) — nav paredzētas
+  lietotnēm ar daudz lietotājiem; noklusējums ir OpenFreeMap.
+
+Mērķa lietotāju skaits vēl nav noteikts — kad tas būs, pēc šīs tabulas izvēlas, kuru servisu pirmo pārcelt uz savu/maksas.
+
 ## Testi
 
 GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi”). Lokāli:
