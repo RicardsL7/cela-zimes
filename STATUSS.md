@@ -193,6 +193,35 @@
 - `supabase/MIGRATIONS.md` — failu tabula (ko dara, vai drīkst atkārtot), kā palaist migrāciju produkcijā, kā rakstīt jaunu, jauns Supabase projekts no nulles, rezerves kopijas un atjaunošana (ar brīdinājumu par trigeriem).
 - `README.md` pārrakstīts (pašreizējā arhitektūra, faili, datubāze, testi, ierobežojumi).
 - Pārbaude: SQL 212/212 (t. sk. 11 aizsardzības, status.sql), JS 161/161.
-- Pamanīts (nav labots — A10): Supabase noklusējuma dēļ `ride_driver_acct`, `traffic_report`, `report_type_ttl`, `coin_trust_factor` var izsaukt arī anon (faili atsauc tikai `public`).
+- Pamanīts (nav labots; sk. A10 — datu noplūdes nav): Supabase noklusējuma dēļ `ride_driver_acct`, `traffic_report`, `report_type_ttl`, `coin_trust_factor` var izsaukt arī anon (faili atsauc tikai `public`).
 - Produkcijā: pēc 22–25 palaist arī `rides-17-migrations.sql`, tad `status.sql` (ar īpašnieka atļauju).
 
+
+## A10 — drošības politika (CSP), bez sveša JavaScript, rāmja aizsardzība (audits 08.11.2026)
+
+- GitHub Pages neļauj iestatīt HTTP galvenes, tāpēc CSP ir `<meta http-equiv="Content-Security-Policy">` katras lapas
+  (`index.html`, `index-gl.html`, `admin.html`, `privacy.html`, `terms.html`) `<head>` sākumā, uzreiz pēc `charset`:
+  - `script-src 'self'` — bez `unsafe-inline` / `unsafe-eval` / CDN; vienīgais iekļautais skripts (MapLibre imports) pārcelts uz `maplibre-load.js`;
+  - `connect-src` — tikai Supabase projekts un lietotnes izmantotie serveri (OpenFreeMap, OSM, Overpass, Mapillary, Photon,
+    Nominatim, OSRM, Open-Meteo); `admin.html` — tikai Supabase; juridiskās lapas — neko;
+  - `worker-src 'self'`, `object-src 'none'`, `frame-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `upgrade-insecure-requests`;
+  - `style-src` atļauj `'unsafe-inline'` (lietotne plaši lieto `style="…"`) un Google Fonts; `img-src https:` (Mapillary foto, zīmju attēli).
+  - `<meta name="referrer" content="strict-origin-when-cross-origin">`.
+- SRI vietā — **MapLibre no pašas lapas** (`vendor/maplibre-gl-6.15.0/`): SRI moduļa `import` un MapLibre worker (no CDN
+  tas tiek palaists caur `blob:` ar vēl vienu `import`) nevar pārbaudīt. `vendor/vendor.lock` — arhīvs no github.com
+  (oficiālais `dist.zip`, tas pats, ko lietoja kartes tests) un katra faila SHA-256; GitHub Actions „Bibliotēkas (vendor)”
+  (`.github/workflows/vendor.yml`, `tools/vendor.sh`) lejupielādē, pārbauda un saglabā failus. Worker tagad no tās pašas adreses.
+- `guard.js` (pirms visiem pārējiem): lapa rāmī (iframe) tiek paslēpta un mēģina atvērties pa visu logu — `frame-ancestors`
+  / `X-Frame-Options` meta tagā nedarbojas.
+- Android lietotne (Capacitor, `server.url`) ievieto savu skriptu tieši pēc `<head>` — pirms CSP meta taga, tāpēc to CSP
+  neietekmē; tests pārbauda, ka `<head>` paliek bez atribūtiem un CSP ir pirmais pēc `charset`.
+- Testi: `tests/run.js` +4 (CSP katrā lapā; katrs serveris, ko JS izsauc, ir `connect-src`; vendor/ SHA-256 = vendor.lock;
+  kartes tests) — 165/165. `tests/map-smoke.js`: CSP spēkā — 0 pārkāpumu kartē (stils, flīzes, glyph, ikonas, maršruts,
+  stila maiņa), worker ielādēts no `vendor/`, admin/privacy/terms bez pārkāpumiem, lapa svešā rāmī — `display: none`.
+  Pārbaudīts arī pretēji: izņemot serveri no CSP, abi testi krīt.
+- Nav iespējams bez cita hostinga (lēmums īpašniekam): HTTP galvenes (`frame-ancestors`, `X-Frame-Options`, CSP Report-Only
+  ziņojumi). Iespēja — Cloudflare priekšā growlab.cc (Transform Rules / Workers pievieno galvenes; tā pati CSP).
+- A09 piezīme pārbaudīta: `traffic_report` anon izsaukt NEVAR (`stats-f16` atsauc); `ride_driver_acct` bez pieslēgšanās
+  atgriež tukšu (`auth.uid()`), `report_type_ttl` / `coin_trust_factor` — tikai aprēķini bez datiem. Datu noplūdes nav;
+  tiesību sakārtošana (atsaukt anon palīgfunkcijām) — atsevišķs mazs darbs.
+- Versijas: `guard.js?v=151`, `maplibre-load.js?v=151`, `app-gl.js?v=151`.
