@@ -11,3 +11,5 @@
 *.apk binary
 *.jar binary
 *.keystore binary
+# A10: trešo pušu bibliotēkas — baits baitā kā oriģinālā (SHA-256 pārbaude vendor/vendor.lock)
+vendor/*/** -text -diff
