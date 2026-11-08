@@ -45,10 +45,20 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 25 | rides-16-checkout.sql | A04: viena maksājuma lapa | jā |
 | 26 | rides-17-migrations.sql | A09: migrāciju uzskaite | jā |
 | 27 | cleanup-1.sql | A11: vecu datu tīrīšana ik 5 min (pg_cron), uzraudzība | **nē — aizsargāts** (pēc 28) |
-| 28 | account-1-delete.sql | A15: konta dzēšana — pārbaudes; otram dalībniekam paliek anonīms brauciena ieraksts | jā (kamēr nav jaunāku) |
+| 28 | account-1-delete.sql | A15: konta dzēšana — pārbaudes; otram dalībniekam paliek anonīms brauciena ieraksts | **nē — aizsargāts** (pēc 29) |
+| 29 | presence-2-privacy.sql | A16: citu braucēju punkti — atsevišķa izvēle, ~150 m, redz tikai braucot ≤ 15 km | jā (kamēr nav jaunāku) |
 
-**Produkcijā:** palaisti 1–27 (22–27 — 08.11.2026, ar īpašnieka atļauju); **28 — vēl jāpalaiž**. Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
+**Produkcijā:** palaisti 1–27 (22–27 — 08.11.2026, ar īpašnieka atļauju); **28 un 29 — vēl jāpalaiž** (pēc kārtas). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
 Faili ar `cz_migration_begin` (27–…) atkārtoti palaižami tikai, kamēr nav palaists jaunāks (tad tie paši atsakās).
+
+## Citi braucēji kartē (A16)
+
+- `presence-2-privacy.sql`: rāda tikai ar piekrišanu `user_consents.kind = 'show_on_map'` (versija ≥ 2026-11-08; slēdzis
+  „Rādīt mani citu kartē”, noklusēti izslēgts) — ātruma dalīšana to vairs neieslēdz. Vieta ~150 m, punkts pēc ≥ 60 s
+  braukšanas, atjaunošana ≥ 25 s, apstājoties dzēsts.
+- `presence_nearby(p_lat, p_lng, p_speed_kmh)` — tikai `authenticated`, tikai braucot (≥ 15 km/h), ≤ 15 km ap sevi,
+  ≥ 12 s starp pieprasījumiem; pirmās 60 s / 200 m — tukšs; lēciens > 250 km/h — no jauna. Skatītāja vieta (~50 m) —
+  `presence_viewers`, dzēsta apstājoties vai pēc 10 min (`cz_cleanup`). Vecā `presence_nearby(laukums)` dzēsta.
 
 ## Konta dzēšana (A15)
 
@@ -84,7 +94,7 @@ palaid **visus failus no tā, kas definē šo funkciju jaunāko versiju, līdz b
 ## Jauns Supabase projekts (atjaunošana no nulles)
 
 1. Supabase → New project (reģions ES).
-2. SQL Editor: visi faili no `ORDER.txt` pēc kārtas (1 → 28); beigās `status.sql` → „VISS KĀRTĪBĀ”. (`cleanup-1.sql` pats
+2. SQL Editor: visi faili no `ORDER.txt` pēc kārtas (1 → 29); beigās `status.sql` → „VISS KĀRTĪBĀ”. (`cleanup-1.sql` pats
    ieslēdz plānotāju pg_cron; ja Supabase to neļauj — Integrations → Cron → ieslēgt, un palaist failu vēlreiz.)
 3. Authentication: kā aprakstīts `AUTH-IESTATIJUMI.md` (Site URL, Redirect URLs, anonīmie konti, Google, SMTP).
 4. Servera funkcijas (Edge Functions): `ride-pay` un `stripe-webhook` (pēdējo — ar `--no-verify-jwt`).
