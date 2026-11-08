@@ -246,3 +246,6 @@
 - Privātuma politika nav mainīta (termiņi tie paši — tagad tos ievēro arī tad, ja neviens neraksta).
 - Versija: `admin.js?v=152`.
 - Produkcijā: pēc 22–26 palaist `cleanup-1.sql`, tad `status.sql` (ar īpašnieka atļauju).
+- 08.11.2026 produkcijā palaisti 22–27 (rides-13 … cleanup-1). Pirmajā `status.sql` palaišanā produkcijā pgcrypto funkcijas
+  rādījās kā „trūkst”: Supabase pgcrypto ir shēmā `extensions`, bet testu aizstājējs to lika `public`. Labots
+  (`tests/sql/supabase-stub.sql` — `with schema extensions`), `status.sql` pārģenerēts; lietotnes SQL pgcrypto nelieto.
