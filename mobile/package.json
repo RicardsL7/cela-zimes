@@ -1,10 +1,11 @@
 {
   "name": "cela-zimes-android",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Ceļa Zīmes — Android shell (Capacitor) around https://growlab.cc with background GPS",
   "dependencies": {
     "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
     "@capacitor/core": "^7.0.0",
     "@capacitor-community/background-geolocation": "^1.2.20"
   },
