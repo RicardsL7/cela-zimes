@@ -13,4 +13,8 @@ grant usage on schema auth to authenticated, anon;
 grant execute on function auth.uid() to authenticated, anon;
 alter default privileges in schema public grant all on tables to authenticated, anon;
 alter default privileges in schema public grant all on sequences to authenticated, anon;
+-- Kā Supabase: jaunas funkcijas public shēmā pēc noklusējuma var izsaukt anon, authenticated, service_role
+-- (tāpēc faili, kas grib funkciju paslēpt, raksta „revoke … from public, anon”)
+grant usage on schema public to anon, authenticated;
+alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
 
