@@ -911,6 +911,14 @@ html.navigating .alt-bubble { display: none; }
 .dev-box .token-row input { min-width: 0; flex: 1 1 auto; width: auto; }
 .dev-box .token-box { grid-template-columns: minmax(0, 1fr); }
 .dev-box .test-speed-row { flex-wrap: wrap; }
+/* A13: tīkla pieprasījumu tabula izstrādātājam */
+.net-box { margin-top: 10px; }
+.net-box-t { font: 600 14px var(--font-body); margin-bottom: 6px; }
+.net-stats { overflow-x: auto; font: 500 12px/1.35 var(--font-body); }
+.net-stats table { border-collapse: collapse; width: 100%; }
+.net-stats th, .net-stats td { padding: 3px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.net-stats th:first-child, .net-stats td:first-child { text-align: left; }
+.net-stats tr.pause td { color: #c81e3a; font-weight: 700; }
 
 /* ---- F12: noraidīts piedāvājums (šoferim) ---- */
 .r-card.r-declined { background: color-mix(in srgb, var(--muted) 9%, var(--panel)); border-style: dashed; }

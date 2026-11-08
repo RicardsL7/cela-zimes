@@ -2,7 +2,7 @@
 // Karte: OpenFreeMap. Zīmes: Mapillary + OpenStreetMap (Overpass).
 // Meklēšana: Photon / Nominatim. Maršruts: OSRM.
 
-// Vairāki bezmaksas serveri: jautājam visiem reizē un ņemam ātrāko atbildi.
+// Divi bezmaksas Overpass serveri (A13: vispirms veselākais, otrs — tikai ja pirmais kavējas vai kļūdās; sk. fetchOverpass).
 const OVERPASS_URLS = [
   'https://overpass-api.de/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
@@ -375,21 +375,40 @@ function buildQuery(s, w, n, e) {
 out body geom;`;
 }
 
-// Abi Overpass serveri paralēli — ņem ātrāko; ilgāk par 35 s negaida (serveri bieži pārslogoti).
-// Vienādi vaicājumi, kas notiek vienlaikus, tiek sūtīti tikai vienreiz.
+// A13: Overpass „ar rezervi” — vispirms veselākais serveris (nav pauzē, mazāk kļūmju, ātrāks); otru jautā tikai tad,
+// ja pirmais neatbild OVERPASS_HEDGE_MS laikā vai kļūdās. Agrāk jautāja abiem reizē — divreiz lielāka slodze bezmaksas
+// serveriem. Ilgāk par timeoutMs negaida. Vienādi vaicājumi, kas notiek vienlaikus, tiek sūtīti tikai vienreiz.
+const OVERPASS_HEDGE_MS = 4000;
+function overpassOrder(urls) {
+  const h = u => (typeof czNet !== 'undefined' && czNet.health) ? czNet.health(new URL(u).hostname) : { cooling: false, fail: 0, avgMs: 0 };
+  return urls.map((u, i) => ({ u, i, ...h(u) }))
+    .sort((a, b) => (a.cooling - b.cooling) || (a.fail - b.fail) || ((a.avgMs || 1e9) - (b.avgMs || 1e9)) || (a.i - b.i))
+    .map(x => x.u);
+}
 function fetchOverpass(query, timeoutMs = 35000) {
-  return onceInflight('ovp|' + query, () => {
-    const controllers = OVERPASS_URLS.map(() => new AbortController());
-    const timer = setTimeout(() => controllers.forEach(c => c.abort()), timeoutMs);
-    const attempts = OVERPASS_URLS.map(async (url, i) => {
-      const res = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(query), signal: controllers[i].signal });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const json = await res.json();
-      controllers.forEach((c, j) => { if (j !== i) c.abort(); });
-      return json;
-    });
-    return Promise.any(attempts).finally(() => clearTimeout(timer));
-  });
+  return onceInflight('ovp|' + query, () => new Promise((resolve, reject) => {
+    const urls = overpassOrder(OVERPASS_URLS), controllers = [], errors = [];
+    let started = 0, done = false, hedge = null;
+    const finish = (fn, v) => { if (done) return; done = true; clearTimeout(timer); clearTimeout(hedge); controllers.forEach(c => c.abort()); fn(v); };
+    const timer = setTimeout(() => finish(reject, new Error('Overpass neatbildēja ' + Math.round(timeoutMs / 1000) + ' s')), timeoutMs);
+    const start = () => {
+      if (done || started >= urls.length) return;
+      const i = started++, ctrl = new AbortController();
+      controllers.push(ctrl);
+      clearTimeout(hedge);
+      if (started < urls.length) hedge = setTimeout(start, OVERPASS_HEDGE_MS);
+      fetch(urls[i], { method: 'POST', body: 'data=' + encodeURIComponent(query), signal: ctrl.signal })
+        .then(async res => { if (!res.ok) throw Object.assign(new Error('HTTP ' + res.status), { status: res.status }); return res.json(); })
+        .then(json => finish(resolve, json))
+        .catch(err => {
+          if (done) return;
+          errors.push(err);
+          if (started < urls.length) start();                       // kļūda — uzreiz rezerves serveris
+          else if (errors.length >= started) finish(reject, errors[errors.length - 1]);
+        });
+    };
+    start();
+  }));
 }
 
 // ---------- OSM dati pa šūnām telefona kešatmiņā ----------
@@ -924,6 +943,7 @@ async function loadMlyTiles(tiles) {
     const key = tiles[i][0] + ':' + tiles[i][1];
     mlyTilesLoading.delete(key);
     if (r.status === 'rejected') {
+      state.mlyFailed = true;                                       // A13: loadMapillaryForView mēģinās ar pauzi
       if (r.reason && r.reason.badToken) {
         // F9: uznirstošā ziņa (iestatījumu logs var būt atvērts) un tikai vienreiz, nevis par katru flīzi
         if (!state.mlyBadShown) { state.mlyBadShown = true; czToast('Mapillary atslēga nav derīga. Pārbaudi to iestatījumos.', true); }
@@ -959,13 +979,17 @@ async function loadMapillaryForView() {
   mlyLoading = true;
   setBusy('mly', 'Ielādē zīmes…');
   let added = 0;
+  state.mlyFailed = false;
   try { added = await loadMlyTiles(tiles); }
   finally {
     mlyLoading = false;
     setBusy('mly', null);
   }
   if (added) { dirCenter = null; loadDirectionsNearMe(); }
-  setTimeout(loadMapillaryForView, 100);
+  // A13: ja kāda flīze neielādējās — atkārto ar pieaugošu pauzi (5 s … 2 min), nevis ik 100 ms (agrāk — desmitiem
+  // pieprasījumu sekundē, kamēr serveris nepieejams)
+  state.mlyRetryMs = state.mlyFailed ? Math.min(120000, (state.mlyRetryMs || 2500) * 2) : 0;
+  setTimeout(loadMapillaryForView, state.mlyRetryMs || 100);
 }
 
 // Ielādē virzienus zīmēm apgabalā (tikai tām, kuru virziens vēl nav zināms).
@@ -1397,7 +1421,10 @@ async function runSearch(q, enter) {
   const seq = ++searchSeq;
   let items = [];
   try { items = await searchPhoton(q); }
-  catch { try { items = await searchNominatim(q); } catch { items = []; } }
+  catch {
+    // A13: Nominatim noteikumi aizliedz meklēšanu rakstīšanas laikā (autocomplete) — rezerve tikai, nospiežot „Meklēt”
+    if (enter) { try { items = await searchNominatim(q); } catch { items = []; } }
+  }
   if (seq !== searchSeq) return; // jau ir jaunāks meklējums
   lastResults = items;
   if (enter && items.length) return selectDestination(items[0]);
@@ -2671,7 +2698,7 @@ function wireAlerts() {
     gpsTimeouts = 0; gpsClear(); startGps(); reportGpsRefresh();             // „Mēģināt vēlreiz”
   });
   $('closeReport').addEventListener('click', () => { $('reportSheet').hidden = true; });
-  setInterval(() => loadWeather(false), 60000);
+  setInterval(() => { if (!document.hidden) loadWeather(false); }, 60000);   // A13: fona cilnē nepieprasa
 }
 
 // ---------- Kopīgi ziņojumi (F10, reports.js + supabase/reports.sql) ----------

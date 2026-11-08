@@ -81,18 +81,23 @@ function ridesActiveTrip() {
   const d = rides.myOffers.find(o => o.status === 'accepted' && o.trip !== 'done');
   return d ? { role: 'driver', o: d, req: d.request } : null;
 }
-function ridesSchedule() {
+function ridesSchedule(firstDelay = 4000) {
   clearTimeout(rides.timer);
   const tick = async () => {
     const trip = ridesActiveTrip();
     const active = trip || rides.myReqs.length || rides.myOffers.some(o => o.status === 'pending');
-    if (rides.open || active) { try { await ridesShareLocation(); await ridesRefresh(false); } catch { /* */ } }
-    ridesLiveMap();
-    const delay = rides.chat ? 4000 : trip ? 5000 : 15000;
+    // A13: fona cilnē bez aktīva brauciena serveri nejautā (atgriežoties — uzreiz); aktīvā braucienā vieta jāsūta arī fonā
+    const idleHidden = document.hidden && !trip;
+    if ((rides.open || active) && !idleHidden) { try { await ridesShareLocation(); await ridesRefresh(false); } catch { /* */ } }
+    if (!idleHidden) ridesLiveMap();
+    const delay = idleHidden ? 60000 : rides.chat ? 4000 : trip ? 5000 : 15000;
     rides.timer = setTimeout(tick, delay);
   };
-  rides.timer = setTimeout(tick, 4000);
+  rides.timer = setTimeout(tick, firstDelay);
 }
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && rides.timer) ridesSchedule(300);   // A13: atgriežoties cilnē — svaigi dati uzreiz
+});
 // Šoferis (pēc "Braukt pakaļ") sūta savu vietu ik ~5 s; pasažieris — savu ik ~15 s, kamēr gaida.
 async function ridesShareLocation() {
   const trip = ridesActiveTrip();
