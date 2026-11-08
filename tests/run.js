@@ -2829,19 +2829,22 @@ test('A06: noteikumi un privātuma politika — sniedzējs, kontakts, nekas nav 
 test('A07: MapLibre 6.15.0 — ES modulis pirms visiem skriptiem, pārējie defer', () => {
   for (const f of ['index.html', 'index-gl.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    ok(!/maplibre-gl@[45]\./.test(h), f + ': vecā MapLibre izņemta');
-    const vers = [...h.matchAll(/maplibre-gl@(\d+)\.(\d+)\.(\d+)/g)].map(m => m.slice(1).map(Number));
+    // A10: MapLibre no vendor/ (nevis unpkg) — modulis maplibre-load.js
+    ok(!/maplibre-gl@\d/.test(h) && !/maplibre-gl-[45]\./.test(h), f + ': vecā MapLibre / CDN izņemta');
+    const ld = fs.readFileSync(path.join(__dirname, '..', 'maplibre-load.js'), 'utf8');
+    const vers = [...(h + ld).matchAll(/vendor\/maplibre-gl-(\d+)\.(\d+)\.(\d+)\//g)].map(m => m.slice(1).map(Number));
     eq(vers.length, 2, f + ': css + modulis');
     for (const [a, b, c] of vers) ok(a > 6 || (a === 6 && (b > 4 || (b === 4 && c >= 1))), f + ': versija ≥ 6.4.1 (' + [a, b, c].join('.') + ')');
-    ok(h.includes('href="https://unpkg.com/maplibre-gl@6.15.0/dist/maplibre-gl.css"'), f + ': css 6.15.0');
-    const mod = `<script type="module">import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.15.0/dist/maplibre-gl.mjs'; window.maplibregl = maplibregl;</script>`;
+    ok(h.includes('href="vendor/maplibre-gl-6.15.0/maplibre-gl.css"'), f + ': css 6.15.0');
+    ok(/^import \* as maplibregl from '\.\/vendor\/maplibre-gl-6\.15\.0\/maplibre-gl\.mjs';\nwindow\.maplibregl = maplibregl;$/m.test(ld), 'maplibre-load.js uzliek window.maplibregl');
+    const mod = '<script type="module" src="maplibre-load.js?v=151"></script>';
     ok(h.includes(mod), f + ': modulis uzliek window.maplibregl');
     const after = h.slice(h.indexOf(mod) + mod.length);
     const tags = after.match(/<script\b[^>]*>/g) || [];
     ok(tags.length >= 25, f + ': skripti pēc moduļa');
     ok(tags.every(t => /\sdefer\s/.test(t) && /\ssrc="/.test(t)), f + ': visi nākamie skripti ir defer (izpildās pēc moduļa, tajā pašā secībā)');
     ok(!/<script>/.test(h), f + ': nav iekļautu (inline) klasisko skriptu, kas izpildītos ārpus secības');
-    ok(/app-gl\.js\?v=150/.test(h) && /signs-gl\.js\?v=150/.test(h), f + ': mainītie faili ar jaunu versiju');
+    ok(/app-gl\.js\?v=151/.test(h) && /signs-gl\.js\?v=150/.test(h), f + ': mainītie faili ar jaunu versiju');
   }
 });
 test('A07: trūkstošie attēli (MapLibre 6) un skaidra ziņa, ja karte neielādējas', () => {
@@ -2871,7 +2874,7 @@ test('A08: LF rindu beigas, GitHub Actions (Linux + Windows, datubāze, karte)',
   ok(/pull_request:/.test(wf) && /branches: \[main\]/.test(wf), 'katrai izmaiņai main un pull request');
   ok(/os: \[ubuntu-latest, windows-latest\]/.test(wf) && /- run: node tests\/run\.js/.test(wf), 'JS testi Linux un Windows');
   ok(/image: postgres:16/.test(wf) && /- run: bash tests\/run-sql\.sh/.test(wf), 'datubāzes testi');
-  ok(/node tests\/map-smoke\.js \. /.test(wf) && /releases\/download\/v\$V\/dist\.zip/.test(wf), 'kartes tests ar lietotnes MapLibre versiju');
+  ok(/node tests\/map-smoke\.js \. /.test(wf) && /bash tools\/vendor\.sh --check/.test(wf), 'kartes tests ar lietotnes MapLibre (vendor/, A10)');
   ok(/permissions:\s*\n\s*contents: read/.test(wf) && !/secrets\./.test(wf), 'tikai lasīšanas tiesības, bez slepenajām atslēgām');
 });
 test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji', () => {
@@ -2951,6 +2954,90 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/MapLibre GL 6/.test(rd) && /supabase\/MIGRATIONS\.md/.test(rd) && /supabase\/ORDER\.txt/.test(rd) && /node tests\/run\.js/.test(rd), 'README: karte, datubāze, testi');
     ok(!/`app\.js` — karte/.test(rd) && /netiek lietota/.test(rd), 'README vairs neapraksta veco Leaflet versiju kā galveno');
     ok(!/[A-Za-z0-9._%+-]+@gmail\.com/.test(rd + md), 'nav personīgu e-pastu');
+  });
+}
+
+// ---------- A10 (audits 07.11.2026): drošības politika (CSP), bez sveša JavaScript, rāmja aizsardzība ----------
+{
+  const ROOT = path.join(__dirname, '..');
+  const HTML = ['index.html', 'index-gl.html', 'admin.html', 'privacy.html', 'terms.html'];
+  const cspOf = h => { const m = h.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/); if (!m) return null;
+    const d = {}; for (const p of m[1].split(';').map(x => x.trim()).filter(Boolean)) { const [k, ...v] = p.split(/\s+/); d[k] = v; } return d; };
+  test('A10: katrā lapā CSP meta tags pirmais pēc charset, stingrs script-src, referrer, rāmja aizsardzība', () => {
+    for (const f of HTML) {
+      const h = fs.readFileSync(path.join(ROOT, f), 'utf8');
+      const head = h.slice(0, h.indexOf('</head>'));
+      ok(/^<!doctype html>\n<html lang="lv">\n<head>\n  <meta charset="utf-8">\n  <!-- A10[^]*?-->\n  <meta http-equiv="Content-Security-Policy" content="[^"]+">\n  <meta name="referrer" content="strict-origin-when-cross-origin">\n  <script src="guard\.js\?v=151"><\/script>\n/.test(h),
+        f + ': <head> bez atribūtiem (Android lietotnes skripts nonāk pirms CSP), CSP, referrer, guard.js — pašā sākumā');
+      const c = cspOf(h); ok(c, f + ': CSP');
+      if (!c) continue;
+      eq((c['script-src'] || []).join(' '), "'self'", f + ": script-src tikai 'self' (bez unsafe-inline / unsafe-eval / CDN)");
+      eq((c['default-src'] || []).join(' '), "'self'", f + ': default-src');
+      for (const [k, v] of [['object-src', "'none'"], ['base-uri', "'self'"], ['form-action', "'self'"], ['frame-src', "'none'"]]) eq((c[k] || []).join(' '), v, f + ': ' + k);
+      ok('upgrade-insecure-requests' in c, f + ': upgrade-insecure-requests');
+      ok(!/frame-ancestors|report-uri|sandbox/.test(Object.keys(c).join(' ')), f + ': nav direktīvu, kas meta tagā nedarbojas');
+      for (const [k, v] of Object.entries(c)) for (const src of v) ok(!/^http:|^\*$|unsafe-eval|^'unsafe-inline'$/.test(src) || (k === 'style-src' && src === "'unsafe-inline'"), f + ': ' + k + ' bez ' + src);
+      // Skripti: tikai no savas lapas, bez iekļauta koda un on…= atribūtiem
+      for (const t of h.match(/<script\b[^>]*>/g) || []) ok(/\ssrc="(?!https?:|\/\/)[^"]+"/.test(t), f + ': skripts no savas lapas: ' + t);
+      ok(!/<script\b[^>]*>[^<]+<\/script>/.test(h), f + ': nav iekļautu (inline) skriptu');
+      ok(!/<[a-z][^>]*\son[a-z]+=/i.test(h), f + ': nav on…= atribūtu');
+      ok(!/<link[^>]+rel="stylesheet"[^>]+href="https?:\/\/(?!fonts\.googleapis\.com\/)/.test(head), f + ': stili tikai no savas lapas vai Google Fonts');
+    }
+    const g = fs.readFileSync(path.join(ROOT, 'guard.js'), 'utf8');
+    ok(/window\.top !== window\.self/.test(g) && /document\.documentElement\.style\.display = 'none'/.test(g) && /catch \(e\) \{ framed = true; \}/.test(g), 'guard.js: rāmī — paslēpj (arī ja top nav pieejams)');
+  });
+  test('A10: connect-src ietver visus serverus, kurus lietotne izsauc (fetch), un Supabase no rides-config.js', () => {
+    const h = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const c = cspOf(h);
+    const allowed = new Set((c['connect-src'] || []).filter(x => /^https:\/\//.test(x)).map(x => x.slice(8)));
+    const scripts = [...h.matchAll(/<script defer src="([\w.-]+\.js)\?v=/g)].map(m => m[1]);
+    ok(scripts.length >= 25, 'lietotnes skripti');
+    // Saites (href), attēli (<img>/Image — img-src https:) un kešatmiņas atslēgas — nav fetch
+    const NOT_FETCH = /^(www\.openstreetmap\.org|openfreemap\.org|www\.openmaptiles\.org|cdn\.jsdelivr\.net|cela-zimes\.cache|dom)$/;
+    const brands = new Set();
+    const pl = fs.readFileSync(path.join(ROOT, 'places.js'), 'utf8');
+    for (const m of pl.matchAll(/\[\/[^\n]*?, (?:'[^']+'|"[^"]+"), 'https:\/\/([a-z0-9.-]+)\//g)) brands.add(m[1]);
+    ok(brands.size >= 15, 'places.js zīmolu saites (tikai href)');
+    const missing = new Set();
+    for (const f of [...scripts, 'admin.js']) {
+      const js = fs.readFileSync(path.join(ROOT, f), 'utf8');
+      for (const m of js.matchAll(/https:\/\/([a-z0-9.-]+[a-z])/g)) if (!allowed.has(m[1]) && !NOT_FETCH.test(m[1]) && !brands.has(m[1])) missing.add(f + ': ' + m[1]);
+    }
+    eq([...missing].join(', '), '', 'serveris nav connect-src (pievieno CSP visās lapās vai NOT_FETCH, ja tā nav fetch adrese)');
+    const rc = fs.readFileSync(path.join(ROOT, 'rides-config.js'), 'utf8');
+    const sb = (rc.match(/https:\/\/([a-z0-9]+\.supabase\.co)/) || [])[1];
+    ok(sb && allowed.has(sb), 'Supabase projekts (rides-config.js) ir connect-src');
+    const adm = cspOf(fs.readFileSync(path.join(ROOT, 'admin.html'), 'utf8'));
+    ok((adm['connect-src'] || []).includes('https://' + sb), 'admin.html: Supabase');
+    eq(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'), fs.readFileSync(path.join(ROOT, 'index-gl.html'), 'utf8'), 'index.html un index-gl.html vienādi');
+    eq((c['worker-src'] || []).join(' '), "'self'", "kartes worker tikai no savas lapas (worker-src 'self')");
+  });
+  test('A10: MapLibre vendor/ faili sakrīt ar vendor/vendor.lock (SHA-256), versija tā pati, kas lapā', () => {
+    const lock = fs.readFileSync(path.join(ROOT, 'vendor', 'vendor.lock'), 'utf8').split('\n').filter(l => /^(zip|file)\s/.test(l)).map(l => l.trim().split(/\s+/));
+    const zips = lock.filter(l => l[0] === 'zip'), files = lock.filter(l => l[0] === 'file');
+    ok(zips.length >= 1 && files.length >= 3, 'vendor.lock rindas');
+    for (const z of zips) ok(/^https:\/\/github\.com\//.test(z[3]) && /^[0-9a-f]{64}$/.test(z[4]), 'arhīvs no github.com ar SHA-256: ' + z[1]);
+    for (const [, n, v, src, want] of files) {
+      const p = path.join(ROOT, 'vendor', n + '-' + v, path.basename(src));
+      const got = fs.existsSync(p) ? require('crypto').createHash('sha256').update(fs.readFileSync(p)).digest('hex') : 'trūkst';
+      eq(got, want, 'vendor/' + n + '-' + v + '/' + path.basename(src));
+    }
+    ok(files.some(f => f[3] === 'dist/maplibre-gl-worker.mjs'), 'worker ir vendor/ (MapLibre to ielādē blakus galvenajam failam)');
+    const ga = fs.readFileSync(path.join(ROOT, '.gitattributes'), 'utf8');
+    ok(/^vendor\/\*\/\*\* -text -diff$/m.test(ga), '.gitattributes: vendor/ baits baitā');
+    const wf = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'vendor.yml'), 'utf8');
+    ok(/- run: bash tools\/vendor\.sh|run: bash tools\/vendor\.sh/.test(wf) && /contents: write/.test(wf) && /git add -A vendor/.test(wf) && !/secrets\./.test(wf), 'vendor.yml: pārbauda un saglabā tikai vendor/');
+    const sh = fs.readFileSync(path.join(ROOT, 'tools', 'vendor.sh'), 'utf8');
+    ok(/arhīvs tikai no github\.com/.test(sh) && /SHA-256 \$got, gaidīts \$want/.test(sh), 'vendor.sh: tikai github.com, SHA-256 pārbaude');
+    for (const f of [...fs.readdirSync(ROOT).filter(n => /\.(html|js)$/.test(n))].filter(n => !/^(app|basemap|roads|signlayer)\.js$/.test(n)))
+      ok(!/unpkg\.com|cdnjs|cdn\.skypack|esm\.sh/.test(fs.readFileSync(path.join(ROOT, f), 'utf8').replace(/\/\/[^\n]*|<!--[\s\S]*?-->/g, '')), f + ': nav JavaScript no CDN');
+  });
+  test('A10: kartes dūmu tests pārbauda CSP, worker un rāmi', () => {
+    const ms = fs.readFileSync(path.join(__dirname, 'map-smoke.js'), 'utf8');
+    ok(/securitypolicyviolation/.test(ms) && /CSP pārkāpumi/.test(ms) && /Content Security Policy/.test(ms), 'CSP pārkāpumi → kļūda');
+    ok(/maplibre-gl-worker/.test(ms) && /evil\.test/.test(ms) && /res\.framed !== 'none'/.test(ms), 'worker no lapas adreses, rāmī paslēpts');
+    ok(/for \(const p of \['admin\.html', 'privacy\.html', 'terms\.html'\]\)/.test(ms), 'arī pārējās lapas');
+    ok(!/unpkg/.test(ms), 'tests neizmanto CDN');
   });
 }
 
