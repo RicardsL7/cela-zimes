@@ -50,7 +50,7 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 30 | rides-18-open-privacy.sql | B02: atvērtie braucieni šoferiem aptuveni (~1 km, bez vārda/adreses/piezīmes) | **nē — aizsargāts** (pēc 31) |
 | 31 | rides-19-cost-share.sql | B03: kopbrauciena maksa ≤ ceļa izmaksas (attālums × 1,3 × 12 c/km, ≥ 2 €) | jā (kamēr nav jaunāku) |
 
-**Produkcijā:** palaisti visi 1–30 (22–30 — 08.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
+**Produkcijā:** palaisti visi 1–31 (22–31 — 08.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
 Faili ar `cz_migration_begin` (27–…) atkārtoti palaižami tikai, kamēr nav palaists jaunāks (tad tie paši atsakās).
 
 ## Kopbrauciena maksa — ceļa izdevumu daļa (B03)
