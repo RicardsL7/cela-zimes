@@ -35,6 +35,9 @@ STEPS=(
   # A11: regulāra vecu datu tīrīšana (pg_cron — testos aizstājējs no supabase-stub.sql)
   s:cleanup-1.sql s:cleanup-1.sql
   t:cleanup-test.sql
+  # A15: konta dzēšana — pārbaudes un anonīms brauciena ieraksts otram (palaižama atkārtoti)
+  s:account-1-delete.sql s:account-1-delete.sql
+  t:account-delete-test.sql
 )
 
 fail=0; pass=0
@@ -100,7 +103,15 @@ status_check() {   # $1 — gaidītais: ok | <teksts, kam jābūt rezultātā>
 gen=$(bash tests/gen-status.sh 2>&1) && [ "$gen" = "$(cat supabase/status.sql)" ] && ok_ "supabase/status.sql ir aktuāls" \
   || bad_ "supabase/status.sql nav aktuāls — palaid: PGDATABASE=<uzbūvēta datubāze> bash tests/gen-status.sh > supabase/status.sql" "$(diff <(echo "$gen") supabase/status.sql | head -10)"
 out=$(status_check ok) && ok_ "status.sql: VISS KĀRTĪBĀ" || bad_ "status.sql atrada problēmas" "$out"
+last="${ORDER[${#ORDER[@]}-1]}"
 for f in "${ORDER[@]:21}"; do   # 22–…: drošības labojumi, uzskaite, tīrīšana — drīkst palaist atkārtoti
+  # Faili ar cz_migration_begin (27–…) — atkārtoti tikai pēdējais; vecākie atsakās (MIGRATIONS.md: „kamēr nav jaunāku”)
+  if grep -q "^select public.cz_migration_begin(" "supabase/$f" && [ "$f" != "$last" ]; then
+    out=$(psql -X -q -v ON_ERROR_STOP=1 -f "supabase/$f" 2>&1)
+    if [ $? -ne 0 ] && grep -q "atkārtoti to palaist nedrīkst" <<<"$out"; then ok_ "atkārtoti: $f atsakās (ir jaunāks)"
+    else bad_ "atkārtoti: $f NEatteicās, lai gan ir jaunāks fails" "$out"; fi
+    continue
+  fi
   out=$(psql -X -q -v ON_ERROR_STOP=1 -f "supabase/$f" 2>&1) && ok_ "atkārtoti: $f" || bad_ "atkārtoti: $f" "$out"
 done
 out=$(status_check ok) && ok_ "status.sql pēc atkārtošanas: VISS KĀRTĪBĀ" || bad_ "status.sql pēc atkārtošanas" "$out"

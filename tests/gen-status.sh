@@ -18,6 +18,7 @@ cat <<'EOF'
 --   tiesības          — lietotnei (anon / authenticated) ir citas tiesības nekā paredzēts
 --   migrācija         — fails nav atzīmēts cz_migrations (pēc rides-17-migrations.sql)
 --   plānotājs         — regulārais darbs (piem. vecu datu tīrīšana cz-cleanup) nav ieplānots pg_cron
+--   ārējā atslēga     — saite starp tabulām trūkst vai dzēšot rīkojas citādi (piem. CASCADE, nevis SET NULL — A15)
 -- Papildu objekti (piem. paša pievienoti) netiek ziņoti.
 with
 EOF
@@ -75,6 +76,12 @@ q "select format('  (%L, %L, %L, %s)', table_name, column_name, r, has_column_pr
    where table_schema = 'public' and table_name in ('ride_offers', 'ride_requests', 'ride_payments') order by 1" | sep
 echo "),"
 
+# A15: ārējās atslēgas un to ON DELETE darbība (piem. dzēšot profilu, brauciens otram paliek — SET NULL, nevis CASCADE)
+echo "exp_fk(t, k, def) as (values"
+q "select format('  (%L, %L, %L)', c.conrelid::regclass::text, c.conname, pg_get_constraintdef(c.oid))
+   from pg_constraint c join pg_namespace n on n.oid = c.connamespace where n.nspname = 'public' and c.contype = 'f' order by 1" | sep
+echo "),"
+
 # A11: plānotāja (pg_cron) darbi, ko izveido repozitorija faili (nosaukums cz-…)
 echo "exp_cron(name, sched) as (values"
 crons=$(q "select format('  (%L, %L)', jobname, schedule) from cron.job where jobname like 'cz-%' order by 1" 2>/dev/null || true)
@@ -128,6 +135,10 @@ problems(kas, objekts, problema) as (
     from exp_cpriv e
     where case when exists (select 1 from information_schema.columns x where x.table_schema = 'public' and x.table_name = e.t and x.column_name = e.c)
                then has_column_privilege(e.r, to_regclass('public.' || quote_ident(e.t)), e.c, 'UPDATE') <> e.ok end
+  union all
+  select 'ārējā atslēga', e.t || '.' || e.k, case when x.oid is null then 'trūkst' else 'cita: ' || pg_get_constraintdef(x.oid) end
+    from exp_fk e left join pg_constraint x on x.conname = e.k and x.contype = 'f' and x.conrelid = to_regclass('public.' || quote_ident(e.t))
+    where x.oid is null or pg_get_constraintdef(x.oid) <> e.def
   union all
   select 'plānotājs', e.name || ' (' || e.sched || ')', 'nav ieplānots (pg_cron)' from exp_cron e
     where e.name is not null and not exists (select 1 from act_cron a where a.name = e.name and a.sched = e.sched)

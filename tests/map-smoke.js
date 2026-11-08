@@ -26,7 +26,10 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
 (async () => {
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const ctx = await browser.newContext({ viewport: { width: 420, height: 860 }, geolocation: { latitude: 56.95, longitude: 24.11 }, permissions: ['geolocation'] });
-  await ctx.addInitScript(() => { try { localStorage.setItem('cz.consent', JSON.stringify({ terms: '2026-10-23', privacy: '2026-11-01', at: 'x' })); } catch (e) {} });
+  // Piekrišana pašreizējām versijām (no auth.js — pēc versijas maiņas tests neapstājas pie piekrišanas loga)
+  const authSrc = require('fs').readFileSync(require('path').join(__dirname, '..', 'auth.js'), 'utf8');
+  const consentV = { terms: (authSrc.match(/CZ_TERMS_VERSION = '([^']+)'/) || [])[1], privacy: (authSrc.match(/CZ_PRIVACY_VERSION = '([^']+)'/) || [])[1] };
+  await ctx.addInitScript(v => { try { localStorage.setItem('cz.consent', JSON.stringify({ terms: v.terms, privacy: v.privacy, at: 'x' })); } catch (e) {} }, consentV);
   // A10: visi CSP pārkāpumi (arī workerā neredzamie ielādes atteikumi lapā) — jābūt 0
   await ctx.addInitScript(() => { window.__csp = []; document.addEventListener('securitypolicyviolation', e => window.__csp.push(e.effectiveDirective + ' ' + (e.blockedURI || '') + ' ' + location.pathname)); });
   const page = await ctx.newPage();

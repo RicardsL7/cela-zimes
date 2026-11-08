@@ -2105,9 +2105,9 @@ test('v124: citi braucēji — tikai ar „Palīdzēt citiem” (jaunā versija)
   ok(/presenceStop\(\)/.test(tr), 'izslēdzot — noņem no kartes uzreiz');
   const pj = fs.readFileSync(path.join(__dirname, '..', 'presence.js'), 'utf8');
   ok(/trShareCurrent\(\)/.test(pj) && /!state\.testMode/.test(pj) && /PRESENCE_MIN_KMH = 15/.test(pj), 'sūta tikai ar piekrišanu, braucot, ne testa režīmā');
-  eq(G('CZ_PRIVACY_VERSION'), '2026-11-01', 'privātuma versija');
+  ok(G('CZ_PRIVACY_VERSION') >= '2026-11-01', 'privātuma versija (v124 vai jaunāka)');
   const pr = fs.readFileSync(path.join(__dirname, '..', 'privacy.html'), 'utf8');
-  ok(/Versija 2026-11-01/.test(pr) && /monētu atlikums/.test(pr) && /uzticamības rādītājs/.test(pr) && /Tava vieta citu kartē/.test(pr), 'privātuma politika');
+  ok(/Versija 2026-11-(01|08)/.test(pr) && /monētu atlikums/.test(pr) && /uzticamības rādītājs/.test(pr) && /Tava vieta citu kartē/.test(pr), 'privātuma politika');
   for (const f of ['index.html', 'index-gl.html']) {
     const html = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     ok(/id="garageBtn"[\s\S]{0,700}Garāža[\s\S]{0,200}id="garageBal"/.test(html), f + ': poga „Garāža” ar atlikumu');
@@ -2803,7 +2803,7 @@ test('A03: SQL labojums un lietotnes pogas', () => {
     ok(/else if \(r && r\.pending && !r\.already\)/.test(ui), 'automātiskā atmaksa apstrādē — atsevišķa ziņa');
     for (const f of ['index.html', 'index-gl.html']) {
       const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-      ok(/rides\.js\?v=149/.test(h) && /rides-ui\.js\?v=(149|15\d)/.test(h), f + ': rides v149');
+      ok(/rides\.js\?v=(149|15\d)/.test(h) && /rides-ui\.js\?v=(149|15\d)/.test(h), f + ': rides v149+');
     }
   });
 }
@@ -2826,8 +2826,10 @@ test('A06: noteikumi un privātuma politika — sniedzējs, kontakts, nekas nav 
   const pr = fs.readFileSync(path.join(__dirname, '..', 'privacy.html'), 'utf8');
   eq((pr.match(/support\.travel24@gmail\.com<\/a>/g) || []).length, 2, 'privacy.html: pārzinis un tiesību punkts');
   // Versijas nemainītas: tikai identitātes aizpildīšana, lietotājiem atkārtoti piekrist nav jāprasa
-  ok(/Versija 2026-10-23/.test(t) && /CZ_TERMS_VERSION = '2026-10-23'/.test(fs.readFileSync(path.join(__dirname, '..', 'auth.js'), 'utf8')), 'noteikumu versija sakrīt ar auth.js');
-  ok(/Versija 2026-11-01/.test(pr) && /CZ_PRIVACY_VERSION = '2026-11-01'/.test(fs.readFileSync(path.join(__dirname, '..', 'auth.js'), 'utf8')), 'politikas versija sakrīt ar auth.js');
+  { const tv = (fs.readFileSync(path.join(__dirname, '..', 'auth.js'), 'utf8').match(/CZ_TERMS_VERSION = '([\d-]+)'/) || [])[1];
+    ok(tv && tv >= '2026-10-23' && t.includes('Versija ' + tv), 'noteikumu versija sakrīt ar auth.js'); }
+  { const pv = (fs.readFileSync(path.join(__dirname, '..', 'auth.js'), 'utf8').match(/CZ_PRIVACY_VERSION = '([\d-]+)'/) || [])[1];
+    ok(pv && pv >= '2026-11-01' && pr.includes('Versija ' + pv), 'politikas versija sakrīt ar auth.js'); }
 });
 
 // ---------- A07 (audits 07.11.2026): MapLibre 6.15.0 (XSS labojums GHSA-jrc7-96c5-q579, ≥ 6.4.1) ----------
@@ -3093,7 +3095,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/'Vecu datu tīrīšana nestrādā: '/.test(aj) && /if \(clean && !\(adm\.cleanup && adm\.cleanup\.healthy\)\) box\.append\(clean\);/.test(aj), 'admin.js: brīdinājums paneļa augšā');
     ok(/admin\.js\?v=152/.test(fs.readFileSync(path.join(ROOT, 'admin.html'), 'utf8')), 'admin.html: jauna admin.js versija');
     const md = fs.readFileSync(path.join(ROOT, 'supabase', 'MIGRATIONS.md'), 'utf8');
-    ok(/## Vecu datu tīrīšana un uzraudzība \(A11\)/.test(md) && /palaisti visi 1–27/.test(md), 'MIGRATIONS.md');
+    ok(/## Vecu datu tīrīšana un uzraudzība \(A11\)/.test(md) && /palaisti (visi )?1–27/.test(md), 'MIGRATIONS.md');
   });
 }
 
@@ -3337,6 +3339,123 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/keytool -genkeypair/.test(md) && /ANDROID_KEYSTORE_BASE64/.test(md) && /App signing key SHA-256/.test(md) && /Ierīces tests ar roku/.test(md), 'mobile/README.md');
     const walk = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.name === '.git' || e.name === 'node_modules' ? [] : e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
     ok(!walk(ROOT).some(f => /\.(jks|keystore|p12|pem)$/i.test(f)), 'nav atslēgu failu repozitorijā');
+  });
+}
+
+// ---------- A15 (audits): konta dzēšana neizdzēš otra dalībnieka braucienu un maksājumu ----------
+// Uzvedību datubāzē pārbauda tests/account-delete-test.sql (tests/run-sql.sh); šeit — faili, lietotnes plūsma un Edge funkcijas.
+{
+  const ROOT = path.join(__dirname, '..'), SUP = path.join(ROOT, 'supabase');
+  test('A15: SQL — pārbaudes pirms dzēšanas, SET NULL, trigeris, secība un testi', () => {
+    const sql = fs.readFileSync(path.join(SUP, 'account-1-delete.sql'), 'utf8');
+    ok(/^28 account-1-delete\.sql$/m.test(fs.readFileSync(path.join(SUP, 'ORDER.txt'), 'utf8')), 'ORDER.txt: 28');
+    ok(/cz_migration_begin\(28, 'account-1-delete\.sql'\)/.test(sql) && /cz_migration_done\(28, 'account-1-delete\.sql'\)/.test(sql), 'migrāciju uzskaite');
+    for (const fk of ['ride_requests_user_id_fkey', 'ride_offers_driver_id_fkey', 'ride_ratings_rater_id_fkey'])
+      ok(new RegExp('add constraint ' + fk + ' foreign key \\([a-z_]+\\) references public\\.profiles\\(id\\) on delete set null').test(sql), fk + ' → SET NULL');
+    ok(/execute format\('alter table %s drop constraint %I'/.test(sql), 'vecās atslēgas nomet arī ar citu nosaukumu');
+    const del = sql.slice(sql.indexOf('create or replace function public.delete_my_account'), sql.indexOf('revoke all on function public.delete_my_account'));
+    ok(del.indexOf('account_delete_blockers(me)') > 0 && del.indexOf('account_delete_blockers(me)') < del.indexOf('delete from auth.users'), 'delete_my_account: pārbaude pirms dzēšanas');
+    ok(/raise exception 'account_busy:/.test(del) && /pg_advisory_xact_lock/.test(del), 'account_busy; viena dzēšana vienlaikus');
+    ok(!/delete from ride_ratings where rater_id = me/.test(del), 'viņa dotie vērtējumi netiek dzēsti (otram nemainās vērtējums)');
+    for (const k of ['active_ride', 'payment_open', 'refund_due']) ok(sql.includes(`'${k}'`), 'pārbaude ' + k);
+    ok(/create trigger profiles_erase_rides before delete on public\.profiles/.test(sql), 'trigeris uz profila dzēšanu (arī Supabase panelī)');
+    ok(/revoke all on function public\.account_delete_blockers\(uuid\) from public, anon, authenticated/.test(sql)
+       && /grant execute on function public\.account_delete_check\(\) to authenticated/.test(sql), 'citam lietotājam pārbaudi palaist nevar');
+    ok(/round\(from_lat::numeric, 2\)/.test(sql) && /from_name = '', to_name = ''/.test(sql), 'adrese dzēsta, koordinātas ~1 km');
+    const steps = fs.readFileSync(path.join(__dirname, 'run-sql.sh'), 'utf8');
+    ok(/s:account-1-delete\.sql s:account-1-delete\.sql/.test(steps) && /t:account-delete-test\.sql/.test(steps), 'run-sql.sh: shēma 2× un scenāriji');
+    ok(fs.existsSync(path.join(__dirname, 'account-delete-test.sql')), 'tests/account-delete-test.sql');
+    ok(/exp_fk\(t, k, def\)/.test(fs.readFileSync(path.join(__dirname, 'gen-status.sh'), 'utf8'))
+       && /'ride_offers_driver_id_fkey', 'FOREIGN KEY \(driver_id\) REFERENCES profiles\(id\) ON DELETE SET NULL'/.test(fs.readFileSync(path.join(SUP, 'status.sql'), 'utf8')),
+       'status.sql pārbauda ārējo atslēgu darbību');
+  });
+
+  test('A15: lietotne — vēsture ar dzēstu lietotāju, iemeslu teksti', () => {
+    const del = G('rideOtherDeleted');
+    ok(del({ offer_id: 'o', other_id: null }) && !del({ offer_id: 'o', other_id: 'u' }) && !del({ offer_id: null, other_id: null }), 'rideOtherDeleted');
+    const ui = fs.readFileSync(path.join(ROOT, 'rides-ui.js'), 'utf8');
+    const sum = ui.slice(ui.indexOf('function ridesSummaryCard'), ui.indexOf('function ridesRateForm'));
+    ok(/'Dzēsts lietotājs'/.test(sum) && /else if \(done && !gone\) card\.append\(ridesRateForm/.test(sum), 'kopsavilkums: „Dzēsts lietotājs”, novērtēt nevar');
+    ok(/rideOtherDeleted\(h\) \? 'Dzēsts lietotājs'/.test(ui), 'vēstures sarakstā arī');
+    const box = vm.createContext({ rideDateText: () => '9. nov. 10:00', Date, String, Set, isNaN });
+    vm.runInContext(ui.slice(ui.indexOf('function rideDeleteBlockText'), ui.indexOf('async function ridesDeleteAccount')), box);
+    const t = vm.runInContext('rideDeleteBlockText', box);
+    const s1 = t([{ kind: 'active_ride', offer_id: 'a', depart_at: 'x' }, { kind: 'active_ride', offer_id: 'a', depart_at: 'x' }]);
+    ok(/^Kontu vēl nevar dzēst\./.test(s1) && (s1.match(/vēl nav beidzies/g) || []).length === 1, 'aktīvs brauciens (bez dublikātiem): ' + s1);
+    ok(/maksājuma lapa vēl ir atvērta — mēģini pēc \d\d:\d\d/.test(t([{ kind: 'payment_open', offer_id: 'b', until: new Date(Date.now() + 3600000).toISOString() }])), 'atvērta maksājuma lapa ar laiku');
+    ok(/Atmaksa par atcelto braucienu/.test(t([{ kind: 'refund_due', offer_id: 'c' }])), 'nepabeigta atmaksa');
+  });
+
+  test('A15: dzēšanas plūsma — vispirms pārbaude, tad Stripe konts, tad dzēšana', async () => {
+    const ui = fs.readFileSync(path.join(ROOT, 'rides-ui.js'), 'utf8');
+    const src = ui.slice(ui.indexOf('function rideDeleteBlockText'), ui.indexOf('// ---------- F13:'));
+    const run = async (store, payOn = true) => {
+      const calls = [], said = [];
+      const box = vm.createContext({ console: { warn() {} }, Date, String, Set, isNaN, rideDateText: () => 'd',
+        ridesPayOn: () => payOn, ridesSetSignedOut() {}, ridesHistoryReset() {}, ridesRender() {},
+        rides: { store: Object.assign(store(calls), { auth: { forgetLocal() { calls.push('forget'); } } }) } });
+      vm.runInContext(src, box);
+      await vm.runInContext('ridesDeleteAccount', box)((t) => said.push(t));
+      return { calls, said, msg: box.rides.accountMsg };
+    };
+    const base = (calls, checks, extra = {}) => Object.assign({
+      deleteCheck: async () => { calls.push('check'); return checks.shift(); },
+      hasDriverAccount: async () => 'acct_X1234567',
+      pay: async (a) => { calls.push('pay:' + a); return { closed: true }; },
+      deleteAccount: async (u) => { calls.push('delete:' + u); },
+    }, extra);
+    let r = await run(c => base(c, [{ ok: false, blockers: [{ kind: 'active_ride', offer_id: 'o' }] }]));
+    ok(r.calls.join() === 'check' && /nav beidzies/.test(r.said[0]), 'aktīvs brauciens: Stripe konts netiek slēgts, nekas netiek dzēsts — ' + r.calls.join());
+    r = await run(c => base(c, [{ ok: false, missing: true, blockers: [] }]));
+    ok(r.calls.join() === 'check' && /nav pieejama/.test(r.said[0]), 'datubāzē nav A15 — nedzēš (vecā versija dzēstu otra datus)');
+    r = await run(c => base(c, [{ ok: false, blockers: [{ kind: 'refund_due', offer_id: 'o' }] }, { ok: true, blockers: [] }]));
+    ok(r.calls.join() === 'check,pay:refund_sync,check,pay:close,delete:null,forget', 'nepabeigta atmaksa: pabeidz, pārbauda vēlreiz, tad dzēš — ' + r.calls.join());
+    r = await run(c => base(c, [{ ok: true, blockers: [] }], { pay: async (a) => { c.push('pay:' + a); return { closed: false }; } }));
+    ok(r.calls.join() === 'check,pay:close,delete:acct_X1234567,forget' && /īpašnieks slēgs/.test(r.msg.text), 'Stripe neslēdzās → pieraksta īpašniekam');
+    r = await run(c => base(c, [{ ok: true, blockers: [] }, { ok: false, blockers: [{ kind: 'payment_open', offer_id: 'o' }] }],
+      { pay: async (a) => { c.push('pay:' + a); throw Object.assign(new Error('busy'), { status: 409 }); } }));
+    ok(r.calls.join() === 'check,pay:close,check' && /maksājuma lapa/.test(r.said[0]), 'ride-pay atteica (409): nedzēš, parāda iemeslu — ' + r.calls.join());
+    r = await run(c => base(c, [{ ok: true, blockers: [] }, { ok: false, blockers: [{ kind: 'active_ride', offer_id: 'o' }] }],
+      { deleteAccount: async () => { c.push('delete'); throw Object.assign(new Error('x'), { code: 'busy' }); } }));
+    ok(r.calls.join() === 'check,pay:close,delete,check' && /nav beidzies/.test(r.said[0]), 'datubāze atteica (account_busy): parāda iemeslu');
+  });
+
+  test('A15: krātuve — account_busy un vecā datubāze', async () => {
+    const S = G('SupabaseRideStore');
+    // _rest kļūdas forma: { status, body } (rides.js); globālo fetch neaiztiek (citi testi iet paralēli)
+    const mk = (status, body) => { const st = Object.create(S.prototype);
+      st._rest = async () => { if (status >= 300) throw Object.assign(new Error('Datubāze: ' + status), { status, body }); return JSON.parse(body); }; return st; };
+    const c = await mk(404, '{"code":"PGRST202","message":"Could not find the function public.account_delete_check"}').deleteCheck();
+    ok(c.missing === true && c.ok === false, 'nav funkcijas → missing (nedzēst)');
+    let e = null; try { await mk(400, '{"code":"P0001","message":"account_busy: kontu dzēst vēl nevar"}').deleteAccount(); } catch (x) { e = x; }
+    ok(e && e.code === 'busy', 'account_busy → code busy');
+    e = null; try { await mk(500, 'x').deleteCheck(); } catch (x) { e = x; }
+    ok(e && e.status === 500, 'cita kļūda netiek noslēpta');
+    ok((await mk(200, '{"ok":true,"blockers":[]}').deleteCheck()).ok === true, 'atļauts');
+  });
+
+  test('A15: Edge funkcijas — close pārbauda pirms Stripe; Stripe paziņojumi ar dzēstu pasažieri', () => {
+    const rp = fs.readFileSync(path.join(SUP, 'functions', 'ride-pay', 'index.ts'), 'utf8');
+    const close = rp.slice(rp.indexOf("case 'close':"), rp.indexOf("case 'driver_status':"));
+    ok(close.indexOf("rpc/account_delete_check") > 0 && close.indexOf("rpc/account_delete_check") < close.indexOf('/close`'), 'close: pārbaude pirms Stripe konta slēgšanas');
+    ok(/busy: true/.test(close) && /409\)/.test(close), 'aizņemts → 409, kontu neslēdz');
+    ok(/r\.offer\?\.request\?\.user_id \?\? r\.offer\?\.driver_id/.test(rp) && /offer:ride_offers\(driver_id,request:ride_requests\(user_id\)\)/.test(rp), 'sync: pasažieris dzēsts → šofera vārdā');
+    const wh = fs.readFileSync(path.join(SUP, 'functions', 'stripe-webhook', 'index.ts'), 'utf8');
+    ok(/row\.offer\?\.request\?\.user_id \?\? row\.offer\?\.driver_id/.test(wh) && /offer:ride_offers\(driver_id,request:ride_requests\(user_id\)\)/.test(wh), 'webhook: pasažieris dzēsts → šofera vārdā');
+  });
+
+  test('A15: politika un noteikumi — kas paliek, kad nevar dzēst; jauna versija', () => {
+    const pr = fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8'), te = fs.readFileSync(path.join(ROOT, 'terms.html'), 'utf8');
+    const au = fs.readFileSync(path.join(ROOT, 'auth.js'), 'utf8');
+    ok(/CZ_PRIVACY_VERSION = '2026-11-08'/.test(au) && /CZ_TERMS_VERSION = '2026-11-08'/.test(au), 'jaunas versijas → piekrišanas logs');
+    ok(/Kas paliek otram brauciena dalībniekam/.test(pr) && /~1 km/.test(pr) && /kontu dzēst nevar/.test(pr), 'privacy.html');
+    ok(/izņemot, kamēr ir aktīvs brauciens/.test(te), 'terms.html');
+    const ui = fs.readFileSync(path.join(ROOT, 'rides-ui.js'), 'utf8');
+    ok(/Otram brauciena dalībniekam paliek notikušā brauciena ieraksts bez tava vārda/.test(ui), 'dzēšanas apstiprinājuma teksts');
+    for (const f of ['index.html', 'index-gl.html']) {
+      const h = fs.readFileSync(path.join(ROOT, f), 'utf8');
+      ok(/auth\.js\?v=157/.test(h) && /rides\.js\?v=157/.test(h) && /rides-ui\.js\?v=157/.test(h), f + ': v157');
+    }
   });
 }
 
