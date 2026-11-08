@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Datubāzes testi (A08): uzbūvē visu shēmu no supabase/*.sql tukšā lokālā PostgreSQL un palaiž visus SQL scenārijus.
+# Datubāzes testi (A08, A09): uzbūvē visu shēmu no supabase/*.sql tukšā lokālā PostgreSQL un palaiž visus SQL scenārijus.
+# 2. daļa (A09): otra datubāze tieši pēc supabase/ORDER.txt — supabase/status.sql ir aktuāls un saka „VISS KĀRTĪBĀ”,
+# vecie faili atsakās palaisties atkārtoti, jaunākie (22–26) palaižas atkārtoti bez izmaiņām.
 # NEKAD nelaid pret Supabase / produkciju — skripts izveido un izdzēš datubāzi.
 #
 # Lietošana:   PGHOST=localhost PGUSER=postgres PGPASSWORD=… bash tests/run-sql.sh
@@ -28,6 +30,8 @@ STEPS=(
   t:coins-test.sql t:presence-test.sql
   s:coins-3-skins.sql
   t:skins-test.sql
+  # A09: migrāciju uzskaite (palaižama atkārtoti)
+  s:rides-17-migrations.sql s:rides-17-migrations.sql
 )
 
 fail=0; pass=0
@@ -70,6 +74,43 @@ for step in "${STEPS[@]}"; do
 done
 
 PGDATABASE=postgres psql -X -q -c "drop database if exists \"$DB\"" >/dev/null 2>&1
+
+# ---------- 2. daļa (A09): tieši produkcijas secībā (supabase/ORDER.txt) ----------
+ok_()  { pass=$((pass + 1)); echo "  ✓ $1"; }
+bad_() { fail=$((fail + 1)); echo "  ✗ $1"; [ -n "${2:-}" ] && sed 's/^/      /' <<<"$2" | head -15; }
+ODB="${DB}_order"
+export PGDATABASE=postgres
+psql -X -q -v ON_ERROR_STOP=1 -c "drop database if exists \"$ODB\"" -c "create database \"$ODB\"" >/dev/null 2>&1 || die "neizdevās izveidot $ODB"
+export PGDATABASE="$ODB"
+psql -X -q -v ON_ERROR_STOP=1 -f tests/sql/supabase-stub.sql >/dev/null || die "supabase-stub.sql ($ODB)"
+mapfile -t ORDER < <(grep -vE '^[[:space:]]*(#|$)' supabase/ORDER.txt | awk '{print $2}')
+for f in "${ORDER[@]}"; do
+  out=$(psql -X -q -v ON_ERROR_STOP=1 -f "supabase/$f" 2>&1) || { echo "$out" | tail -5; die "ORDER.txt: $f"; }
+done
+ok_ "ORDER.txt — visi ${#ORDER[@]} faili tukšā datubāzē pēc kārtas"
+status_check() {   # $1 — gaidītais: ok | <teksts, kam jābūt rezultātā>
+  local out; out=$(psql -X -q -At -F ' | ' -v ON_ERROR_STOP=1 -f supabase/status.sql 2>&1)
+  if [ "$1" = ok ]; then [ "$out" = "VISS KĀRTĪBĀ | datubāze atbilst supabase/ORDER.txt | " ] && return 0
+  else grep -qF "$1" <<<"$out" && return 0; fi
+  echo "$out"; return 1
+}
+gen=$(bash tests/gen-status.sh 2>&1) && [ "$gen" = "$(cat supabase/status.sql)" ] && ok_ "supabase/status.sql ir aktuāls" \
+  || bad_ "supabase/status.sql nav aktuāls — palaid: PGDATABASE=<uzbūvēta datubāze> bash tests/gen-status.sh > supabase/status.sql" "$(diff <(echo "$gen") supabase/status.sql | head -10)"
+out=$(status_check ok) && ok_ "status.sql: VISS KĀRTĪBĀ" || bad_ "status.sql atrada problēmas" "$out"
+for f in "${ORDER[@]:21}"; do   # 22–26: drošības labojumi un uzskaite — drīkst palaist atkārtoti
+  out=$(psql -X -q -v ON_ERROR_STOP=1 -f "supabase/$f" 2>&1) && ok_ "atkārtoti: $f" || bad_ "atkārtoti: $f" "$out"
+done
+out=$(status_check ok) && ok_ "status.sql pēc atkārtošanas: VISS KĀRTĪBĀ" || bad_ "status.sql pēc atkārtošanas" "$out"
+for f in $(grep -lE "cz_migrations where seq > [0-9]+\)" supabase/*.sql); do   # vecie faili ar aizsardzību
+  out=$(psql -X -q -v ON_ERROR_STOP=1 -f "$f" 2>&1)
+  if [ $? -ne 0 ] && grep -q "atkārtoti to palaist nedrīkst" <<<"$out"; then ok_ "aizsardzība: $(basename "$f") atsakās"
+  else bad_ "aizsardzība: $(basename "$f") NEatteicās" "$out"; fi
+done
+out=$(status_check ok) && ok_ "status.sql pēc atteikumiem: nekas nav mainījies" || bad_ "status.sql pēc atteikumiem" "$out"
+out=$(PGOPTIONS='-c cz.allow_rerun=on' psql -X -q -v ON_ERROR_STOP=1 -f supabase/rides-2-chat-trip.sql 2>&1) || bad_ "piespiedu atkārtošana (cz.allow_rerun)" "$out"
+out=$(status_check "ride_driver_update(oid uuid, p_trip text, p_lat double precision, p_lng double precision, p_heading real) | cita versija") \
+  && ok_ "status.sql pamana vecu funkcijas versiju (rides-2 pēc rides-15)" || bad_ "status.sql nepamanīja vecu versiju" "$out"
+PGDATABASE=postgres psql -X -q -c "drop database if exists \"$ODB\"" >/dev/null 2>&1
 echo
 echo "SQL testi: $pass izdevās, $fail neizdevās"
 [ "$fail" -eq 0 ]

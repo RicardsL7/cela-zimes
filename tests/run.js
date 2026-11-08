@@ -2878,7 +2878,8 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   const sh = fs.readFileSync(path.join(__dirname, 'run-sql.sh'), 'utf8');
   const steps = (sh.match(/STEPS=\(([\s\S]*?)\n\)/) || [])[1] || '';
   const listed = new Set([...steps.matchAll(/\bs:([\w.-]+\.sql)/g)].map(m => m[1]));
-  for (const f of fs.readdirSync(path.join(__dirname, '..', 'supabase')).filter(f => f.endsWith('.sql'))) ok(listed.has(f), 'run-sql.sh: trūkst supabase/' + f);
+  // A09: migrācijas — visi supabase/*.sql, izņemot ģenerēto pārbaudi status.sql
+  for (const f of fs.readdirSync(path.join(__dirname, '..', 'supabase')).filter(f => f.endsWith('.sql') && f !== 'status.sql')) ok(listed.has(f), 'run-sql.sh: trūkst supabase/' + f);
   const tests = new Set([...steps.matchAll(/\bt:([\w.-]+\.sql)/g)].map(m => m[1]));
   for (const f of fs.readdirSync(__dirname).filter(f => /-test\.sql$/.test(f))) ok(tests.has(f), 'run-sql.sh: netiek palaists tests/' + f);
   ok(/\bp:rides-accept-parallel\.sh\b/.test(steps), 'paralēlais tests');
@@ -2888,6 +2889,70 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   ok(/\[ "\$fail" -eq 0 \]\s*$/.test(sh), 'kods 1, ja kaut kas neizdevās');
   ok(fs.existsSync(path.join(__dirname, 'sql', 'supabase-stub.sql')), 'Supabase aizstājējs testiem');
 });
+
+// ---------- A09 (audits 08.11.2026): sakārtotas migrācijas, pārbaude, aizsardzība, jauns README ----------
+{
+  const SUP = path.join(__dirname, '..', 'supabase');
+  const order = fs.readFileSync(path.join(SUP, 'ORDER.txt'), 'utf8').split('\n').filter(l => l.trim() && !l.trim().startsWith('#'))
+    .map(l => { const [n, f] = l.trim().split(/\s+/); return { n: +n, f }; });
+  test('A09: ORDER.txt — visi migrāciju faili, pēc kārtas, bez dublikātiem', () => {
+    order.forEach((x, i) => eq(x.n, i + 1, 'numuri pēc kārtas: ' + x.f));
+    const files = fs.readdirSync(SUP).filter(f => f.endsWith('.sql') && f !== 'status.sql').sort();
+    eq(order.map(x => x.f).slice().sort().join(','), files.join(','), 'ORDER.txt = visi supabase/*.sql (izņemot status.sql)');
+    eq(new Set(order.map(x => x.f)).size, order.length, 'bez dublikātiem');
+    eq(order[order.length - 1].f, 'rides-17-migrations.sql', 'pēdējā — migrāciju uzskaite');
+    // run-sql.sh 1. daļā shēmas faili tajā pašā secībā (izņemot coins-3: testu dēļ pēc kopbraucienu scenārijiem — neatkarīgi)
+    const sh = fs.readFileSync(path.join(__dirname, 'run-sql.sh'), 'utf8');
+    const steps = [...((sh.match(/STEPS=\(([\s\S]*?)\n\)/) || [])[1] || '').matchAll(/\bs:([\w.-]+\.sql)/g)].map(m => m[1]);
+    const firstSeen = steps.filter((f, i) => steps.indexOf(f) === i && f !== 'coins-3-skins.sql');
+    eq(firstSeen.join(','), order.map(x => x.f).filter(f => f !== 'coins-3-skins.sql').join(','), 'run-sql.sh secība = ORDER.txt');
+    ok(/mapfile -t ORDER < <\(grep -vE '\^\[\[:space:\]\]\*\(#\|\$\)' supabase\/ORDER\.txt/.test(sh), '2. daļa būvē tieši pēc ORDER.txt');
+  });
+  test('A09: veco failu aizsardzība — tieši tiem, kuru atkārtošana maina datubāzi', () => {
+    const guarded = ['rides-2-chat-trip.sql', 'rides-3-pay.sql', 'rides-7-account.sql', 'radars.sql', 'traffic.sql', 'traffic-2-helpers.sql',
+      'reports.sql', 'rides-8-refund.sql', 'rides-9-ratings.sql', 'stats-f16.sql', 'coins-1.sql'];
+    for (const { n, f } of order) {
+      const s = fs.readFileSync(path.join(SUP, f), 'utf8');
+      const g = s.match(/if exists \(select 1 from public\.cz_migrations where seq > (\d+)\)/);
+      if (guarded.includes(f)) {
+        ok(g && +g[1] === n, f + ': aizsardzība ar savu numuru ' + n);
+        ok(s.indexOf("if to_regclass('public.cz_migrations') is not null then") < s.indexOf('if exists (select 1 from public.cz_migrations'), f + ': ārējais if (tabulas var vēl nebūt)');
+        const firstStmt = s.split('\n').findIndex(l => l.trim() && !l.startsWith('--'));
+        ok(s.split('\n')[firstStmt] === 'do $$ begin', f + ': aizsardzība ir pirmā darbība failā');
+        ok(s.includes(`raise exception '${f} (Nr. ${n}) ir vecs migrācijas fails`), f + ': skaidrs teksts');
+      } else ok(!g, f + ': bez veco failu aizsardzības (to drīkst palaist atkārtoti)');
+    }
+    const m = fs.readFileSync(path.join(SUP, 'rides-17-migrations.sql'), 'utf8');
+    ok(/create table if not exists public\.cz_migrations/.test(m) && /enable row level security/.test(m) && /revoke all on public\.cz_migrations from public, anon, authenticated;/.test(m), 'uzskaites tabula lietotnei neredzama');
+    for (const { n, f } of order.slice(0, 25)) ok(m.includes(`(${n}, '${f}', 'pirms uzskaites')`), 'rides-17 atzīmē ' + f);
+    ok(/revoke all on function public\.cz_migration_begin\(int, text\) from public, anon, authenticated;/.test(m), 'palīgfunkcijas lietotnei nav pieejamas');
+    ok(/to_regprocedure\('public\.ride_checkout_save\(uuid, text, integer\)'\) is null/.test(m), 'prasa, lai iepriekšējie faili jau palaisti');
+  });
+  test('A09: status.sql — ģenerēts, tikai lasa, aptver funkcijas, tiesības un migrācijas', () => {
+    const st = fs.readFileSync(path.join(SUP, 'status.sql'), 'utf8');
+    ok(/ŠIS FAILS IR ĢENERĒTS/.test(st) && /bash tests\/gen-status\.sh/.test(st), 'ģenerēts');
+    const code = st.replace(/--[^\n]*/g, '');
+    ok(!/\b(insert|update|delete|drop|create|alter|grant|revoke|truncate)\b/i.test(code.replace(/'[^']*'/g, "''")), 'tikai lasa (nav rakstīšanas komandu)');
+    for (const fn of ['ride_driver_update(', 'ride_offer_accept(', 'ride_checkout_save(', 'ride_guard_trip(', 'cz_migration_begin('])
+      ok(st.includes("('" + fn), 'pārbauda funkciju ' + fn);
+    for (const { n, f } of order) ok(st.includes(`(${n}, '${f}')`), 'pārbauda migrāciju ' + f);
+    ok(/'ride_offers', 'driver_id', 'authenticated', false/.test(st), 'A01: driver_id UPDATE lietotnei aizliegts');
+    ok(/VISS KĀRTĪBĀ/.test(st), 'skaidrs rezultāts');
+    const sup = fs.readFileSync(path.join(__dirname, 'sql', 'supabase-stub.sql'), 'utf8');
+    ok(/alter default privileges in schema public grant all on functions to anon, authenticated, service_role;/.test(sup), 'testu datubāzē funkciju tiesības kā Supabase');
+  });
+  test('A09: dokumentācija — MIGRATIONS.md un jauns README', () => {
+    const md = fs.readFileSync(path.join(SUP, 'MIGRATIONS.md'), 'utf8');
+    for (const { n, f } of order) ok(new RegExp('\\| ' + n + ' \\| ' + f.replace(/[.-]/g, '\\$&') + ' \\|').test(md), 'MIGRATIONS.md tabulā: ' + f);
+    for (const h of ['## Kā palaist migrāciju produkcijā', '## Kā uzrakstīt jaunu migrāciju', '## Jauns Supabase projekts', '## Datu rezerves kopija'])
+      ok(md.includes(h), 'MIGRATIONS.md: ' + h);
+    ok(/Neizmanto `--data-only`/.test(md), 'brīdinājums par trigeriem atjaunošanā');
+    const rd = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
+    ok(/MapLibre GL 6/.test(rd) && /supabase\/MIGRATIONS\.md/.test(rd) && /supabase\/ORDER\.txt/.test(rd) && /node tests\/run\.js/.test(rd), 'README: karte, datubāze, testi');
+    ok(!/`app\.js` — karte/.test(rd) && /netiek lietota/.test(rd), 'README vairs neapraksta veco Leaflet versiju kā galveno');
+    ok(!/[A-Za-z0-9._%+-]+@gmail\.com/.test(rd + md), 'nav personīgu e-pastu');
+  });
+}
 
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
