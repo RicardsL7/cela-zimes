@@ -41,6 +41,9 @@ STEPS=(
   # A16: citu braucēju punkti — atsevišķa izvēle, ~150 m, redz tikai braucot (palaižama atkārtoti)
   s:presence-2-privacy.sql s:presence-2-privacy.sql
   t:presence-privacy-test.sql
+  # B02 (audits 2): atvērtie braucieni — šoferiem aptuveni, precīzi tikai pieņemtajam šoferim (palaižama atkārtoti)
+  s:rides-18-open-privacy.sql s:rides-18-open-privacy.sql
+  t:open-privacy-test.sql
 )
 
 fail=0; pass=0

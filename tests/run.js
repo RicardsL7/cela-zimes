@@ -3558,6 +3558,57 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   });
 }
 
+// ---------- B02 (audits 2): atvērtie braucieni šoferiem aptuveni — bez vārda, adreses, piezīmes ----------
+// Uzvedību datubāzē pārbauda tests/open-privacy-test.sql (run-sql.sh); šeit — fails, krātuve un kartītes.
+{
+  const ROOT = path.join(__dirname, '..'), SUP = path.join(ROOT, 'supabase');
+  test('B02: SQL — tabulu redz tikai pasažieris un pieņemtais šoferis; aptuvenais saraksts bez identitātes', () => {
+    const sql = fs.readFileSync(path.join(SUP, 'rides-18-open-privacy.sql'), 'utf8');
+    ok(/^30 rides-18-open-privacy\.sql$/m.test(fs.readFileSync(path.join(SUP, 'ORDER.txt'), 'utf8')), 'ORDER.txt: 30');
+    ok(/cz_migration_begin\(30, 'rides-18-open-privacy\.sql'\)/.test(sql) && /cz_migration_done\(30,/.test(sql), 'uzskaite');
+    const pol = sql.slice(sql.indexOf('create policy requests_read'), sql.indexOf(';', sql.indexOf('create policy requests_read')));
+    ok(!/status = 'open'/.test(pol) && !/has_offer_on/.test(pol) && /user_id = auth\.uid\(\) or public\.ride_request_exact\(id\)/.test(pol), 'politika bez „open” un bez jebkura piedāvājuma');
+    ok(/driver_id = auth\.uid\(\) and was_accepted/.test(sql), 'precīzi — tikai pieņemtajam šoferim');
+    for (const fn of ['ride_requests_open', 'ride_requests_coarse']) {
+      const body = sql.slice(sql.indexOf('function public.' + fn + '('), sql.indexOf('revoke all on function public.' + fn));
+      ok(/round\(r\.from_lat::numeric \* 100\) \/ 100/.test(body) && /round\(r\.from_lng::numeric \* 60\) \/ 60/.test(body), fn + ': ~1 km');
+      ok(!/r\.note|r\.from_name,|r\.user_id,|profiles/.test(body.replace(/ride_area\(r\.(from|to)_name\)/g, '')), fn + ': bez piezīmes, adreses, ID, vārda');
+      ok(new RegExp('revoke all on function public\\.' + fn + '\\([^)]*\\) from public, anon;').test(sql), fn + ': ne anon');
+    }
+    const steps = fs.readFileSync(path.join(__dirname, 'run-sql.sh'), 'utf8');
+    ok(/s:rides-18-open-privacy\.sql s:rides-18-open-privacy\.sql/.test(steps) && /t:open-privacy-test\.sql/.test(steps), 'run-sql.sh');
+  });
+  test('B02: krātuve — aptuvenais saraksts, vecā datubāze, gaidošie piedāvājumi', async () => {
+    const conv = G('rideCoarseToReq');
+    const r = conv({ id: 'q1', from_lat: '56.95', from_lng: '24.1', from_area: 'Rīga', to_lat: 56.97, to_lng: 24.15, to_area: '', depart_at: 'x', seats: 2, status: 'open', mine: false, pas_avg: '4.5', pas_count: 3, pas_rides: 7 }, 'me');
+    ok(r.coarse && r.from_lat === 56.95 && r.from_name === 'Ap Rīga (~1 km)' && r.to_name === 'Galamērķis (~1 km)' && r.note === '' && r.user_id === null && r.passenger === null, 'pārveidošana');
+    ok(r.rating.avg === 4.5 && r.rating.count === 3, 'vērtējums līdzi');
+    ok(conv({ id: 'q2', mine: true }, 'me').user_id === 'me', 'savējo atpazīst (lai neredzētu pats sevi)');
+    const S = G('SupabaseRideStore');
+    const mk = (handler) => { const st = Object.create(S.prototype); Object.defineProperty(st, 'auth', { value: { userId: 'me' } }); const calls = []; st._rest = async (p, o) => { calls.push(p); return handler(p, o); }; return { st, calls }; };
+    let { st, calls } = mk(p => p === 'rpc/ride_requests_open' ? [{ id: 'a', from_lat: 1, from_lng: 2, to_lat: 3, to_lng: 4, mine: false }] : []);
+    const list = await st.openRequests({ s: 1, w: 2, n: 3, e: 4 });
+    ok(calls.join() === 'rpc/ride_requests_open' && list[0].coarse, 'jaunais ceļš — tikai servera funkcija');
+    ({ st, calls } = mk(p => { if (p.startsWith('rpc/')) throw Object.assign(new Error('x'), { status: 404, body: '{"code":"PGRST202","message":"Could not find the function public.ride_requests_open"}' }); return [{ id: 'old' }]; }));
+    const old = await st.openRequests(null);
+    ok(old[0].id === 'old' && calls[1].startsWith('ride_requests?status=eq.open'), 'pirms SQL Nr. 30 — vecais ceļš');
+    ({ st, calls } = mk(p => p.startsWith('ride_offers') ? [{ id: 'o1', request_id: 'q1', status: 'pending', request: null }, { id: 'o2', request_id: 'q2', status: 'accepted', request: { id: 'q2', user_id: 'p2', status: 'matched', passenger: { name: 'Anna' } } }]
+      : p === 'rpc/ride_requests_coarse' ? [{ id: 'q1', from_lat: 1, from_lng: 2, to_lat: 3, to_lng: 4, status: 'open', mine: false }] : []));
+    const offers = await st.myOffers();
+    ok(offers.length === 2 && offers.find(o => o.id === 'o1').request.coarse && offers.find(o => o.id === 'o2').passenger.name === 'Anna', 'gaidošajam — aptuveni, pieņemtajam — precīzi');
+  });
+  test('B02: kartītes — „Pasažieris” bez vārda, paskaidrojums, vērtējums', () => {
+    const ui = fs.readFileSync(path.join(ROOT, 'rides-ui.js'), 'utf8');
+    const open = ui.slice(ui.indexOf('function ridesOpenCard'), ui.indexOf('function ridesMyOfferCard'));
+    ok(/ridesReqPerson\(r, r\.passenger, '', meta\)/.test(open) && /r\.coarse \? rEl\('p', \{ class: 'fine r-coarse', text: RIDES_COARSE_HINT \}\)/.test(open), 'atvērtā kartīte');
+    ok(/r\.coarse \? ridesPerson\(\{ name: 'Pasažieris' \}, '', extra, 'req:' \+ r\.id\)/.test(ui), 'bez vārda; vērtējums pēc pieprasījuma');
+    ok(/ridesCoarseRatings\(\[\.\.\.rides\.openList/.test(ui), 'vērtējumi no servera');
+    ok(/Precīzu vietu, vārdu un piezīmi redz tikai šoferis, kura piedāvājumu pieņemsi/.test(ui), 'pasažierim paskaidrots formā');
+    ok(/Kamēr brauciens gaida šoferi, citi pieteikušies lietotāji redz tikai aptuvenu vietu/.test(fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8')), 'privātuma politika');
+    for (const f of ['index.html', 'index-gl.html']) ok(/rides\.js\?v=159/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /rides-ui\.js\?v=159/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': v159');
+  });
+}
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
