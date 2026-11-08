@@ -386,5 +386,7 @@
   kartītē „Pasažieris”, vieta „Ap Rīga (~1 km)”, vērtējums un paskaidrojums; gaidošie piedāvājumi — aptuveni,
   pieņemtie — precīzi (navigācija pie pasažiera kā līdz šim). Pasažiera formā paskaidrots, ko šoferi redz.
 - **Politika:** `privacy.html` 3. punkts papildināts (redzamība samazinājās — versija nemainās).
+- **Produkcijā:** Nr. 30 palaists 08.11.2026 ar īpašnieka atļauju; `status.sql` — VISS KĀRTĪBĀ; `requests_read` =
+  `(user_id = auth.uid()) OR ride_request_exact(id)`; `ride_requests_open` — ne anon; braucieni neskarti (28).
 - Testi: `tests/open-privacy-test.sql` (14), `run.js` +3 (194/194), `run-sql.sh` 333/333.
 
