@@ -1,0 +1,45 @@
+# A14: mobile/package-lock.json — precīzas Android lietotnes atkarību versijas un kontrolsummas (npm ci būvē tieši tās).
+# Kad mainās mobile/package.json (vai palaižot ar roku), atjauno lockfile un saglabā to main zarā. Neko neinstalē
+# (--package-lock-only, --ignore-scripts), slepenās atslēgas neizmanto, raksta tikai mobile/package-lock.json.
+name: Android atkarības (lockfile)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/package.json'
+      - '.github/workflows/android-lock.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-lock
+  cancel-in-progress: false
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: package-lock.json (bez instalēšanas)
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund --legacy-peer-deps
+      - name: Pārbauda — npm ci ar šo lockfile izdodas
+        run: npm ci --ignore-scripts --no-audit --no-fund --legacy-peer-deps
+      - name: Saglabā izmaiņas
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          if git diff --cached --quiet; then echo "Izmaiņu nav"; exit 0; fi
+          git commit -m "A14: mobile/package-lock.json"
+          git pull --rebase --autostash
+          git push
