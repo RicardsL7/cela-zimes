@@ -3095,7 +3095,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/'Vecu datu tīrīšana nestrādā: '/.test(aj) && /if \(clean && !\(adm\.cleanup && adm\.cleanup\.healthy\)\) box\.append\(clean\);/.test(aj), 'admin.js: brīdinājums paneļa augšā');
     ok(/admin\.js\?v=1(5[2-9]|[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, 'admin.html'), 'utf8')), 'admin.html: jauna admin.js versija');
     const md = fs.readFileSync(path.join(ROOT, 'supabase', 'MIGRATIONS.md'), 'utf8');
-    ok(/## Vecu datu tīrīšana un uzraudzība \(A11\)/.test(md) && /palaisti (visi )?1–27/.test(md), 'MIGRATIONS.md');
+    ok(/## Vecu datu tīrīšana un uzraudzība \(A11\)/.test(md) && /palaisti (visi )?1–(27|29)/.test(md), 'MIGRATIONS.md');
   });
 }
 
