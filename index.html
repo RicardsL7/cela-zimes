@@ -378,7 +378,7 @@
     <div class="set-group">
       <details class="set-more set-about">
         <summary><svg class="set-ic" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v5.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="7.8" r="1.2" fill="currentColor"/></svg><span class="set-txt"><b>Datu avoti</b></span></summary>
-        <p>© OpenStreetMap līdzautori, © Mapillary, © OpenFreeMap. Maršruti: OSRM. Meklēšana: Photon, Nominatim. Laikapstākļi: Open-Meteo. Vietas: OpenStreetMap (Overpass).</p>
+        <p>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap līdzautori</a>, © Mapillary, © OpenFreeMap. Maršruti: OSRM (project-osrm.org, FOSSGIS routing.openstreetmap.de). Meklēšana: Photon (komoot), Nominatim. Laikapstākļi: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0). Vietas: OpenStreetMap (Overpass). Kļūda kartē? <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">Labot karti</a>.</p>
       </details>
     </div>
 
@@ -436,24 +436,25 @@
 
   <!-- A07: MapLibre 6 ir tikai ES modulis (bez UMD). maplibre-load.js uzliek window.maplibregl; visi nākamie skripti ir defer —
        pārlūks tos izpilda pēc šī moduļa, tādā pašā secībā kā līdz šim. A10: MapLibre no vendor/ (nevis unpkg). -->
-  <script defer src="netguard.js?v=154"></script>
+  <script defer src="netguard.js?v=161"></script>
+  <script defer src="services.js?v=161"></script>
   <script type="module" src="maplibre-load.js?v=151"></script>
   <script defer src="cache.js?v=93"></script>
-  <script defer src="sheets.js?v=153"></script>
+  <script defer src="sheets.js?v=161"></script>
   <script defer src="signs.js?v=93"></script>
   <script defer src="mapillary.js?v=93"></script>
   <script defer src="roads-gl.js?v=93"></script>
   <script defer src="basemap-gl.js?v=121"></script>
   <script defer src="speedlimit.js?v=128"></script>
   <script defer src="signs-gl.js?v=150"></script>
-  <script defer src="nav.js?v=134"></script>
+  <script defer src="nav.js?v=161"></script>
   <script defer src="times.js?v=93"></script>
   <script defer src="parking.js?v=93"></script>
   <script defer src="alerts.js?v=144"></script>
   <script defer src="reports.js?v=158"></script>
   <script defer src="skins-art.js?v=125"></script>
   <script defer src="skins.js?v=125"></script>
-  <script defer src="places.js?v=133"></script>
+  <script defer src="places.js?v=161"></script>
   <script defer src="model.js?v=93"></script>
   <script defer src="rides-config.js?v=93"></script>
   <script defer src="app-native.js?v=156"></script>
@@ -464,8 +465,8 @@
   <script defer src="rides-ui.js?v=160"></script>
   <script defer src="garage.js?v=158"></script>
   <script defer src="presence.js?v=158"></script>
-  <script defer src="app-gl.js?v=156"></script>
-  <script defer src="park-gl.js?v=116"></script>
+  <script defer src="app-gl.js?v=161"></script>
+  <script defer src="park-gl.js?v=161"></script>
   <script defer src="park-dest-gl.js?v=93"></script>
   <script defer src="traffic-gl.js?v=158"></script>
 </body>

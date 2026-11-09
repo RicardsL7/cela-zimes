@@ -380,7 +380,8 @@ out body geom;`;
 // serveriem. Ilgāk par timeoutMs negaida. Vienādi vaicājumi, kas notiek vienlaikus, tiek sūtīti tikai vienreiz.
 const OVERPASS_HEDGE_MS = 4000;
 function overpassOrder(urls) {
-  const h = u => (typeof czNet !== 'undefined' && czNet.health) ? czNet.health(new URL(u).hostname) : { cooling: false, fail: 0, avgMs: 0 };
+  // czNetHealth — netguard.js funkcija (B04: window.czNet citos skriptos aizsedz netguard.js iekšējais const czNet, tāpēc tieši funkcija)
+  const h = u => typeof czNetHealth === 'function' ? czNetHealth(new URL(u).hostname) : { cooling: false, fail: 0, avgMs: 0 };
   return urls.map((u, i) => ({ u, i, ...h(u) }))
     .sort((a, b) => (a.cooling - b.cooling) || (a.fail - b.fail) || ((a.avgMs || 1e9) - (b.avgMs || 1e9)) || (a.i - b.i))
     .map(x => x.u);
@@ -1409,14 +1410,14 @@ const PIN_ICON = '<svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 2
 async function searchPhoton(q) {
   const c = state.me || { lat: map.getCenter().lat, lng: map.getCenter().lng };
   // F3: lang=default — vietējie (Latvijā latviskie) nosaukumi neatkarīgi no pārlūka valodas
-  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=7&lat=${c.lat.toFixed(2)}&lon=${c.lng.toFixed(2)}&lang=${PHOTON_LANG}`;
+  const url = `${CZ_SERVICES.photon}/api/?q=${encodeURIComponent(q)}&limit=7&lat=${c.lat.toFixed(2)}&lon=${c.lng.toFixed(2)}&lang=${PHOTON_LANG}`;
   // Tas pats teksts ~1 km apkārtnē — no kešatmiņas (1 diena); 'photon-lv' — vecie angliskie rezultāti netiek ņemti
   const json = await cachedJson('photon-lv', q.toLowerCase() + '@' + c.lat.toFixed(2) + ',' + c.lng.toFixed(2), 24 * 3600 * 1000,
     () => fetchJson(url, {}, 7000));
   return (json.features || []).map(photonSearchItem);
 }
 async function searchNominatim(q) {
-  const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=lv&q=' + encodeURIComponent(q);
+  const url = CZ_SERVICES.nominatim + '/search?format=jsonv2&limit=6&accept-language=lv&q=' + encodeURIComponent(q);
   const json = await cachedJson('nominatim', q.toLowerCase(), 24 * 3600 * 1000, () => fetchJson(url, {}, 8000));
   return json.map(it => {
     const [name, ...rest] = it.display_name.split(', ');
@@ -2650,7 +2651,8 @@ function updateRouteAlertSummary() {
   $('routeSigns').textContent = parts.length ? 'Pa ceļam: ' + parts.join(' · ') : (state.mlyToken ? 'Meklē brīdinājumus pa ceļam…' : '');
 }
 
-// ---------- Laikapstākļi (Open-Meteo, bez atslēgas) ----------
+// ---------- Laikapstākļi (Open-Meteo; adrese — services.js) ----------
+const WEATHER_FIELDS = 'temperature_2m,precipitation,rain,showers,snowfall,weather_code,wind_gusts_10m,visibility';
 let weatherAt = null, weatherTime = 0;
 async function loadWeather(force) {
   if (!state.me) return;
@@ -2658,10 +2660,12 @@ async function loadWeather(force) {
   if (!force && !moved && Date.now() - weatherTime < 10 * 60000) return;
   weatherAt = [state.me.lat, state.me.lng]; weatherTime = Date.now();
   try {
-    const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + state.me.lat.toFixed(3) + '&longitude=' + state.me.lng.toFixed(3) +
-      '&current=temperature_2m,precipitation,rain,showers,snowfall,weather_code,wind_gusts_10m,visibility&wind_speed_unit=ms&timezone=auto';
+    const url = CZ_SERVICES.weather + '?latitude=' + state.me.lat.toFixed(3) + '&longitude=' + state.me.lng.toFixed(3) +
+      '&current=' + WEATHER_FIELDS + '&wind_speed_unit=ms&timezone=auto';
+    // B04: komerciāli — mūsu Supabase funkcija „weather” (Open-Meteo atslēga serverī); tai vajag publisko anon atslēgu
+    const opts = czServiceIsOwn(url) ? { headers: { apikey: RIDES_CONFIG.anonKey, Authorization: 'Bearer ' + RIDES_CONFIG.anonKey } } : {};
     // ~1 km apkārtnē 10 min derīgs (arī pēc lapas pārlādes)
-    const j = await cachedJson('wx', state.me.lat.toFixed(2) + ',' + state.me.lng.toFixed(2), 10 * 60000, () => fetchJson(url, {}, 8000));
+    const j = await cachedJson('wx', state.me.lat.toFixed(2) + ',' + state.me.lng.toFixed(2), 10 * 60000, () => fetchJson(url, opts, 8000));
     state.weather = { list: weatherAlerts(j.current), time: j.current && j.current.time };
   } catch (err) {
     console.warn('Laikapstākļi nav ielādēti', err);

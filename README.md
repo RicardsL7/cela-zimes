@@ -73,7 +73,7 @@ demo režīms tikai šajā pārlūkā).
 
 **Ko lietotne dara pati** (`netguard.js` — visi lapas `fetch` pieprasījumi):
 - skaita pieprasījumus katram serverim šajā ierīcē (šodien / 7 dienas, kļūdas, 429/503, vidējais laiks) — iestatījumos ar
-  `?dev=1` („Tīkla pieprasījumi šajā ierīcē”) vai konsolē `czNet.stats()`;
+  `?dev=1` („Tīkla pieprasījumi šajā ierīcē”) vai konsolē `window.czNet.stats()`;
 - bezmaksas serveriem ievēro to noteikumus (rinda: Nominatim ≤ 1/s, OSRM ≤ 1/s, Overpass ≤ 2 vienlaikus) un pēc „par daudz”
   vai kļūmes ieturē pauzi (5 s → 10 s → … ≤ 5 min; Overpass pēc 429 — vismaz 30 s), pauzes laikā serveri netraucē;
 - Overpass jautā vienam serverim (veselākajam), otram — tikai ja pirmais 4 s neatbild vai kļūdās (agrāk — abiem reizē);
@@ -83,7 +83,7 @@ demo režīms tikai šajā pārlūkā).
   pēc 300 ms pauzes rakstīšanā.
 
 **Aptuvenā slodze uz vienu lietotāju, kam lietotne atvērta** (aprēķināts no koda intervāliem; īstos skaitļus rāda
-`czNet.stats()` un Supabase → Reports):
+`window.czNet.stats()` un Supabase → Reports):
 
 | Serviss | Pieprasījumi stundā | No kā atkarīgs |
 |---|---|---|
@@ -109,6 +109,32 @@ demo režīms tikai šajā pārlūkā).
   lietotnēm ar daudz lietotājiem; noklusējums ir OpenFreeMap.
 
 Mērķa lietotāju skaits vēl nav noteikts — kad tas būs, pēc šīs tabulas izvēlas, kuru servisu pirmo pārcelt uz savu/maksas.
+
+### Ārējie servisi: pāreja uz komerciālu lietošanu (B04)
+
+Šobrīd lietotne ir bez maksas, un maksājumi notiek tikai testa režīmā, tāpēc tā lieto bezmaksas publiskos serverus to
+noteikumu robežās (`netguard.js`). **Komerciāla tā kļūst, kad ieslēdz īstus maksājumus (`PAY_LIVE`, 10 % komisija)** —
+tad vismaz laikapstākļiem jāpāriet uz maksas plānu. Visas adreses ir vienā failā `services.js` (`CZ_SERVICES`); maršrutam
+jau ir rezerves serveris (ja OSRM demo neatbild — FOSSGIS). Cenas — 10.11.2026, pirms pirkšanas jāpārbauda.
+
+| Serviss | Tagad | Noteikumi komerciālai lietotnei | Variants, kad vajag | Cena |
+|---|---|---|---|---|
+| Laikapstākļi | Open-Meteo bezmaksas | Tikai nekomerciāli → **jāmaina pirms `PAY_LIVE`** | Open-Meteo API Standard caur funkciju `weather` | $29/mēn. (1 milj. pieprasījumu) |
+| Maršruts | OSRM demo + FOSSGIS rezerve | Atļauts publiskai lietotnei bez maksas sienas, ≤ 1/s, ar atsauci; bez garantijām | GraphHopper Basic vai savs OSRM | €69/mēn. vai serveris |
+| Meklēšana | Photon (komoot) + Nominatim | „Saprātīgā apjomā”; Nominatim ≤ 1/s, bez meklēšanas rakstot | Stadia Maps Starter vai savs Photon | $20/mēn. vai serveris |
+| Vietas, zīmes | Overpass | Lieliem apjomiem — savs serveris | Savs Overpass (tikai Latvija) | serveris |
+| Karte | OpenFreeMap | Atļauts, bez ierobežojuma | — | 0 |
+
+Savs serveris Latvijas datiem (OSRM + Photon + Overpass): Hetzner 8 vCPU / 16 GB ~16–21 €/mēn. + uzturēšana.
+
+**Laikapstākļu ieslēgšana ar atslēgu** (kad pienāk laiks — to dara īpašnieks; kods jau gatavs):
+1. open-meteo.com → API Standard → atslēga.
+2. Supabase → Edge Functions → Secrets: `OPEN_METEO_KEY` (nekad lapā, JS vai repozitorijā).
+3. Izvieto `supabase/functions/weather` ar **Verify JWT izslēgtu** (laikapstākļi vajadzīgi arī bez pieteikšanās).
+   Tests: `deno run --allow-env --allow-read tests/weather-fn-test.ts`.
+4. `services.js`: `weather: 'https://pkqusuoicxmwcgwsrdqy.supabase.co/functions/v1/weather'`, jauna `?v=` versija
+   `index.html` un `index-gl.html`.
+Bez atslēgas funkcija atbild 503 un uz bezmaksas API neiet (citādi visi lietotāji nāktu no vienas IP).
 
 ## Testi
 

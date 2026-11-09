@@ -683,7 +683,7 @@ async function parkWalkToCar(car, label) {
   const a = [state.me.lng, state.me.lat], b = [car.lng, car.lat];
   let coords = [a, b], dist = distM(a[1], a[0], b[1], b[0]), dur = dist / 1.3, real = false;
   try {
-    const url = `https://routing.openstreetmap.de/routed-foot/route/v1/driving/${a[0].toFixed(6)},${a[1].toFixed(6)};${b[0].toFixed(6)},${b[1].toFixed(6)}?overview=full&geometries=geojson`;
+    const url = `${CZ_SERVICES.routeFoot}${a[0].toFixed(6)},${a[1].toFixed(6)};${b[0].toFixed(6)},${b[1].toFixed(6)}?overview=full&geometries=geojson`;
     const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 8000);
     const j = await fetch(url, { signal: ctl.signal }).then(r => r.json()).finally(() => clearTimeout(tm));
     const r = j && j.routes && j.routes[0];

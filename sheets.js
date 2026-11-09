@@ -27,9 +27,17 @@ const CZ_FOCUSABLE = 'a[href], button, input:not([type="hidden"]), select, texta
 function czShVisible(el) {
   return !!el && el.isConnected && !el.closest('[hidden]') && el.getClientRects().length > 0;
 }
+// Aizvērtas <details> saturs (izņemot tās virsrakstu summary) Tab secībā nav, lai gan pārlūks to var skaitīt redzamu
+// (B04: „Datu avoti” tagad ar saitēm — bez šī fokuss no paneļa izkrita)
+function czShInClosedDetails(el) {
+  for (let d = el.closest('details'); d; d = d.parentElement ? d.parentElement.closest('details') : null) {
+    if (!d.open && !(el.tagName === 'SUMMARY' && el.parentElement === d)) return true;
+  }
+  return false;
+}
 function czShFocusables(root) {
   return [...root.querySelectorAll(CZ_FOCUSABLE)].filter(el => !el.disabled && el.tabIndex >= 0 && czShVisible(el)
-    && !el.closest('[inert], [aria-hidden="true"]'));
+    && !el.closest('[inert], [aria-hidden="true"]') && !czShInClosedDetails(el));
 }
 // Augšējais atvērtais: pilnekrāna pārklājumi vienmēr virs paneļiem (piekrišana — virs visa)
 function czShTop() {

@@ -390,7 +390,9 @@ function photonSearchItem(f) {
 function buildPhotonPlacesUrl(catId, lat, lng, radiusKm, limit = 25) {
   const tags = PLACE_PHOTON_TAGS[catId];
   if (!tags) throw new Error('Nezināma kategorija: ' + catId);
-  return `https://photon.komoot.io/reverse?lat=${lat.toFixed(5)}&lon=${lng.toFixed(5)}&radius=${radiusKm}&limit=${limit}&lang=${PHOTON_LANG}` +
+  // Adrese — services.js (pārlūkā jau ielādēts; Node testos — require)
+  const svc = typeof CZ_SERVICES !== 'undefined' ? CZ_SERVICES : require('./services.js').CZ_SERVICES;
+  return `${svc.photon}/reverse?lat=${lat.toFixed(5)}&lon=${lng.toFixed(5)}&radius=${radiusKm}&limit=${limit}&lang=${PHOTON_LANG}` +
     tags.map(t => '&osm_tag=' + encodeURIComponent(t)).join('');
 }
 const PHOTON_OSM_TYPE = { N: 'node', W: 'way', R: 'relation' };

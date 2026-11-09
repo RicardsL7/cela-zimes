@@ -1,6 +1,6 @@
 // A13: ārējo servisu aizsardzība un mērīšana — visi lapas fetch() pieprasījumi iet caur šo slāni.
 //   • Mēra: cik pieprasījumu katram serverim šajā ierīcē (šodien un 7 dienas), cik kļūdu, cik „par daudz” (429/503),
-//     vidējais atbildes laiks. Redzams iestatījumos ar ?dev=1 un konsolē: czNet.stats().
+//     vidējais atbildes laiks. Redzams iestatījumos ar ?dev=1 un konsolē: window.czNet.stats().
 //   • Bezmaksas karšu serveriem (Overpass, Nominatim, Photon, OSRM, Open-Meteo, Mapillary, OSM API):
 //       – ne biežāk kā to lietošanas noteikumi atļauj (piem. Nominatim — 1 pieprasījums sekundē) — pieprasījums pagaida rindā;
 //       – ja serveris saka „par daudz” (429/503) vai neatbild — pauze (backoff): 5 s, 10 s, 20 s … līdz 5 min,

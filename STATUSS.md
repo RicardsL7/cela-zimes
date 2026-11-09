@@ -406,3 +406,24 @@
 - **Produkcijā:** Nr. 31 palaists 08.11.2026 ar īpašnieka atļauju; `status.sql` — VISS KĀRTĪBĀ; Rīga → Liepāja = 3044;
   `ride_fare_cap_cents` un `ride_requests_open` — ne anon; gaidošu piedāvājumu nebija, braucieni neskarti (28).
 - Testi: `tests/cost-share-test.sql` (9), `run.js` +3 (197/197), `run-sql.sh` 343/343, kartes tests — kārtībā.
+
+## B04 (audits 2) — ārējie servisi: sagatavota pāreja uz maksas plāniem (10.11.2026)
+
+- **Īpašnieka lēmums:** šobrīd 0 €; maksas servisus pērk kopā ar īsto maksājumu ieslēgšanu (`PAY_LIVE`), jo tieši tad
+  lietotne kļūst komerciāla. Cenas un noteikumi — README „Ārējie servisi: pāreja uz komerciālu lietošanu”.
+- **`services.js` (jauns, v161):** visu maršruta, meklēšanas un laikapstākļu serveru adreses vienā vietā; citur kodā tās
+  vairs nav ierakstītas (`nav.js`, `park-gl.js`, `places.js`, `app-gl.js`).
+- **Rezerves maršruta serveris:** ja OSRM demo neatbild, saka „par daudz” vai ir pauzē — `osrmFetch` jautā FOSSGIS
+  (routing.openstreetmap.de, tas pats OSRM API). „Nav maršruta” (4xx) rezervei nejautā. Viens serveris — ≤ 12 s.
+- **`supabase/functions/weather` (jauna, NAV izvietota):** laikapstākļi ar Open-Meteo maksas atslēgu no Secrets;
+  vieta noapaļota ~1 km, 10 min kešs, ≤ 30/min no IP, tikai vajadzīgie lauki; bez atslēgas — 503 (bezmaksas API neizmanto).
+  Lietotne to izmantos, tiklīdz `services.js` norādīs uz to (pievieno publisko anon atslēgu galvenē).
+- **Atsauces „Datu avoti”:** saites uz OSM autortiesībām un Open-Meteo (CC BY 4.0), FOSSGIS maršruti, „Labot karti”.
+- **Blakus atrastas un labotas kļūdas:**
+  - A13 „vispirms veselākais Overpass serveris” nestrādāja: `czNet.health` citos skriptos ir netguard.js iekšējais
+    objekts (bez `.health`) — tagad `czNetHealth()`. Konsolē statistika: `window.czNet.stats()`.
+  - Iestatījumu panelī Tab izkrita no paneļa, ja aizvērtā „Datu avoti” bija saites — fokusa slazds tagad neskaita
+    aizvērtas `<details>` saturu (`sheets.js`).
+- **Versijas v161:** services, netguard, sheets, nav, places, app-gl, park-gl.
+- Testi: `run.js` 203/203 (+6 B04), kartes tests kārtībā, `tests/weather-fn-test.ts` (deno) 12/12.
+

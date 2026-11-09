@@ -1,6 +1,6 @@
 // Navigācija: maršruts (OSRM), pagriezienu norādes latviski un progress pa maršrutu.
 
-const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving/';
+// Serveru adreses — services.js (CZ_SERVICES.route): galvenais un rezerves (B04)
 
 function navDist(m) {
   if (m >= 975) return (m / 1000).toLocaleString('lv-LV', { maximumFractionDigits: m >= 10000 ? 0 : 1 }) + ' km';
@@ -14,15 +14,29 @@ function navTime(sec) {
 }
 
 // Pieprasa maršrutu un sagatavo to sekošanai.
+// B04: ja galvenais serveris neatbild, saka „par daudz” (429/5xx) vai ir pauzē pēc kļūmes — jautā rezerves serverim
+// (tas pats OSRM API). Atbilde 4xx (piem. „nav maršruta”) — tā pati jebkurā serverī, tāpēc nākamo nejautā.
+const OSRM_TRY_MS = 12000;      // vienam serverim ilgāk par 12 s negaida
 async function osrmFetch(pts, extra = '') {
-  const url = `${OSRM_URL}${pts.map(p => p.lng + ',' + p.lat).join(';')}?overview=false&geometries=geojson&steps=true${extra}`;
-  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = ctrl && setTimeout(() => ctrl.abort(), 15000);     // ilgāk par 15 s negaida
-  try {
-    const res = await fetch(url, ctrl ? { signal: ctrl.signal } : {});
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return await res.json();
-  } finally { if (timer) clearTimeout(timer); }
+  const path = `${pts.map(p => p.lng + ',' + p.lat).join(';')}?overview=false&geometries=geojson&steps=true${extra}`;
+  let lastErr = null;
+  for (const base of czServiceOrder(CZ_SERVICES.route)) {
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = ctrl && setTimeout(() => ctrl.abort(), OSRM_TRY_MS);
+    try {
+      const res = await fetch(base + path, ctrl ? { signal: ctrl.signal } : {});
+      if (!res.ok) {
+        const err = Object.assign(new Error('HTTP ' + res.status), { status: res.status });
+        if (res.status >= 400 && res.status < 500 && res.status !== 429) throw Object.assign(err, { final: true });
+        throw err;
+      }
+      return await res.json();
+    } catch (err) {
+      if (err && err.final) throw err;
+      lastErr = err;
+    } finally { if (timer) clearTimeout(timer); }
+  }
+  throw lastErr || new Error('Maršruta serveris nav pieejams');
 }
 
 // OSRM maršruts → { coords, cum, steps, distance, duration }.
