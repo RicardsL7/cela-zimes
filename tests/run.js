@@ -11,7 +11,7 @@ fs.readFileSync = function () { const r = readRaw.apply(fs, arguments); return t
 
 const ctx = vm.createContext({ console, Intl, Date, Math, Map, Set, JSON, Number, String, Array, Object, isNaN, setTimeout, clearTimeout,
   signSvg: () => '<svg/>', encodeURIComponent, decodeURIComponent, escape, URLSearchParams, Buffer, Error, Promise });
-for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'nav.js', 'speedlimit.js', 'alerts.js', 'places.js', 'cache.js', 'auth.js', 'rides.js', 'reports.js']) {
+for (const f of ['times.js', 'model.js', 'roads-gl.js', 'signs-gl.js', 'services.js', 'nav.js', 'speedlimit.js', 'alerts.js', 'places.js', 'cache.js', 'auth.js', 'rides.js', 'reports.js']) {
   // Klases un const deklarācijas padara pieejamas testam.
   const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/if \(typeof module[\s\S]*?\n}\n?$/m, '');
   vm.runInContext(src + '\n;globalThis.__exp = (globalThis.__exp || {});', ctx, { filename: f });
@@ -456,7 +456,7 @@ test('v134: nobrauktā daļa — blāva līnija; griezums seko bultai arī pie v
   ok(/loc\.off <= ROUTE_CUT_M/.test(app) && /const ROUTE_CUT_M = 70;/.test(app), 'griezums arī tad, kad bulta nav piesaistīta');
   for (const f of ['index.html', 'index-gl.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    ok(/nav\.js\?v=134/.test(h) && /app-gl\.js\?v=1[3-9]\d/.test(h), f + ': v134');
+    ok(/nav\.js\?v=(134|1[4-9]\d)/.test(h) && /app-gl\.js\?v=1[3-9]\d/.test(h), f + ': v134');
   }
 });
 
@@ -2187,7 +2187,7 @@ test('v131: iestatījumi — Braukšana / Sastrēgumi / Izskats / Konts un priv�
     ok(/id="settingsBtn"/.test(form), f + ': iestatījumi ar 1 pieskārienu — meklēšanas joslā');
     ok(!/id="fabMore"|id="toggleSigns"/.test(h), f + ': v132 — ⋯ un „Zīmes/Brīdin.” poga noņemta (dublēja galveno slēdzi)');
     ok(/style-gl\.css\?v=(13[2-9]|1[4-9]\d)/.test(h) && /app-gl\.js\?v=1[3-9]\d/.test(h), f + ': versijas ≥ v132');
-    ok(/<a id="call112" class="call-112" href="tel:112" hidden>/.test(h) && /Zvanīt 112/.test(h) && /places\.js\?v=133/.test(h), f + ': v133 — poga „Zvanīt 112”');
+    ok(/<a id="call112" class="call-112" href="tel:112" hidden>/.test(h) && /Zvanīt 112/.test(h) && /places\.js\?v=(133|1[4-9]\d)/.test(h), f + ': v133 — poga „Zvanīt 112”');
     ok(!/[A-Za-z]{4,} (settings|Settings)/.test(set.replace(/<[^>]+>/g, '')), f + ': bez angļu teksta');
   }
   const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
@@ -2855,7 +2855,7 @@ test('A07: MapLibre 6.15.0 — ES modulis pirms visiem skriptiem, pārējie defe
     ok(tags.length >= 25, f + ': skripti pēc moduļa');
     ok(tags.every(t => /\sdefer\s/.test(t) && /\ssrc="/.test(t)), f + ': visi nākamie skripti ir defer (izpildās pēc moduļa, tajā pašā secībā)');
     ok(!/<script>/.test(h), f + ': nav iekļautu (inline) klasisko skriptu, kas izpildītos ārpus secības');
-    ok(/app-gl\.js\?v=15[1-9]/.test(h) && /signs-gl\.js\?v=150/.test(h), f + ': mainītie faili ar jaunu versiju');
+    ok(/app-gl\.js\?v=(15[1-9]|1[6-9]\d)/.test(h) && /signs-gl\.js\?v=150/.test(h), f + ': mainītie faili ar jaunu versiju');
   }
 });
 test('A07: trūkstošie attēli (MapLibre 6) un skaidra ziņa, ja karte neielādējas', () => {
@@ -3142,7 +3142,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/h2\[tabindex="-1"\]:focus/.test(css), 'virsrakstam fokusa rāmis nav jārāda');
     const ms = fs.readFileSync(path.join(__dirname, 'map-smoke.js'), 'utf8');
     ok(/res\.a11y = \{\}/.test(ms) && /Tab izgāja no paneļa/.test(ms) && /piekrišana aizvērās ar Esc/.test(ms) && /Garāžas dialogs aizverot/.test(ms), 'kartes tests pārbauda ar tastatūru');
-    for (const f of ['index.html', 'index-gl.html']) ok(/sheets\.js\?v=153/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /style-gl\.css\?v=15[3-9]/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': jaunas versijas');
+    for (const f of ['index.html', 'index-gl.html']) ok(/sheets\.js\?v=(153|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /style-gl\.css\?v=15[3-9]/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': jaunas versijas');
   });
 }
 
@@ -3224,7 +3224,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const a = fs.readFileSync(path.join(ROOT, 'app-gl.js'), 'utf8');
     const fo = a.slice(a.indexOf('function fetchOverpass('), a.indexOf('// ---------- OSM dati pa šūnām'));
     ok(/const OVERPASS_HEDGE_MS = 4000;/.test(a) && /hedge = setTimeout\(start, OVERPASS_HEDGE_MS\)/.test(fo) && !/OVERPASS_URLS\.map\(async/.test(fo), 'rezerves serveris tikai pēc 4 s vai kļūdas');
-    ok(/overpassOrder\(OVERPASS_URLS\)/.test(fo) && /czNet\.health/.test(a), 'vispirms veselākais serveris');
+    ok(/overpassOrder\(OVERPASS_URLS\)/.test(fo) && /czNetHealth\(new URL\(u\)\.hostname\)/.test(a) && !/czNet\.health/.test(a), 'vispirms veselākais serveris (B04: czNetHealth, ne aizsegtais czNet.health)');
     ok(/state\.mlyRetryMs = state\.mlyFailed \? Math\.min\(120000/.test(a) && /setTimeout\(loadMapillaryForView, state\.mlyRetryMs \|\| 100\)/.test(a), 'Mapillary flīzes: kļūmes gadījumā pauze, nevis ik 100 ms');
     ok(/setInterval\(\(\) => \{ if \(!document\.hidden\) loadWeather\(false\); \}, 60000\)/.test(a), 'laikapstākļi tikai redzamā cilnē');
     const rs = a.slice(a.indexOf('async function runSearch('), a.indexOf('function showResults('));
@@ -3656,6 +3656,80 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const t = fs.readFileSync(path.join(ROOT, 'terms.html'), 'utf8');
     ok(/Kopbraucieni ir izdevumu dalīšana, ne peļņas pārvadājumi/.test(t) && /attālums × 1,3 × 12 c\/km, vismaz 2 €/.test(t), 'terms.html');
     ok(/CZ_TERMS_VERSION = '2026-11-08b'/.test(fs.readFileSync(path.join(ROOT, 'auth.js'), 'utf8')), 'jauna noteikumu versija → piekrišana no jauna');
+  });
+}
+
+// ---------- B04 (audits 2): ārējie servisi — adreses vienā vietā, rezerves maršruta serveris, laikapstākļu starpnieks ----------
+{
+  const ROOT = path.join(__dirname, '..');
+  const rd = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+  test('B04: services.js — visi serveri CSP un netguard sarakstā; lapā tūlīt pēc netguard.js', () => {
+    const S = require('../services.js'), ng = require('../netguard.js');
+    const h = rd('index.html');
+    const csp = (h.match(/connect-src ([^;]+);/) || [])[1];
+    const urls = [...S.CZ_SERVICES.route, S.CZ_SERVICES.routeFoot, S.CZ_SERVICES.photon, S.CZ_SERVICES.nominatim, S.CZ_SERVICES.weather];
+    for (const u of urls) {
+      const host = S.czServiceHost(u);
+      ok(host && csp.split(/\s+/).includes('https://' + host), host + ': CSP connect-src');
+      ok(ng.CZ_NET_POLICY[host] || /\.supabase\.co$/.test(host), host + ': netguard ierobežojums');
+    }
+    eq(S.CZ_SERVICES.route.length, 2, 'galvenais + rezerves maršruta serveris');
+    ok(/routing\.openstreetmap\.de\/routed-car\//.test(S.CZ_SERVICES.route[1]), 'rezerve — FOSSGIS auto profils');
+    const scripts = [...h.matchAll(/<script (?:defer |type="module" )src="([\w.-]+\.js)\?v=/g)].map(m => m[1]);
+    eq(scripts[1], 'services.js', 'services.js tūlīt pēc netguard.js (pirms nav.js, places.js, app-gl.js)');
+    ok(/services\.js\?v=1[6-9]\d/.test(h), 'versija v161+');
+    eq(h, rd('index-gl.html'), 'index = index-gl');
+    ok(!/apikey|OPEN_METEO_KEY|sk_/.test(rd('services.js').replace(/\/\/.*$/gm, '')), 'services.js kodā nav atslēgu');
+  });
+  test('B04: kodā vairs nav ierakstītu maršruta / meklēšanas / laikapstākļu adrešu (ielādētajos failos)', () => {
+    const hard = /https:\/\/(router\.project-osrm\.org|routing\.openstreetmap\.de|photon\.komoot\.io|nominatim\.openstreetmap\.org|api\.open-meteo\.com)/;
+    for (const f of ['nav.js', 'park-gl.js', 'places.js', 'app-gl.js', 'rides-ui.js']) ok(!hard.test(rd(f).replace(/^\s*\/\/.*$/gm, '')), f + ': adrese tikai services.js');
+    const a = rd('app-gl.js');
+    ok(/CZ_SERVICES\.weather \+ '\?latitude='/.test(a) && /czServiceIsOwn\(url\) \? \{ headers: \{ apikey: RIDES_CONFIG\.anonKey/.test(a), 'laikapstākļi: adrese no services.js; mūsu funkcijai — publiskā atslēga');
+    eq((a.match(/const WEATHER_FIELDS = '([^']+)'/) || [])[1], (rd('supabase/functions/weather/index.ts').match(/const WEATHER_FIELDS = '([^']+)'/) || [])[1], 'tie paši lauki lietotnē un funkcijā');
+  });
+  // ctx.fetch ir kopīgs ar citiem asinhronajiem testiem (v127 u.c.) — sāk tikai pēc tiem
+  const afterOthers = fn => () => Promise.all(pending.slice()).then(fn);
+  test('B04: osrmFetch — rezerves serveris pēc kļūmes, bet ne pēc „nav maršruta”', afterOthers(async () => {
+    const osrm = G('osrmFetch'), S = G('CZ_SERVICES');
+    const run = async (beh, cooling) => {
+      const seen = [];
+      ctx.fetch = async u => { const i = S.route.findIndex(b => u.startsWith(b)); seen.push(i); const r = beh[i];
+        if (r === 'net') throw new TypeError('Failed to fetch');
+        return { ok: r === 200, status: r, json: async () => ({ code: 'Ok', from: i }) }; };
+      ctx.czNetCooling = cooling ? h => h === 'router.project-osrm.org' : undefined;
+      let out, e = null; try { out = await osrm([{ lat: 56.95, lng: 24.1 }, { lat: 56.96, lng: 24.2 }]); } catch (x) { e = x; }
+      return { seen, out, e };
+    };
+    let r = await run([200, 200]); eq(r.seen.join(), '0', 'galvenais atbild — rezerves nejautā'); eq(r.out.from, 0);
+    r = await run(['net', 200]); eq(r.seen.join(), '0,1', 'tīkla kļūda → rezerve'); eq(r.out.from, 1);
+    r = await run([503, 200]); eq(r.out.from, 1, '503 → rezerve');
+    r = await run([429, 200]); eq(r.out.from, 1, '429 → rezerve');
+    r = await run([400, 200]); eq(r.seen.join(), '0', '400 (nav maršruta) — rezerves nejautā'); ok(r.e && r.e.status === 400, '400 kļūda tālāk');
+    r = await run(['net', 'net']); ok(r.e && r.seen.join() === '0,1', 'abi neatbild → kļūda');
+    r = await run([200, 200], true); eq(r.seen.join(), '1', 'galvenais pauzē (netguard) → vispirms rezerve');
+    ok(/steps=true/.test(String(G('osrmFetch'))), 'parametri nemainīti');
+    delete ctx.fetch; delete ctx.czNetCooling;
+  }));
+  test('B04: atsauces „Datu avoti” (OSM, Open-Meteo CC BY 4.0, maršruti, „Labot karti”)', () => {
+    const h = rd('index.html');
+    ok(/href="https:\/\/www\.openstreetmap\.org\/copyright"/.test(h) && /href="https:\/\/open-meteo\.com\/"[^>]*>Open-Meteo\.com<\/a> \(CC BY 4\.0\)/.test(h), 'OSM un Open-Meteo saites');
+    ok(/FOSSGIS routing\.openstreetmap\.de/.test(h) && /href="https:\/\/www\.openstreetmap\.org\/fixthemap"/.test(h), 'maršruti + „Labot karti” (FOSSGIS noteikumi)');
+  });
+  test('B04: fokusa slazds neskaita aizvērtas <details> saturu (saites „Datu avotos”)', () => {
+    const sh = rd('sheets.js');
+    ok(/function czShInClosedDetails\(el\)/.test(sh) && /&& !czShInClosedDetails\(el\)\);/.test(sh), 'filtrs');
+    ok(/sheets\.js\?v=1[6-9]\d/.test(rd('index.html')), 'jauna versija');
+  });
+  test('B04: weather funkcija — atslēga tikai no Secrets, nekur neatdota; ierobežojumi', () => {
+    const w = rd('supabase/functions/weather/index.ts');
+    ok(/Deno\.env\.get\('OPEN_METEO_KEY'\)/.test(w) && !/apikey: '[^']/.test(w), 'atslēga no Secrets');
+    ok(/customer-api\.open-meteo\.com/.test(w), 'maksas adrese');
+    ok(/if \(!KEY\) return err\(/.test(w) && !/\/\/api\.open-meteo\.com/.test(w), 'bez atslēgas — kļūda, nevis bezmaksas API (citādi visi lietotāji no vienas IP)');
+    ok(/Math\.round\(n \* 100\) \/ 100/.test(w) && /TTL_MS = 10 \* 60 \* 1000/.test(w) && /PER_MIN = 30/.test(w), 'noapaļošana, kešs, limits');
+    ok(/console\.warn\('Open-Meteo atbilde', r\.status\)/.test(w) && !/console\.\w+\([^)]*(UPSTREAM|q\b|KEY)/.test(w), 'žurnālā nav adreses ar atslēgu');
+    ok(/if \(Deno\.env\.get\('CZ_TEST'\) !== '1'\) Deno\.serve\(handle\)/.test(w), 'serveris ieslēdzas (tikai testos — ne)');
+    ok(fs.existsSync(path.join(__dirname, 'weather-fn-test.ts')), 'deno tests');
   });
 }
 
