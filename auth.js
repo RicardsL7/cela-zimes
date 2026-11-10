@@ -11,7 +11,7 @@
 // cz.traffic.session tiek pārņemtas, nevis izmestas).
 
 const CZ_TERMS_VERSION = '2026-11-08b';       // B03: kopbrauciens = izdevumu dalīšana, ≤ 12 c/km (iepr. 2026-11-08 — A15)
-const CZ_PRIVACY_VERSION = '2026-11-10';       // B05: karšu pakalpojumi un valstis, bez Krievijas servera (iepr. 2026-11-08b — A16)
+const CZ_PRIVACY_VERSION = '2026-11-10b';      // B07: Cloudflare Turnstile, anonīmu kontu dzēšana pēc 180 d. (iepr. 2026-11-10 — B05)
 const CZ_AUTH_KEY = 'cz.auth.session';
 const CZ_CONSENT_KEY = 'cz.consent';
 const CZ_TRANSFER_KEY = 'cz.auth.transfer';
@@ -65,6 +65,9 @@ function czAuthErrorText(code, status) {
   if (/identity_already_exists/.test(c)) return 'Šis Google konts jau ir piesaistīts citam kontam.';
   if (/invalid_email|email_address_invalid|validation/.test(c)) return 'E-pasta adrese izskatās nepareiza.';
   if (/not_authorized|address_not_authorized/.test(c)) return 'Uz šo adresi pagaidām nevar nosūtīt e-pastu (lietotne vēl testēšanā).';
+  if (/captcha_needed/.test(c)) return 'Vajag īsu pārbaudi, ka neesi robots. Kad esi apstājies, mēģini vēlreiz.';
+  if (/captcha_cancel/.test(c)) return 'Pārbaude atcelta. Mēģini vēlreiz, kad esi gatavs.';
+  if (/captcha/.test(c)) return 'Neizdevās pārbaude, ka neesi robots. Pārlādē lapu un mēģini vēlreiz.';
   if (/network/.test(c)) return 'Nav interneta savienojuma. Pārbaudi to un mēģini vēlreiz.';
   return 'Neizdevās. Pamēģini vēlreiz vēlāk.';
 }
@@ -75,6 +78,12 @@ class CzAuth {
     this.url = cfg.url.replace(/\/$/, ''); this.key = cfg.anonKey;
     this.storage = opts.storage || (typeof localStorage !== 'undefined' ? localStorage : null);
     this.fetch = opts.fetch || ((...a) => fetch(...a));
+    // B07: CAPTCHA žetona avots (Turnstile — captcha.js). Tukšs captchaSiteKey → bez CAPTCHA (kā līdz šim).
+    // Ja Cloudflare prasa darbību (reti), logu rāda tikai, ja lietotājs NEbrauc — braucot kļūda 'captcha_needed'.
+    this.captcha = opts.captcha !== undefined ? opts.captcha
+      : (cfg.captchaSiteKey ? o => (typeof czCaptchaToken === 'function' ? czCaptchaToken(cfg.captchaSiteKey, document, o)
+                                                                         : Promise.reject(Object.assign(new Error('captcha'), { code: 'captcha' }))) : null);
+    this.isMoving = opts.isMoving || (() => typeof state !== 'undefined' && !!state && !!state.me && state.me.speedKmh > 10);
     this.session = null; this.listeners = new Set(); this._refreshing = null;
     this._load();
   }
@@ -127,8 +136,16 @@ class CzAuth {
     if (!r.ok) { const e = new Error('auth ' + r.status); e.status = r.status; e.code = (j && (j.error_code || j.code || j.error)) || String(r.status); throw e; }
     return j;
   }
+  // B07: Supabase Auth ar CAPTCHA — /signup un /otp vajag žetonu (gotrue_meta_security). Bez CAPTCHA — nekas.
+  async _security(interactive = true) {
+    if (!this.captcha) return {};
+    let moving = false; try { moving = !!this.isMoving(); } catch { /* */ }
+    const t = await this.captcha({ interactive: interactive && !moving });
+    return t ? { gotrue_meta_security: { captcha_token: t } } : {};
+  }
   // Derīga piekļuves atslēga. create=true — ja konta nav, izveido anonīmu (tikai ar piekrišanu).
-  async token({ create = false } = {}) {
+  // interactive=false (B07) — fonā: CAPTCHA tikai neredzamā; ja Cloudflare prasa darbību — kļūda 'captcha_needed'.
+  async token({ create = false, interactive = true } = {}) {
     if (this.session && this.session.expires_at - Date.now() > 60000) return this.session.access_token;
     if (this.session && this.session.refresh_token) {
       if (!this._refreshing) this._refreshing = (async () => {
@@ -141,7 +158,7 @@ class CzAuth {
     }
     if (!create) return null;
     if (!czConsentOk(this.storage)) { const e = new Error('consent'); e.code = 'consent'; throw e; }
-    this._keep(await this._req('signup', { method: 'POST', auth: false, body: { data: {} } }));   // anonīms konts
+    this._keep(await this._req('signup', { method: 'POST', auth: false, body: { data: {}, ...(await this._security(interactive)) } }));   // anonīms konts
     return this.session.access_token;
   }
   async user() { await this.token(); return this.session ? this._req('user') : null; }
@@ -158,7 +175,7 @@ class CzAuth {
       await this._req('user', { method: 'PUT', body: { email }, query: { redirect_to: redirectTo } });
       return { mode: 'link' };
     }
-    await this._req('otp', { method: 'POST', auth: false, body: { email, create_user: true, data: {} }, query: { redirect_to: redirectTo } });
+    await this._req('otp', { method: 'POST', auth: false, body: { email, create_user: true, data: {}, ...(await this._security()) }, query: { redirect_to: redirectTo } });
     return { mode: 'signin' };
   }
   // Pieslēgties CITAM (esošam) kontam. Ja ir anonīms konts — vispirms sagatavo datu pārcelšanu.
@@ -166,7 +183,7 @@ class CzAuth {
     email = String(email || '').trim().toLowerCase();
     if (!czEmailOk(email)) { const e = new Error('invalid_email'); e.code = 'invalid_email'; throw e; }
     await this._prepareTransfer();
-    await this._req('otp', { method: 'POST', auth: false, body: { email, create_user: true, data: {} }, query: { redirect_to: redirectTo } });
+    await this._req('otp', { method: 'POST', auth: false, body: { email, create_user: true, data: {}, ...(await this._security()) }, query: { redirect_to: redirectTo } });
   }
   async _prepareTransfer() {
     if (!(this.hasSession() && this.isAnon)) return;

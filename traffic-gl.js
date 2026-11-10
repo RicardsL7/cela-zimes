@@ -21,7 +21,9 @@ const TR_SHARE_VERSION = '2026-11-01';      // v124: + other drivers see your po
 async function trAuth() {
   const a = czAuthGet();
   if (!a) throw new Error('auth');
-  return a.token({ create: true });          // ja konta vēl nav — izveido (tikai ar piekrišanu noteikumiem)
+  // ja konta vēl nav — izveido (tikai ar piekrišanu noteikumiem). B07: braucot bez CAPTCHA loga (interactive: false) —
+  // kontu ar CAPTCHA izveido tikai, kad lietotājs pats ieslēdz dalīšanos (trShareChoice).
+  return a.token({ create: true, interactive: false });
 }
 // Atsevišķa, brīvprātīga piekrišana ātruma dalīšanai (glabājas lokāli; ar kontu — arī serverī, user_consents).
 // „Jā” — ja konta vēl nav, izveido anonīmo (F1), pirms tiek sūtīts pirmais mērījums. Ziņas — uznirstošas (F9).
@@ -37,7 +39,8 @@ function trShareChoice(yes, say = true) {
     try { if (yes) await a.token({ create: true }); await a.syncTermsConsent(); await a.syncConsent('speed_share', TR_SHARE_VERSION, !!yes); }
     catch (e) {
       console.warn('Piekrišanu neizdevās saglabāt serverī', e);
-      if (yes && !a.hasSession()) trToast('Pašlaik neizdevās pieslēgties serverim — mēģināšu vēlreiz, kad brauksi.', true);
+      if (yes && !a.hasSession()) trToast(e && /captcha/.test(e.code || '') ? czAuthErrorText(e.code) + ' Ātruma dalīšanu vari ieslēgt vēlreiz iestatījumos.'
+        : 'Pašlaik neizdevās pieslēgties serverim — mēģināšu vēlreiz, kad brauksi.', true);
     }
     trHelpersLoad(true);
   })();

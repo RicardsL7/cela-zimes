@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <!-- A10: drošības politika (CSP) — kādus resursus lapa drīkst ielādēt. GitHub Pages neļauj HTTP galvenes, tāpēc meta tags.
        Jauns serveris (fetch) → jāpievieno connect-src; tests/run.js to pārbauda. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://pkqusuoicxmwcgwsrdqy.supabase.co; worker-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'; upgrade-insecure-requests">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://pkqusuoicxmwcgwsrdqy.supabase.co; worker-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src https://challenges.cloudflare.com; upgrade-insecure-requests">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <script src="guard.js?v=151"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
-  <link rel="stylesheet" href="admin.css?v=115">
+  <link rel="stylesheet" href="admin.css?v=163">
 </head>
 <body>
 <header class="adm-bar">
@@ -79,8 +79,9 @@
   </section>
 </main>
 
-<script src="rides-config.js?v=93"></script>
-<script src="auth.js?v=162"></script>
+<script src="rides-config.js?v=163"></script>
+<script src="captcha.js?v=163"></script>
+<script src="auth.js?v=163"></script>
 <script src="alerts.js?v=121b"></script>
 <script src="rides.js?v=160"></script>
 <script src="admin.js?v=158"></script>

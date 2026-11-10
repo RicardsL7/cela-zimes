@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <!-- A10: drošības politika (CSP) — kādus resursus lapa drīkst ielādēt. GitHub Pages neļauj HTTP galvenes, tāpēc meta tags.
        Jauns serveris (fetch) → jāpievieno connect-src; tests/run.js to pārbauda. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://pkqusuoicxmwcgwsrdqy.supabase.co https://tiles.openfreemap.org https://tile.openstreetmap.org https://overpass-api.de https://graph.mapillary.com https://tiles.mapillary.com https://api.openstreetmap.org https://api.open-meteo.com https://router.project-osrm.org https://routing.openstreetmap.de https://photon.komoot.io https://nominatim.openstreetmap.org; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'; upgrade-insecure-requests">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://pkqusuoicxmwcgwsrdqy.supabase.co https://tiles.openfreemap.org https://tile.openstreetmap.org https://overpass-api.de https://graph.mapillary.com https://tiles.mapillary.com https://api.openstreetmap.org https://api.open-meteo.com https://router.project-osrm.org https://routing.openstreetmap.de https://photon.komoot.io https://nominatim.openstreetmap.org; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src https://challenges.cloudflare.com; upgrade-insecure-requests">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <script src="guard.js?v=151"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
   <link rel="stylesheet" href="vendor/maplibre-gl-6.15.0/maplibre-gl.css">
-  <link rel="stylesheet" href="style-gl.css?v=154">
+  <link rel="stylesheet" href="style-gl.css?v=163">
 </head>
 <body>
   <div id="map" aria-label="Karte"></div>
@@ -456,18 +456,19 @@
   <script defer src="skins.js?v=125"></script>
   <script defer src="places.js?v=161"></script>
   <script defer src="model.js?v=93"></script>
-  <script defer src="rides-config.js?v=93"></script>
+  <script defer src="rides-config.js?v=163"></script>
   <script defer src="app-native.js?v=156"></script>
-  <script defer src="auth.js?v=162"></script>
+  <script defer src="captcha.js?v=163"></script>
+  <script defer src="auth.js?v=163"></script>
   <script defer src="mly-config.js?v=93"></script>
   <script defer src="traffic.js?v=93"></script>
   <script defer src="rides.js?v=160"></script>
-  <script defer src="rides-ui.js?v=160"></script>
+  <script defer src="rides-ui.js?v=163"></script>
   <script defer src="garage.js?v=158"></script>
   <script defer src="presence.js?v=158"></script>
   <script defer src="app-gl.js?v=162"></script>
   <script defer src="park-gl.js?v=161"></script>
   <script defer src="park-dest-gl.js?v=93"></script>
-  <script defer src="traffic-gl.js?v=158"></script>
+  <script defer src="traffic-gl.js?v=163"></script>
 </body>
 </html>

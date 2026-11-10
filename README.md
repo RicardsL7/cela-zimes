@@ -147,6 +147,21 @@ GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi
   palaiž drošības scenārijus, pārbauda `supabase/status.sql` un veco failu aizsardzību.
 - **Karte un lapu drošības politika** (Playwright + Chromium): `node tests/map-smoke.js . /tmp/karte` — sk. faila sākumu.
 
+## Viltoti konti: CAPTCHA un nelietotu kontu dzēšana (B07)
+
+- **CAPTCHA (Cloudflare Turnstile)** — `captcha.js`. Supabase Auth ar ieslēgtu CAPTCHA pieņem jauna konta izveidi (`/signup`)
+  un e-pasta saites pieprasīšanu (`/otp`) tikai ar žetonu. Cloudflare skripts ielādējas tikai šajos brīžos. Braucot (> 10 km/h)
+  vai fonā pārbaude ir tikai neredzamā — ja Cloudflare prasa darbību, lietotne logu nerāda un lūdz mēģināt, kad apstājies.
+  **Ieslēgšana (secība svarīga):**
+  1. dash.cloudflare.com → Turnstile → Add widget: domēns `growlab.cc`, režīms „Managed” → Site Key un Secret Key.
+  2. `rides-config.js` → `captchaSiteKey: '<Site Key>'` (publiska), jauna `?v=` versija trijās lapās; izvieto.
+  3. Tikai tad: Supabase → Authentication → Attack Protection → Enable CAPTCHA → Turnstile + **Secret Key**
+     (Secret Key — tikai Supabase, nekad lapā vai repozitorijā).
+  Ja 3. solis izdarīts pirms 2., jauni konti un e-pasta saites neizdosies.
+- **Nelietoti anonīmi konti** — `supabase/account-2-anon-cleanup.sql` (Nr. 32): katru nakti dzēš anonīmus kontus, kas
+  180 dienas nav pieslēgušies serverim (sk. MIGRATIONS.md). Kontus ar e-pastu / Google nedzēš.
+- **IP limits** — Supabase → Authentication → Rate Limits → „anonymous sign-ins” (ieteicams ≤ 30 stundā no vienas IP).
+
 ## Ierobežojumi
 
 - Zīmes ir tikai tās, kas ievadītas OpenStreetMap vai atrastas Mapillary; laukos to ir mazāk.

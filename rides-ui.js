@@ -68,7 +68,8 @@ async function ridesEnsureAccount() {
   if (ridesSignedOut()) { rides.accountView = true; ridesRender(true); return; }
   rides.accountBusy = true; ridesRender(true);
   try { await rides.store.ensureAccount(); rides.accountErr = null; }
-  catch (e) { console.warn('Konts', e); rides.accountErr = e && e.code === 'consent' ? 'Vispirms jāpiekrīt lietošanas noteikumiem.' : 'Neizdevās savienoties ar serveri. Pārbaudi internetu un mēģini vēlreiz.'; }
+  catch (e) { console.warn('Konts', e); rides.accountErr = e && e.code === 'consent' ? 'Vispirms jāpiekrīt lietošanas noteikumiem.'
+    : e && /captcha/.test(e.code || '') ? czAuthErrorText(e.code) : 'Neizdevās savienoties ar serveri. Pārbaudi internetu un mēģini vēlreiz.'; }
   rides.accountBusy = false;
   await ridesRefresh(true);
   ridesRender(true);

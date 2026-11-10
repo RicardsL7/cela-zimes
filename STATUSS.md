@@ -442,3 +442,19 @@
 - Versijas v162: services, netguard, mapillary, app-gl, auth (index, index-gl, admin).
 - Testi: `run.js` 206/206 (+3 B05), kartes tests kārtībā.
 
+## B07 (audits 2) — viltoti anonīmi konti: CAPTCHA un nelietotu kontu dzēšana (10.11.2026)
+
+- **Īpašnieka lēmumi:** Cloudflare Turnstile tagad; anonīmus kontus dzēst pēc 180 dienām bez lietošanas.
+- **`captcha.js` (jauns, v163):** Turnstile žetons jaunam kontam un e-pasta saitei (`auth.js` → `gotrue_meta_security`).
+  Cloudflare skripts tiek ielādēts tikai tad, kad vajag žetonu. Braucot (> 10 km/h) un fonā (ātruma dalīšana) — tikai neredzamā
+  pārbaude: ja vajag darbību, logs netiek rādīts (kļūda `captcha_needed`, teksts „Kad esi apstājies, mēģini vēlreiz”).
+  Kamēr `rides-config.js` → `captchaSiteKey` ir tukšs, nekas nemainās. CSP: `challenges.cloudflare.com` script-src un frame-src
+  (index, index-gl, admin).
+- **`supabase/account-2-anon-cleanup.sql` (Nr. 32):** `cz_anon_cleanup()` katru nakti (pg_cron „cz-anon-cleanup”, 02:23 UTC) —
+  anonīmi konti bez e-pasta, 180 d. bez pieslēgšanās (pēc `auth.sessions`); izlaiž aktīvu braucienu / maksājumu / šofera Stripe
+  kontu; ≤ 500 reizē; pieraksts `cz_cleanup_runs`. `account_erase()` — viena dzēšana arī `delete_my_account`.
+- **Privātuma politika 2026-11-10b:** Cloudflare (3. un 7. punkts), 180 dienas (8. punkts) — piekrišanas logs vēlreiz.
+- Versijas v163: captcha, auth, rides-config, rides-ui, traffic-gl, style-gl, admin.css.
+- Testi: `run.js` 213/213 (+7 B07), `run-sql.sh` (+ anon-cleanup-test), kartes tests kārtībā.
+- **Vajag īpašnieku:** Cloudflare Turnstile atslēgas (README „Viltoti konti”), SQL 32 produkcijā (ar atļauju), Supabase IP limits.
+
