@@ -3451,7 +3451,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   test('A15: politika un noteikumi — kas paliek, kad nevar dzēst; jauna versija', () => {
     const pr = fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8'), te = fs.readFileSync(path.join(ROOT, 'terms.html'), 'utf8');
     const au = fs.readFileSync(path.join(ROOT, 'auth.js'), 'utf8');
-    ok(/CZ_PRIVACY_VERSION = '2026-11-08b?'/.test(au) && /CZ_TERMS_VERSION = '2026-11-08b?'/.test(au), 'jaunas versijas → piekrišanas logs');
+    ok(/CZ_PRIVACY_VERSION = '2026-11-(08b?|[1-3]\d)'/.test(au) && /CZ_TERMS_VERSION = '2026-11-(08b?|[1-3]\d)'/.test(au), 'jaunas versijas → piekrišanas logs');
     ok(/Kas paliek otram brauciena dalībniekam/.test(pr) && /~1 km/.test(pr) && /kontu dzēst nevar/.test(pr), 'privacy.html');
     ok(/izņemot, kamēr ir aktīvs brauciens/.test(te), 'terms.html');
     const ui = fs.readFileSync(path.join(ROOT, 'rides-ui.js'), 'utf8');
@@ -3558,7 +3558,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(!/citi braucēji kartē redz/.test(tr) && !/presenceStop/.test(tr), 'ātruma dalīšana vairs nerāda tevi citiem');
     const pr = fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8');
     ok(/~150 m/.test(pr) && /Citu braucēju redzēšana/.test(pr) && /līdz 15 km/.test(pr) && /noklusēti izslēgta/.test(pr), 'privacy.html §6');
-    ok(/CZ_PRIVACY_VERSION = '2026-11-08b'/.test(fs.readFileSync(path.join(ROOT, 'auth.js'), 'utf8')) && /Versija 2026-11-08b/.test(pr), 'jauna politikas versija');
+    ok(/CZ_PRIVACY_VERSION = '2026-11-(08b|[1-3]\d)'/.test(fs.readFileSync(path.join(ROOT, 'auth.js'), 'utf8')) && /Versija 2026-11-(08b|[1-3]\d)/.test(pr), 'jauna politikas versija');
   });
 }
 
@@ -3730,6 +3730,44 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/console\.warn\('Open-Meteo atbilde', r\.status\)/.test(w) && !/console\.\w+\([^)]*(UPSTREAM|q\b|KEY)/.test(w), 'žurnālā nav adreses ar atslēgu');
     ok(/if \(Deno\.env\.get\('CZ_TEST'\) !== '1'\) Deno\.serve\(handle\)/.test(w), 'serveris ieslēdzas (tikai testos — ne)');
     ok(fs.existsSync(path.join(__dirname, 'weather-fn-test.ts')), 'deno tests');
+  });
+}
+
+// ---------- B05 (audits 2): bez Krievijas servera; jsDelivr konkrētai versijai; politikā visi karšu pakalpojumi ----------
+{
+  const ROOT = path.join(__dirname, '..');
+  const rd = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+  test('B05: maps.mail.ru nekur kodā, CSP un netguard; Overpass — tikai ES serveris no services.js', () => {
+    const code = f => rd(f).replace(/^\s*\/\/.*$/gm, '').replace(/\/\/ B05.*$/gm, '');
+    for (const f of ['app-gl.js', 'app.js', 'netguard.js', 'index.html', 'index-gl.html', 'admin.html', 'tools/build-osm.mjs', 'services.js'])
+      ok(!/mail\.ru/.test(code(f)), f + ': bez mail.ru');
+    const S = require('../services.js');
+    eq(JSON.stringify(S.CZ_SERVICES.overpass), JSON.stringify(['https://overpass-api.de/api/interpreter']), 'tikai overpass-api.de');
+    ok(/^const OVERPASS_URLS = CZ_SERVICES\.overpass;$/m.test(rd('app-gl.js')), 'app-gl.js ņem no services.js');
+    const csp = (rd('index.html').match(/connect-src ([^;]+);/) || [])[1];
+    for (const u of S.CZ_SERVICES.overpass) ok(csp.includes('https://' + S.czServiceHost(u)), 'CSP: ' + u);
+    ok(!/mail\.ru/.test(rd('tools/build-osm.mjs').split('\n').find(l => /^const URLS/.test(l)).replace(/;\s+\/\/.*$/, '')), 'nakts dati bez mail.ru');
+  });
+  test('B05: Mapillary ikonas — jsDelivr konkrētam commit, nevis @master', () => {
+    const m = rd('mapillary.js');
+    const line = m.split('\n').find(l => /^const MLY_ICON_URL/.test(l));
+    ok(/mapillary_sprite_source@[0-9a-f]{40}\/package_signs\/';$/.test(line) && !/@master/.test(line), 'piesaistīts commit');
+    ok(/mapillary\.js\?v=1[6-9]\d/.test(rd('index.html')), 'jauna versija');
+  });
+  test('B05: privātuma politika — visi ārējie karšu pakalpojumi, valstis; jauna versija', () => {
+    const pr = rd('privacy.html');
+    for (const w of ['routing.openstreetmap.de', 'overpass-api.de', 'jsDelivr', 'OpenStreetMap API', 'Open-Meteo (Šveice)', 'Mapillary (Meta Platforms)', 'Google Fonts', 'Lietotne neizmanto serverus Krievijā'])
+      ok(pr.includes(w), 'politikā: ' + w);
+    ok(/Versija 2026-11-10/.test(pr) && /<p>2026-11-10: /.test(pr), 'versija + izmaiņu ieraksts');
+    ok(/CZ_PRIVACY_VERSION = '2026-11-10'/.test(rd('auth.js')), 'auth.js → piekrišanas logs');
+    for (const f of ['index.html', 'index-gl.html', 'admin.html']) ok(/auth\.js\?v=1[6-9]\d/.test(rd(f)) && !/auth\.js\?v=160/.test(rd(f)), f + ': auth.js jauna versija');
+    // katrs CSP connect-src ārējais serveris ir minēts politikā (pēc nosaukuma vai adreses)
+    const NAMES = { 'pkqusuoicxmwcgwsrdqy.supabase.co': 'Supabase', 'tiles.openfreemap.org': 'OpenFreeMap', 'tile.openstreetmap.org': 'OpenStreetMap',
+      'overpass-api.de': 'overpass-api.de', 'graph.mapillary.com': 'Mapillary', 'tiles.mapillary.com': 'Mapillary', 'api.openstreetmap.org': 'OpenStreetMap API',
+      'api.open-meteo.com': 'Open-Meteo', 'router.project-osrm.org': 'project-osrm.org', 'routing.openstreetmap.de': 'routing.openstreetmap.de',
+      'photon.komoot.io': 'Photon', 'nominatim.openstreetmap.org': 'Nominatim' };
+    const csp = (rd('index.html').match(/connect-src ([^;]+);/) || [])[1].split(/\s+/).filter(x => /^https:\/\//.test(x)).map(x => x.slice(8));
+    for (const h of csp) ok(NAMES[h] && pr.includes(NAMES[h]), h + ': minēts politikā');
   });
 }
 
