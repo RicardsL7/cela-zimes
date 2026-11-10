@@ -52,7 +52,7 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 32 | account-2-anon-cleanup.sql | B07: anonīmi konti, kas 180 d. nav pieslēgušies, tiek dzēsti katru nakti | **nē — aizsargāts** (pēc 33) |
 | 33 | radars-2-votes.sql | B08: radaru ziņojumi un „nav radara” tikai ar kontu, viena balss no konta, limiti; balsis 30 d. | jā (kamēr nav jaunāku) |
 
-**Produkcijā:** palaisti visi 1–32 (22–31 — 08.11.2026, 32 — 10.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
+**Produkcijā:** palaisti visi 1–33 (22–31 — 08.11.2026, 32–33 — 10.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
 Faili ar `cz_migration_begin` (27–…) atkārtoti palaižami tikai, kamēr nav palaists jaunāks (tad tie paši atsakās).
 
 ## Radaru ziņojumi un balsis (B08)
