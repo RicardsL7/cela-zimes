@@ -10,7 +10,6 @@
 // Kartes flīzes MapLibre ielādē savā worker — tās šeit neredz (OpenFreeMap / OSM flīžu politika — README).
 const CZ_NET_POLICY = {
   'overpass-api.de':             { gap: 1000, conc: 2, minPause: 30000 },   // pēc 429 jāgaida ≥ 30 s (OSM Wiki: Overpass API)
-  'maps.mail.ru':                { gap: 1000, conc: 2, minPause: 30000 },
   'nominatim.openstreetmap.org': { gap: 1100, conc: 1 },     // https://operations.osmfoundation.org/policies/nominatim/
   'photon.komoot.io':            { gap: 250,  conc: 2 },
   'router.project-osrm.org':     { gap: 1000, conc: 1 },     // demo serveris — ne vairāk kā 1/s

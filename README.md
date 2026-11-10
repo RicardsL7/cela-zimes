@@ -77,6 +77,7 @@ demo režīms tikai šajā pārlūkā).
 - bezmaksas serveriem ievēro to noteikumus (rinda: Nominatim ≤ 1/s, OSRM ≤ 1/s, Overpass ≤ 2 vienlaikus) un pēc „par daudz”
   vai kļūmes ieturē pauzi (5 s → 10 s → … ≤ 5 min; Overpass pēc 429 — vismaz 30 s), pauzes laikā serveri netraucē;
 - Overpass jautā vienam serverim (veselākajam), otram — tikai ja pirmais 4 s neatbild vai kļūdās (agrāk — abiem reizē);
+  B05: šobrīd ir tikai viens — overpass-api.de (ES); Krievijā bāzētais maps.mail.ru izņemts, rezervei — savs serveris;
 - fona cilnē neaptaujā: ziņojumi, sastrēgumi, citi braucēji, laikapstākļi, „Kopā” (bez aktīva brauciena; braucienā vieta
   jāsūta arī fonā). Atgriežoties cilnē — dati atjaunojas uzreiz.
 - Jau agrāk: kešatmiņa (OSM šūnas 3 d., meklēšana 1 d., laikapstākļi 10 min), vienādu pieprasījumu apvienošana, meklēšana

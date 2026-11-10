@@ -3,7 +3,9 @@
 // tikai punktus (zīmes), lai nevajadzētu papildu bibliotēkas.
 
 const MLY_TILE_URL = 'https://tiles.mapillary.com/maps/vtp/mly_map_feature_traffic_sign/2/{z}/{x}/{y}?access_token=';
-const MLY_ICON_URL = 'https://cdn.jsdelivr.net/gh/mapillary/mapillary_sprite_source@master/package_signs/';
+// B05: ikonas no konkrētas versijas (commit), nevis @master — saturs nevar mainīties bez mūsu ziņas.
+// jsDelivr (Polija) saņem IP adresi — minēts privātuma politikā. Ikonas: MIT licence (mapillary/mapillary_sprite_source).
+const MLY_ICON_URL = 'https://cdn.jsdelivr.net/gh/mapillary/mapillary_sprite_source@1465defa53e47e24b4cfb49e03288cc38652407b/package_signs/';
 const MLY_ZOOM = 14;
 // Mapillary "aligned_direction": vai tas ir virziens, uz kuru skatās zīmes priekšpuse
 // (true), vai virziens, kurā brauc vadītājs, kas zīmi redz (false). Pārbaudīts ar foto.

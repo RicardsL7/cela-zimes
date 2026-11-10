@@ -6,7 +6,6 @@
 // jo kāds no tiem bieži ir pārslogots.
 const OVERPASS_URLS = [
   'https://overpass-api.de/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 const MIN_SIGN_ZOOM = 15;       // zīmes ielādē tikai pietuvinot
 const CELL = 0.01;              // ielādes režģa šūna grādos (~1 km)

@@ -427,3 +427,18 @@
 - **Versijas v161:** services, netguard, sheets, nav, places, app-gl, park-gl.
 - Testi: `run.js` 203/203 (+6 B04), kartes tests kārtībā, `tests/weather-fn-test.ts` (deno) 12/12.
 
+## B05 (audits 2) — atrašanās vietas vaicājumi vairs neiet uz Krieviju; politikā visi karšu pakalpojumi (10.11.2026)
+
+- **Overpass:** izņemts rezerves serveris maps.mail.ru (VK, Krievija) — no lietotnes (`services.js` → `CZ_SERVICES.overpass`,
+  `app-gl.js`), CSP, `netguard.js`, nakts datu skripta `tools/build-osm.mjs` un vecā `app.js`. Paliek overpass-api.de (FOSSGIS,
+  Vācija). ES alternatīvu Private.coffee (Austrija) pārbaudīju — 10.11. neatbildēja, OSM forumā (03.2026) minēts kā slēgts,
+  tāpēc nav pievienots. Ja overpass-api.de neatbild: Mapillary zīmes, radari (data/osm/cameras.json) un stāvēšanas dati
+  (data/osm) strādā; OSM zīmes jaunās vietās ielādēsies, kad serveris atgriezīsies. Rezervei — savs Overpass (B04).
+- **jsDelivr (Mapillary zīmju ikonas):** piesaistīts konkrētam commit `1465def…` (agrāk `@master` — saturs varēja mainīties).
+  Pārbaudīts: ikona ielādējas. Pašu mitināšana (1543 ikonas, 11 MB) — nav vajadzīga.
+- **Privātuma politika 2026-11-10:** 2. punktā visi ārējie pakalpojumi (arī FOSSGIS maršruti, jsDelivr, Overpass, OSM API);
+  7. punktā — kur tie atrodas (ES / pietiekama aizsardzība / ASV) un „Lietotne neizmanto serverus Krievijā”.
+  `CZ_PRIVACY_VERSION = '2026-11-10'` — lietotāji redzēs piekrišanas logu vēlreiz. Tests pārbauda, ka katrs CSP serveris ir minēts politikā.
+- Versijas v162: services, netguard, mapillary, app-gl, auth (index, index-gl, admin).
+- Testi: `run.js` 206/206 (+3 B05), kartes tests kārtībā.
+

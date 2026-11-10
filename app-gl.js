@@ -2,11 +2,9 @@
 // Karte: OpenFreeMap. Zīmes: Mapillary + OpenStreetMap (Overpass).
 // Meklēšana: Photon / Nominatim. Maršruts: OSRM.
 
-// Divi bezmaksas Overpass serveri (A13: vispirms veselākais, otrs — tikai ja pirmais kavējas vai kļūdās; sk. fetchOverpass).
-const OVERPASS_URLS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-];
+// Overpass serveri — services.js (B05: tikai ES). Ja to ir vairāki: vispirms veselākais, nākamais — tikai ja pirmais
+// kavējas vai kļūdās (A13; sk. fetchOverpass).
+const OVERPASS_URLS = CZ_SERVICES.overpass;
 const MIN_SIGN_ZOOM = 14;         // zīmes ielādē tikai pietuvinot (ielu līmenis)
 const CELL = 0.01;                // OSM ielādes režģa šūna grādos (~1 km)
 const MAX_CELLS = 24;

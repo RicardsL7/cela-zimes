@@ -16,6 +16,10 @@ const CZ_SERVICES = {
   // Meklēšana: Photon (rakstot) un Nominatim (rezerve, tikai nospiežot „Meklēt” — Nominatim noteikumi)
   photon: 'https://photon.komoot.io',
   nominatim: 'https://nominatim.openstreetmap.org',
+  // Ielu dati, zīmes, vietas (Overpass). B05: tikai ES serveris — overpass-api.de (FOSSGIS, Vācija). Agrākā rezerve
+  // maps.mail.ru (VK, Krievija) izņemta: atrašanās vietas vaicājumi nedrīkst iet uz valsti bez ES pietiekamības lēmuma.
+  // Ja vajag rezervi vai lielu apjomu — savs Overpass serveris (README „Ārējie servisi”), to pievieno šim sarakstam.
+  overpass: ['https://overpass-api.de/api/interpreter'],
   // Laikapstākļi. Bezmaksas Open-Meteo — tikai nekomerciālai lietošanai. Komerciāli: Supabase funkcija „weather”
   // (supabase/functions/weather — Open-Meteo atslēga tikai Supabase Secrets, nekad šeit), t.i.
   //   weather: 'https://pkqusuoicxmwcgwsrdqy.supabase.co/functions/v1/weather'
