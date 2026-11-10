@@ -54,7 +54,7 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 34 | rides-20-profiles-privacy.sql | B09: profilu (vārds, auto) redz tikai brauciena otra puse, ne visi lietotāji | **nē — aizsargāts** (pēc 35) |
 | 35 | rides-21-driver-accounts.sql | B10: šofera Stripe kontu piesaista tikai ride-pay (service_role); klients neraksta | jā (kamēr nav jaunāku) |
 
-**Produkcijā:** palaisti visi 1–34 (22–31 — 08.11.2026, 32–34 — 10.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
+**Produkcijā:** palaisti visi 1–35 (22–31 — 08.11.2026, 32–35 — 10.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
 Faili ar `cz_migration_begin` (27–…) atkārtoti palaižami tikai, kamēr nav palaists jaunāks (tad tie paši atsakās).
 
 ## Šofera Stripe konta piesaiste (B10)
