@@ -497,3 +497,14 @@
 - **Privātuma politika:** 3. punkts precizēts (redzamība samazināta — jauna piekrišana nav vajadzīga, versija tā pati).
 - Testi: `run.js` (+2 B09), `run-sql.sh` (+ profiles-privacy-test, 14 pārbaudes; open-privacy-test atkārtoti).
 - **Produkcijā:** Nr. 34 palaists 10.11.2026 ar īpašnieka atļauju; `status.sql` — VISS KĀRTĪBĀ.
+
+## B10 (audits 2) — šofera Stripe konta ID varēja ierakstīt pats (10.11.2026)
+
+- **Problēma:** politika „driver_accounts insert own” pārbaudīja tikai `user_id` — caur REST varēja ierakstīt jebkuru `acct_…`.
+  Naudu tas nenovirzīja (ride-pay pirms maksājuma pārbauda Stripe konta `cz_user`), bet ieraksts bija nepatiess.
+- **`supabase/rides-21-driver-accounts.sql` (Nr. 35):** insert politika dzēsta; `anon`/`authenticated` — bez INSERT/UPDATE;
+  `driver_account_link(user, acct)` — tikai `service_role`; viens Stripe konts — vienam lietotājam.
+- **ride-pay:** konta piesaiste — `linkDriverAccount` → `rpc/driver_account_link` ar servisa atslēgu; ja Nr. 35 vēl nav
+  palaists (404 / PGRST202) — vecais ceļš. Secība produkcijā: 1) izvietot ride-pay, 2) palaist Nr. 35.
+- Testi: `run.js` (+2 B10, linkDriverAccount izpildīts ar imitācijām), `run-sql.sh` (+ driver-accounts-test, 11 pārbaudes).
+- **Produkcijā:** jāizvieto ride-pay un jāpalaiž SQL 35 (ar īpašnieka atļauju), tad `status.sql`.

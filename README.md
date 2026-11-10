@@ -147,6 +147,12 @@ GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi
   palaiž drošības scenārijus, pārbauda `supabase/status.sql` un veco failu aizsardzību.
 - **Karte un lapu drošības politika** (Playwright + Chromium): `node tests/map-smoke.js . /tmp/karte` — sk. faila sākumu.
 
+## Šofera Stripe konts: piesaista tikai serveris (B10)
+
+- Tabulā `driver_accounts` ierakstu veido tikai `ride-pay` (servisa atslēga, `rpc/driver_account_link`) pēc tam, kad Stripe
+  izveidojis kontu ar `cz_user` metadatiem; lietotne pati to nevar ierakstīt vai mainīt. Pirms maksājuma ride-pay vēl
+  pārbauda Stripe konta īpašnieku (kā līdz šim). SQL — `supabase/rides-21-driver-accounts.sql` (Nr. 35).
+
 ## Kopbraucienu profili: redz tikai brauciena otra puse (B09)
 
 - Vārdu un auto (`profiles`) redz tikai: pats; pasažieris — šoferi, kas viņam piedāvāja braucienu; šoferis — pasažieris,
