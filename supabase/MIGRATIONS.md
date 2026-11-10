@@ -55,7 +55,7 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 35 | rides-21-driver-accounts.sql | B10: šofera Stripe kontu piesaista tikai ride-pay (service_role); klients neraksta | **nē — aizsargāts** (pēc 36) |
 | 36 | client-errors.sql | B12: lietotnes kļūdu pieraksts (client_error), saraksts admin.html, 30 d. | jā (kamēr nav jaunāku) |
 
-**Produkcijā:** palaisti visi 1–35 (22–31 — 08.11.2026, 32–35 — 10.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
+**Produkcijā:** palaisti visi 1–36 (22–31 — 08.11.2026, 32–35 — 10.11.2026, 36 — 11.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
 Faili ar `cz_migration_begin` (27–…) atkārtoti palaižami tikai, kamēr nav palaists jaunāks (tad tie paši atsakās).
 
 ## Lietotnes kļūdu pieraksts (B12)
