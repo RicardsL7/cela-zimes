@@ -496,4 +496,4 @@
   servera funkcijas (security definer).
 - **Privātuma politika:** 3. punkts precizēts (redzamība samazināta — jauna piekrišana nav vajadzīga, versija tā pati).
 - Testi: `run.js` (+2 B09), `run-sql.sh` (+ profiles-privacy-test, 14 pārbaudes; open-privacy-test atkārtoti).
-- **Produkcijā:** jāpalaiž SQL 34 (ar īpašnieka atļauju), tad `status.sql`.
+- **Produkcijā:** Nr. 34 palaists 10.11.2026 ar īpašnieka atļauju; `status.sql` — VISS KĀRTĪBĀ.
