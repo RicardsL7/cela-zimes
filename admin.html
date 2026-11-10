@@ -7,6 +7,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://pkqusuoicxmwcgwsrdqy.supabase.co; worker-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src https://challenges.cloudflare.com; upgrade-insecure-requests">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <script src="guard.js?v=151"></script>
+  <script src="errlog.js?v=166"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#173a6e">
@@ -14,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
-  <link rel="stylesheet" href="admin.css?v=163">
+  <link rel="stylesheet" href="admin.css?v=166">
 </head>
 <body>
 <header class="adm-bar">
@@ -70,11 +71,13 @@
       <nav class="adm-tabs" role="tablist">
         <button class="adm-tab" role="tab" data-tab="stats" aria-selected="true" type="button">Statistika</button>
         <button class="adm-tab" role="tab" data-tab="reports" aria-selected="false" type="button">Ziņojumi<span class="adm-wide"> par lietotājiem</span> <span id="admNewCount" class="adm-badge" hidden></span></button>
+        <button class="adm-tab" role="tab" data-tab="errors" aria-selected="false" type="button">Kļūdas <span id="admErrCount" class="adm-badge" hidden></span></button>
       </nav>
       <span id="admUpdated" class="adm-updated"></span>
     </div>
     <div id="admStats" role="tabpanel"></div>
     <div id="admReports" role="tabpanel" hidden></div>
+    <div id="admErrors" role="tabpanel" hidden></div>
     <p class="fine adm-foot">Dati: Supabase (lietotāji, braucieni, ziņojumi) un Stripe (komisijas). Laiks — Rīgas. Detalizēti dati — Supabase un Stripe paneļos.</p>
   </section>
 </main>
@@ -84,6 +87,6 @@
 <script src="auth.js?v=165"></script>
 <script src="alerts.js?v=121b"></script>
 <script src="rides.js?v=160"></script>
-<script src="admin.js?v=158"></script>
+<script src="admin.js?v=166"></script>
 </body>
 </html>

@@ -520,3 +520,16 @@
 - **Vajag īpašnieku (GitHub iestatījumi):** 1) Settings → Pages → Source = GitHub Actions; 2) Settings → Branches → Add rule
   `main` (bez atzīmēm: aizliedz dzēšanu un force push).
 - Testi: `run.js` (+2 B11).
+
+## B12 (audits 2) — lietotnes kļūdas produkcijā nebija redzamas (11.11.2026)
+
+- **`errlog.js` (jauns, v166):** `error` + `unhandledrejection` → `rpc/client_error`; attīrīšana (e-pasti, JWT, atslēgas, URL
+  parametri, koordinātas, garas ciparu virknes), tikai šīs vietnes faila nosaukums; ≤ 5 lapas ielādē, katra kļūda vienreiz;
+  ignorē tīkla pārtraukumus, paplašinājumus, „Script error.”, ResizeObserver; lietotnē — tikai ar piekrišanu (`czConsentOk`).
+  Ielādējas pirmais pēc `guard.js` (index.html, index-gl.html, admin.html). `czReportError(e, 'kur')` — ziņošanai no koda.
+- **`supabase/client-errors.sql` (Nr. 36):** `client_errors` (diena + nospiedums, skaitītājs), `client_error` (anon, ≤ 300 jaunas/d),
+  `admin_client_errors`, 30 d. (pg_cron „cz-client-errors”).
+- **admin.html (v166):** cilne „Kļūdas” (pēdējās 7 dienas; šodienas skaits uz cilnes).
+- **Privātuma politika:** 2. un 8. punkts precizēts (bez jaunas piekrišanas — nav personas datu).
+- Testi: `run.js` (+3 B12), `run-sql.sh` (+ client-errors-test, 10 pārbaudes).
+- **Produkcijā:** jāpalaiž SQL 36 (ar īpašnieka atļauju), tad `status.sql`. Līdz tam lietotne ziņojumus sūta, bet serveris tos atraida (404) — bez ietekmes uz lietotni.

@@ -31,6 +31,7 @@
       ielu dati, vietas un darba laiki — Overpass (overpass-api.de) un OpenStreetMap API, saņem redzamo kartes apgabalu;
       laikapstākļi — Open-Meteo, saņem aptuvenu atrašanās vietu (~100 m); burti — Google Fonts. Kur šie pakalpojumi atrodas — 7. punktā.</li>
     <li><b>Ierīcē</b> (pārlūka atmiņā) glabājas iestatījumi, redzēto radaru saraksts un kešatmiņa.</li>
+    <li><b>Kļūdu ziņojumi:</b> ja lietotnē rodas programmas kļūda, serverim tiek nosūtīts tehnisks ziņojums — kļūdas teksts (bez e-pastiem, kodiem, adrešu parametriem un koordinātām), faila nosaukums un rinda, lietotnes versija un pārlūka nosaukums. Tajā nav konta, atrašanās vietas vai citu ziņu par tevi, un serveris to nesaista ar IP adresi. Ziņojumus redz tikai lietotnes īpašnieks; tos glabā 30 dienas (8. punkts). Pamatojums — leģitīmās intereses: atrast un izlabot kļūdas.</li>
     <li>Kad ierīce kartē atrod ātruma kameras zīmi, tās Mapillary numurs un koordinātas tiek nosūtīti kopīgajam radaru sarakstam; ja zīme Mapillary vairs neeksistē, ierīce to atzīmē kā nederīgu. Pašā radaru sarakstā nav nekādas informācijas par tevi. Lai viens konts nevarētu „nobalsot” par radaru daudzas reizes, šim nolūkam vajag anonīmu kontu (ja tā vēl nav, lietotne to izveido neredzami — 3. punkts), un serveris <b>30 dienas</b> glabā, kurš konts par kuru radaru ziņoja (8. punkts). Pamatojums — leģitīmās intereses: uzticams radaru saraksts visiem lietotājiem.</li>
   </ul>
 
@@ -88,6 +89,7 @@
     <li>Darbību skaits („Mana statistika”) — līdz konta dzēšanai; dzēšot kontu, tiek dzēsts kopā ar to.</li>
     <li>Ieraksts, kurš konts ziņoja par radaru vai atzīmēja to kā nederīgu, — 30 dienas pēc pēdējā ziņojuma; dzēšot kontu — uzreiz.</li>
     <li>Stripe maksājumu ieraksti — saskaņā ar Stripe un grāmatvedības prasībām (pēc konta dzēšanas tie paliek Stripe).</li>
+    <li>Kļūdu ziņojumi (2. punkts) — 30 dienas.</li>
   </ul>
 
   <h2>9. Tavas tiesības</h2>
@@ -104,6 +106,7 @@
   <p>2026-11-10b: pārbaude, ka neesi robots (Cloudflare Turnstile), veidojot kontu vai pieprasot e-pasta saiti (3. un 7. punkts); anonīmi konti, kas 180 dienas nav lietoti, tiek dzēsti automātiski (8. punkts).</p>
   <p>2026-11-10c: ziņot par radariem var tikai ar (anonīmu) kontu; ieraksts, kurš konts par kuru radaru ziņoja, glabājas 30 dienas (2., 3. un 8. punkts).</p>
   <p>2026-11-10 (precizējums, bez jaunas piekrišanas — redzamība samazināta): kopbraucienu profilu (vārdu, auto) redz tikai brauciena otra puse, nevis visi lietotāji (3. punkts).</p>
+  <p>2026-11-11 (precizējums, bez jaunas piekrišanas): tehniski kļūdu ziņojumi bez personas datiem, 30 dienas (2. un 8. punkts).</p>
 </main>
 </body>
 </html>

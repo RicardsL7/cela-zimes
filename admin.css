@@ -201,3 +201,8 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .cz-captcha-w { min-height: 65px; }
 .cz-captcha-x { min-height: 44px; min-width: 120px; border-radius: 12px; border: 1px solid currentColor; background: transparent;
   color: inherit; font: 600 15px var(--font-body, system-ui, sans-serif); cursor: pointer; }
+
+/* B12: lietotnes kļūdas */
+.adm-err::before { background: var(--danger); }
+.adm-err .adm-err-n { font-variant-numeric: tabular-nums; }
+.adm-err-msg { font-style: normal; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13.5px; overflow-wrap: anywhere; white-space: pre-wrap; }

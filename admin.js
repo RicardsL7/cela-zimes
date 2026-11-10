@@ -11,7 +11,7 @@ const admStorage = {
   setItem(k, v) { try { localStorage.setItem('cz.admin.' + k, v); } catch { /* */ } },
   removeItem(k) { try { localStorage.removeItem('cz.admin.' + k); } catch { /* */ } },
 };
-const adm = { auth: null, stats: null, fees: null, reports: null, cleanup: null, tab: 'stats', filter: 'all', busy: false, at: null, syncing: false, syncMsg: null };
+const adm = { auth: null, stats: null, fees: null, reports: null, cleanup: null, errors: null, tab: 'stats', filter: 'all', busy: false, at: null, syncing: false, syncMsg: null };
 const $a = id => document.getElementById(id);
 
 function admEl(tag, attrs = {}, ...kids) {
@@ -104,6 +104,10 @@ async function admFees() {
 }
 
 // ---------- Ielāde ----------
+// B12: lietotnes kļūdas (supabase/client-errors.sql). Ja SQL Nr. 36 vēl nav palaists — null (cilne to pasaka).
+async function admErrors() {
+  try { return await admRpc('admin_client_errors', { p_days: 7 }) || []; } catch (e) { if (e.message === 'forbidden') throw e; return null; }
+}
 async function admStart() {
   if (typeof RIDES_CONFIG === 'undefined' || !RIDES_CONFIG.url) { admSay('Serveris nav iestatīts.', true); return; }
   adm.auth = new CzAuth(RIDES_CONFIG, { storage: admStorage });
@@ -125,8 +129,9 @@ async function admLoad() {
     const ok = await admRpc('is_app_admin');
     if (ok !== true) { admSay(''); admShow('denied'); return; }
     if (!adm.stats) { admSay(''); admShow('panel'); admSkeleton(); }
-    const [stats, reports, fees, cleanup] = await Promise.all([admRpc('admin_stats'), admRpc('admin_user_reports', { lim: 200 }), admFees(), admCleanup()]);
-    adm.stats = stats; adm.reports = reports || []; adm.fees = fees; adm.cleanup = cleanup;
+    const [stats, reports, fees, cleanup, errors] = await Promise.all([admRpc('admin_stats'), admRpc('admin_user_reports', { lim: 200 }),
+      admFees(), admCleanup(), admErrors()]);
+    adm.stats = stats; adm.reports = reports || []; adm.fees = fees; adm.cleanup = cleanup; adm.errors = errors;
     adm.at = new Date(); admSay(''); admShow('panel'); admRender();
     $a('admUpdated').textContent = 'Atjaunots ' + adm.at.toLocaleTimeString('lv-LV', { hour: '2-digit', minute: '2-digit' });
   } catch (e) {
@@ -169,10 +174,12 @@ function admIcon(name) {
 
 function admRender() {
   for (const b of document.querySelectorAll('.adm-tab')) b.setAttribute('aria-selected', String(b.dataset.tab === adm.tab));
-  $a('admStats').hidden = adm.tab !== 'stats'; $a('admReports').hidden = adm.tab !== 'reports';
+  $a('admStats').hidden = adm.tab !== 'stats'; $a('admReports').hidden = adm.tab !== 'reports'; $a('admErrors').hidden = adm.tab !== 'errors';
   const fresh = (adm.reports || []).filter(r => r.status === 'new').length;
   $a('admNewCount').textContent = fresh; $a('admNewCount').hidden = !fresh;
-  admRenderStats(); admRenderReports();
+  const today = (adm.errors || []).filter(e => e.day === admToday()).length;
+  $a('admErrCount').textContent = today; $a('admErrCount').hidden = !today;
+  admRenderStats(); admRenderReports(); admRenderErrors();
 }
 function admSkeleton() {
   $a('admStats').replaceChildren(
@@ -328,6 +335,41 @@ function admRenderReports() {
   }
 }
 
+// ---------- B12: lietotnes kļūdas ----------
+const ADM_ERR_KIND = { error: 'Kļūda', rejection: 'Nepārtverta (Promise)', report: 'Ziņojums no koda' };
+function admToday() {
+  const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Riga', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  return p;                                                                                // GGGG-MM-DD (kā client_errors.day)
+}
+function admRenderErrors() {
+  const box = $a('admErrors'), all = adm.errors;
+  const head = admEl('p', { class: 'fine', style: 'margin:0 0 4px',
+    text: 'JavaScript kļūdas lietotāju pārlūkos (pēdējās 7 dienas). Bez personas datiem un atrašanās vietas; glabā 30 dienas.' });
+  if (all == null) {
+    box.replaceChildren(head, admEl('div', { class: 'card adm-none' }, admIcon('warn'),
+      admEl('p', { text: 'Kļūdu pieraksts vēl nav ieslēgts serverī (supabase/client-errors.sql, Nr. 36).' })));
+    return;
+  }
+  if (!all.length) {
+    box.replaceChildren(head, admEl('div', { class: 'card adm-none' }, admIcon('done'), admEl('p', { text: 'Kļūdu nav — viss kārtībā.' })));
+    return;
+  }
+  box.replaceChildren(head);
+  for (const e of all) {
+    const when = new Date(e.last_at).toLocaleString('lv-LV', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const where = [e.src || null, e.line ? 'rinda ' + e.line + (e.col ? ':' + e.col : '') : null].filter(Boolean).join(', ');
+    const meta = [ADM_ERR_KIND[e.kind] || e.kind, e.page === 'admin' ? 'admin.html' : e.page === 'app' ? 'lietotne' : 'cita lapa',
+      e.ver ? 'v' + e.ver : null, e.browser || null].filter(Boolean).join(' · ');
+    box.append(admEl('article', { class: 'adm-report adm-err' + (e.day === admToday() ? '' : ' st-closed') },
+      admEl('div', { class: 'adm-report-top' },
+        admEl('b', { class: 'adm-err-n', text: '×' + admNum(e.n) }),
+        admEl('span', { class: 'adm-status', text: meta }),
+        admEl('small', { text: when })),
+      admEl('p', { class: 'adm-details adm-err-msg', text: e.msg }),
+      where ? admEl('p', { class: 'fine', style: 'margin:4px 0 0', text: where }) : null));
+  }
+}
+
 // ---------- Notikumi ----------
 document.addEventListener('DOMContentLoaded', () => {
   $a('admLoginForm').addEventListener('submit', async e => {
@@ -340,7 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
     finally { btn.disabled = false; }
   });
   $a('admRefresh').addEventListener('click', admLoad);
-  $a('admSignOut').addEventListener('click', async () => { await adm.auth.signOut(); adm.stats = adm.reports = adm.fees = null; admSay('Tu esi izrakstījies.'); admShow('login'); });
+  $a('admSignOut').addEventListener('click', async () => { await adm.auth.signOut(); adm.stats = adm.reports = adm.fees = adm.errors = null; admSay('Tu esi izrakstījies.'); admShow('login'); });
   for (const b of document.querySelectorAll('.adm-tab')) b.addEventListener('click', () => { adm.tab = b.dataset.tab; admRender(); });
   admStart();
 });

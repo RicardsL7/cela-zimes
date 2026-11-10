@@ -148,6 +148,14 @@ GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi
   palaiž drošības scenārijus, pārbauda `supabase/status.sql` un veco failu aizsardzību.
 - **Karte un lapu drošības politika** (Playwright + Chromium): `node tests/map-smoke.js . /tmp/karte` — sk. faila sākumu.
 
+## Lietotnes kļūdas (B12)
+
+- `errlog.js` (ielādējas pirmais pēc `guard.js` visās lapās) pieraksta `window.onerror` un nepārtvertās Promise kļūdas un sūta
+  tās uz `rpc/client_error` (`supabase/client-errors.sql`, Nr. 36): attīrīts teksts, fails, rinda, versija, pārlūks — bez
+  personas datiem. Lietotnē — tikai pēc piekrišanas noteikumiem; ≤ 5 ziņojumi lapas ielādē, katra kļūda vienreiz; tīkla
+  pārtraukumus, pārlūka paplašinājumus un „Script error.” ignorē. Kodā var ziņot arī pats: `czReportError(e, 'kur')`.
+- Skatīt: admin.html → „Kļūdas” (pēdējās 7 dienas; glabā 30 dienas).
+
 ## Izvietošana un main zara aizsardzība (B11)
 
 - **Vietne atjaunojas tikai pēc zaļiem testiem.** GitHub → Settings → Pages → Source = **GitHub Actions**. Darbplūsmā „Testi”
