@@ -49,10 +49,21 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 29 | presence-2-privacy.sql | A16: citu braucēju punkti — atsevišķa izvēle, ~150 m, redz tikai braucot ≤ 15 km | **nē — aizsargāts** (pēc 30) |
 | 30 | rides-18-open-privacy.sql | B02: atvērtie braucieni šoferiem aptuveni (~1 km, bez vārda/adreses/piezīmes) | **nē — aizsargāts** (pēc 31) |
 | 31 | rides-19-cost-share.sql | B03: kopbrauciena maksa ≤ ceļa izmaksas (attālums × 1,3 × 12 c/km, ≥ 2 €) | **nē — aizsargāts** (pēc 32) |
-| 32 | account-2-anon-cleanup.sql | B07: anonīmi konti, kas 180 d. nav pieslēgušies, tiek dzēsti katru nakti | jā (kamēr nav jaunāku) |
+| 32 | account-2-anon-cleanup.sql | B07: anonīmi konti, kas 180 d. nav pieslēgušies, tiek dzēsti katru nakti | **nē — aizsargāts** (pēc 33) |
+| 33 | radars-2-votes.sql | B08: radaru ziņojumi un „nav radara” tikai ar kontu, viena balss no konta, limiti; balsis 30 d. | jā (kamēr nav jaunāku) |
 
 **Produkcijā:** palaisti visi 1–32 (22–31 — 08.11.2026, 32 — 10.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
 Faili ar `cz_migration_begin` (27–…) atkārtoti palaižami tikai, kamēr nav palaists jaunāks (tad tie paši atsakās).
+
+## Radaru ziņojumi un balsis (B08)
+
+- `radars-2-votes.sql` (Nr. 33): `radar_report` un `radar_bad` — tikai `authenticated` (anon tiesības atņemtas);
+  `radar_list` — kā līdz šim arī bez konta. Tabula `radar_votes` (mly_id, user_id, g/b) — viena balss no konta katram
+  radaram; glabā 30 dienas (pg_cron „cz-radar-votes” 02:37 UTC), kontu dzēšot — uzreiz (on delete cascade).
+- Limiti no konta: ≤ 120 ziņojumi stundā (citādi pieprasījums atgriež 0), ≤ 100 jauni radari diennaktī, ≤ 100 „nav radara”
+  stundā; kopējie griesti 50 000 radaru paliek.
+- Lietotne (app-gl.js v165) konta nav — izveido anonīmo neredzami (CAPTCHA bez loga); vecas lietotnes versijas bez
+  konta saņem 401/403 un vienkārši neziņo (radaru saraksts strādā).
 
 ## Nelietoti anonīmi konti un CAPTCHA (B07)
 

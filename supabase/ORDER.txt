@@ -33,3 +33,4 @@
 30 rides-18-open-privacy.sql
 31 rides-19-cost-share.sql
 32 account-2-anon-cleanup.sql
+33 radars-2-votes.sql
