@@ -2986,9 +2986,11 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
         f + ': <head> bez atribūtiem (Android lietotnes skripts nonāk pirms CSP), CSP, referrer, guard.js — pašā sākumā');
       const c = cspOf(h); ok(c, f + ': CSP');
       if (!c) continue;
-      eq((c['script-src'] || []).join(' '), "'self'", f + ": script-src tikai 'self' (bez unsafe-inline / unsafe-eval / CDN)");
+      // B07: lapām ar pieteikšanos — tikai Cloudflare Turnstile (CAPTCHA) skripts un rāmis, nekas cits
+      const CAP = ['index.html', 'index-gl.html', 'admin.html'].includes(f) ? ' https://challenges.cloudflare.com' : '';
+      eq((c['script-src'] || []).join(' '), "'self'" + CAP, f + ": script-src tikai 'self' (+ Turnstile) (bez unsafe-inline / unsafe-eval / CDN)");
       eq((c['default-src'] || []).join(' '), "'self'", f + ': default-src');
-      for (const [k, v] of [['object-src', "'none'"], ['base-uri', "'self'"], ['form-action', "'self'"], ['frame-src', "'none'"]]) eq((c[k] || []).join(' '), v, f + ': ' + k);
+      for (const [k, v] of [['object-src', "'none'"], ['base-uri', "'self'"], ['form-action', "'self'"], ['frame-src', CAP ? CAP.trim() : "'none'"]]) eq((c[k] || []).join(' '), v, f + ': ' + k);
       ok('upgrade-insecure-requests' in c, f + ': upgrade-insecure-requests');
       ok(!/frame-ancestors|report-uri|sandbox/.test(Object.keys(c).join(' ')), f + ': nav direktīvu, kas meta tagā nedarbojas');
       for (const [k, v] of Object.entries(c)) for (const src of v) ok(!/^http:|^\*$|unsafe-eval|^'unsafe-inline'$/.test(src) || (k === 'style-src' && src === "'unsafe-inline'"), f + ': ' + k + ' bez ' + src);
@@ -3008,7 +3010,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const scripts = [...h.matchAll(/<script defer src="([\w.-]+\.js)\?v=/g)].map(m => m[1]);
     ok(scripts.length >= 25, 'lietotnes skripti');
     // Saites (href), attēli (<img>/Image — img-src https:) un kešatmiņas atslēgas — nav fetch
-    const NOT_FETCH = /^(www\.openstreetmap\.org|openfreemap\.org|www\.openmaptiles\.org|cdn\.jsdelivr\.net|cela-zimes\.cache|dom|operations\.osmfoundation\.org|growlab\.cc)$/;
+    const NOT_FETCH = /^(challenges\.cloudflare\.com|www\.openstreetmap\.org|openfreemap\.org|www\.openmaptiles\.org|cdn\.jsdelivr\.net|cela-zimes\.cache|dom|operations\.osmfoundation\.org|growlab\.cc)$/;
     const brands = new Set();
     const pl = fs.readFileSync(path.join(ROOT, 'places.js'), 'utf8');
     for (const m of pl.matchAll(/\[\/[^\n]*?, (?:'[^']+'|"[^"]+"), 'https:\/\/([a-z0-9.-]+)\//g)) brands.add(m[1]);
@@ -3142,7 +3144,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/h2\[tabindex="-1"\]:focus/.test(css), 'virsrakstam fokusa rāmis nav jārāda');
     const ms = fs.readFileSync(path.join(__dirname, 'map-smoke.js'), 'utf8');
     ok(/res\.a11y = \{\}/.test(ms) && /Tab izgāja no paneļa/.test(ms) && /piekrišana aizvērās ar Esc/.test(ms) && /Garāžas dialogs aizverot/.test(ms), 'kartes tests pārbauda ar tastatūru');
-    for (const f of ['index.html', 'index-gl.html']) ok(/sheets\.js\?v=(153|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /style-gl\.css\?v=15[3-9]/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': jaunas versijas');
+    for (const f of ['index.html', 'index-gl.html']) ok(/sheets\.js\?v=(153|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /style-gl\.css\?v=(15[3-9]|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': jaunas versijas');
   });
 }
 
@@ -3451,7 +3453,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   test('A15: politika un noteikumi — kas paliek, kad nevar dzēst; jauna versija', () => {
     const pr = fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8'), te = fs.readFileSync(path.join(ROOT, 'terms.html'), 'utf8');
     const au = fs.readFileSync(path.join(ROOT, 'auth.js'), 'utf8');
-    ok(/CZ_PRIVACY_VERSION = '2026-11-(08b?|[1-3]\d)'/.test(au) && /CZ_TERMS_VERSION = '2026-11-(08b?|[1-3]\d)'/.test(au), 'jaunas versijas → piekrišanas logs');
+    ok(/CZ_PRIVACY_VERSION = '2026-11-(08b?|[1-3]\db?)'/.test(au) && /CZ_TERMS_VERSION = '2026-11-(08b?|[1-3]\d)'/.test(au), 'jaunas versijas → piekrišanas logs');
     ok(/Kas paliek otram brauciena dalībniekam/.test(pr) && /~1 km/.test(pr) && /kontu dzēst nevar/.test(pr), 'privacy.html');
     ok(/izņemot, kamēr ir aktīvs brauciens/.test(te), 'terms.html');
     const ui = fs.readFileSync(path.join(ROOT, 'rides-ui.js'), 'utf8');
@@ -3552,13 +3554,13 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
       const h = fs.readFileSync(path.join(ROOT, f), 'utf8');
       ok(/<b>Rādīt mani citu kartē<\/b>/.test(h) && /<input type="checkbox" id="presenceShow" class="switch">/.test(h), f + ': slēdzis (bez checked)');
       ok(!/kad brauc un ir ieslēgts „Palīdzēt citiem”/.test(h) && /ieslēgts „Rādīt mani citu kartē”/.test(h), f + ': Garāžas teksts');
-      ok(/presence\.js\?v=158/.test(h) && /reports\.js\?v=158/.test(h) && /traffic-gl\.js\?v=158/.test(h) && /garage\.js\?v=158/.test(h), f + ': v158');
+      ok(/presence\.js\?v=158/.test(h) && /reports\.js\?v=158/.test(h) && /traffic-gl\.js\?v=(158|1[6-9]\d)/.test(h) && /garage\.js\?v=158/.test(h), f + ': v158');
     }
     const tr = fs.readFileSync(path.join(ROOT, 'traffic-gl.js'), 'utf8');
     ok(!/citi braucēji kartē redz/.test(tr) && !/presenceStop/.test(tr), 'ātruma dalīšana vairs nerāda tevi citiem');
     const pr = fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8');
     ok(/~150 m/.test(pr) && /Citu braucēju redzēšana/.test(pr) && /līdz 15 km/.test(pr) && /noklusēti izslēgta/.test(pr), 'privacy.html §6');
-    ok(/CZ_PRIVACY_VERSION = '2026-11-(08b|[1-3]\d)'/.test(fs.readFileSync(path.join(ROOT, 'auth.js'), 'utf8')) && /Versija 2026-11-(08b|[1-3]\d)/.test(pr), 'jauna politikas versija');
+    ok(/CZ_PRIVACY_VERSION = '2026-11-(08b|[1-3]\db?)'/.test(fs.readFileSync(path.join(ROOT, 'auth.js'), 'utf8')) && /Versija 2026-11-(08b|[1-3]\d)/.test(pr), 'jauna politikas versija');
   });
 }
 
@@ -3759,7 +3761,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     for (const w of ['routing.openstreetmap.de', 'overpass-api.de', 'jsDelivr', 'OpenStreetMap API', 'Open-Meteo (Šveice)', 'Mapillary (Meta Platforms)', 'Google Fonts', 'Lietotne neizmanto serverus Krievijā'])
       ok(pr.includes(w), 'politikā: ' + w);
     ok(/Versija 2026-11-10/.test(pr) && /<p>2026-11-10: /.test(pr), 'versija + izmaiņu ieraksts');
-    ok(/CZ_PRIVACY_VERSION = '2026-11-10'/.test(rd('auth.js')), 'auth.js → piekrišanas logs');
+    ok(/CZ_PRIVACY_VERSION = '2026-11-10b?'/.test(rd('auth.js')), 'auth.js → piekrišanas logs');
     for (const f of ['index.html', 'index-gl.html', 'admin.html']) ok(/auth\.js\?v=1[6-9]\d/.test(rd(f)) && !/auth\.js\?v=160/.test(rd(f)), f + ': auth.js jauna versija');
     // katrs CSP connect-src ārējais serveris ir minēts politikā (pēc nosaukuma vai adreses)
     const NAMES = { 'pkqusuoicxmwcgwsrdqy.supabase.co': 'Supabase', 'tiles.openfreemap.org': 'OpenFreeMap', 'tile.openstreetmap.org': 'OpenStreetMap',
@@ -3768,6 +3770,96 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
       'photon.komoot.io': 'Photon', 'nominatim.openstreetmap.org': 'Nominatim' };
     const csp = (rd('index.html').match(/connect-src ([^;]+);/) || [])[1].split(/\s+/).filter(x => /^https:\/\//.test(x)).map(x => x.slice(8));
     for (const h of csp) ok(NAMES[h] && pr.includes(NAMES[h]), h + ': minēts politikā');
+  });
+}
+
+// ---------- B07 (audits 2): CAPTCHA (Turnstile) jaunam kontam un e-pasta saitei; nelietotu anonīmu kontu dzēšana ----------
+{
+  const ROOT = path.join(__dirname, '..');
+  const rd = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+  const A = require('../auth.js');
+  const mem = () => { const m = new Map(); return { getItem: k => m.has(k) ? m.get(k) : null, setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; };
+  const jwt = o => 'x.' + Buffer.from(JSON.stringify(o)).toString('base64').replace(/=+$/, '') + '.y';
+  const mkAuth = (opts = {}) => {
+    const storage = mem(); A.czConsentSave(storage);
+    const calls = [];
+    const fetch = async (url, init) => { calls.push({ url, body: init.body ? JSON.parse(init.body) : null });
+      return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: jwt({ sub: 'u1', is_anonymous: true }), refresh_token: 'r', expires_in: 3600, user: { id: 'u1' } }) }; };
+    return { a: new A.CzAuth({ url: 'https://x.supabase.co', anonKey: 'k', ...(opts.cfg || {}) }, { storage, fetch, ...opts }), calls };
+  };
+  test('B07: bez captchaSiteKey — pieprasījumi kā līdz šim (bez žetona)', async () => {
+    const { a, calls } = mkAuth();
+    eq(a.captcha, null, 'nav CAPTCHA');
+    await a.token({ create: true });
+    ok(/\/auth\/v1\/signup$/.test(calls[0].url) && !('gotrue_meta_security' in calls[0].body), 'signup bez žetona');
+    eq(/captchaSiteKey: '',/.test(rd('rides-config.js')), true, 'rides-config.js: atslēga vēl tukša (ieslēdz īpašnieks)');
+  });
+  test('B07: ar CAPTCHA — signup un otp sūta gotrue_meta_security.captcha_token', async () => {
+    const seen = [];
+    const { a, calls } = mkAuth({ captcha: async o => { seen.push(o); return 'tok-' + seen.length; }, isMoving: () => false });
+    await a.token({ create: true });
+    eq(calls[0].body.gotrue_meta_security.captcha_token, 'tok-1', 'signup žetons');
+    eq(seen[0].interactive, true, 'stāvot — var parādīt pārbaudes logu');
+    a._clear();
+    await a.sendLink('test@example.org', 'https://growlab.cc/');
+    const otp = calls.find(c => /\/otp\?/.test(c.url));
+    ok(otp && otp.body.gotrue_meta_security.captcha_token === 'tok-2', 'otp žetons');
+  });
+  test('B07: braucot vai fonā — tikai neredzamā pārbaude (logs netiek rādīts)', async () => {
+    const seen = [];
+    let m = mkAuth({ captcha: async o => { seen.push(o.interactive); return 't'; }, isMoving: () => true });
+    await m.a.token({ create: true });
+    m = mkAuth({ captcha: async o => { seen.push(o.interactive); return 't'; }, isMoving: () => false });
+    await m.a.token({ create: true, interactive: false });
+    eq(seen.join(), 'false,false', 'braucot / interactive:false');
+    ok(/return a\.token\(\{ create: true, interactive: false \}\);/.test(rd('traffic-gl.js')), 'ātruma dalīšana fonā — bez loga');
+  });
+  test('B07: CAPTCHA kļūdas — saprotami teksti', () => {
+    ok(/apstājies/.test(A.czAuthErrorText('captcha_needed')) && /atcelta/.test(A.czAuthErrorText('captcha_cancel')) && /robots/.test(A.czAuthErrorText('captcha_failed')), 'teksti');
+    ok(/\/captcha\/\.test\(e\.code \|\| ''\) \? czAuthErrorText\(e\.code\)/.test(rd('rides-ui.js')), '„Kopā” rāda CAPTCHA kļūdu');
+  });
+  test('B07: captcha.js — ielādē Cloudflare tikai pēc vajadzības; neinteraktīvi → captcha_needed', async () => {
+    const C = require('../captcha.js');
+    eq(C.CZ_TURNSTILE_SRC, 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit', 'skripts');
+    eq(await C.czCaptchaToken(''), null, 'bez atslēgas — nekas');
+    // viltots turnstile + DOM
+    const els = {};
+    const mkEl = () => ({ hidden: false, children: [], textContent: '', setAttribute() {}, append(...c) { this.children.push(...c); }, appendChild(c) { this.children.push(c); },
+      querySelector(sel) { const f = x => x.className === sel.slice(1) ? x : (x.children || []).map(f).find(Boolean); return f(this); }, focus() {} });
+    const doc = { getElementById: id => els[id] || null, createElement: () => mkEl(), body: mkEl(), head: mkEl() };
+    let mode = 'ok', removed = 0;
+    global.window = { turnstile: { render: (el, o) => { setTimeout(() => {
+      if (mode === 'ok') o.callback('T1'); else { o['before-interactive-callback'](); }
+    }, 0); return 7; }, remove: id => { if (id === 7) removed++; } } };
+    const orig = doc.createElement; doc.createElement = () => { const e = orig(); return e; };
+    const box = doc.createElement(); box.id = 'czCaptcha';
+    try {
+      eq(await C.czCaptchaToken('site', doc), 'T1', 'žetons');
+      mode = 'interactive';
+      let err = null; try { await C.czCaptchaToken('site', doc, { interactive: false }); } catch (e) { err = e.code; }
+      eq(err, 'captcha_needed', 'braucot — uzreiz kļūda, logs netiek rādīts');
+      eq(removed, 2, 'logrīks noņemts pēc lietošanas');
+    } finally { delete global.window; }
+  });
+  test('B07: CSP — tikai Turnstile; privātuma politika 2026-11-10b', () => {
+    for (const f of ['index.html', 'index-gl.html', 'admin.html']) {
+      const h = rd(f);
+      ok(/script-src 'self' https:\/\/challenges\.cloudflare\.com;/.test(h) && /frame-src https:\/\/challenges\.cloudflare\.com;/.test(h), f + ': CSP');
+      ok(/captcha\.js\?v=1[6-9]\d/.test(h) && h.indexOf('captcha.js') < h.indexOf('auth.js?v='), f + ': captcha.js pirms auth.js');
+    }
+    const pr = rd('privacy.html');
+    ok(/Cloudflare Turnstile/.test(pr) && /<b>Cloudflare<\/b> \(ASV\)/.test(pr) && /<b>180 dienas<\/b>/.test(pr), 'politika: Cloudflare un 180 dienas');
+    ok(/Versija 2026-11-10b/.test(pr) && /CZ_PRIVACY_VERSION = '2026-11-10b'/.test(rd('auth.js')), 'jauna versija');
+  });
+  test('B07: SQL 32 — dzēšana pēc 180 d., ne mazāk par 90, katru nakti; delete_my_account tā pati dzēšana', () => {
+    const q = rd('supabase/account-2-anon-cleanup.sql');
+    ok(/^32 account-2-anon-cleanup\.sql$/m.test(rd('supabase/ORDER.txt')), 'ORDER.txt');
+    ok(/cz_anon_cleanup\(p_days int default 180, p_limit int default 500\)/.test(q) && /if p_days < 90 then raise exception/.test(q), '180 d., aizsardzība');
+    ok(/a\.is_anonymous and a\.email is null/.test(q) && /from auth\.sessions s/.test(q) && /refreshed_at at time zone 'UTC'/.test(q), 'tikai anonīmi, pēc sesijām');
+    ok(/from driver_accounts where user_id = u\.id/.test(q) && /account_delete_blockers\(u\.id\)/.test(q), 'izlaiž Stripe kontu un aktīvu braucienu');
+    ok(/perform account_erase\(me\);/.test(q) && /cron\.schedule\('cz-anon-cleanup', '23 2 \* \* \*'/.test(q), 'kopīga dzēšana, plānotājs');
+    ok(/revoke all on function public\.cz_anon_cleanup\(int, int\) from public, anon, authenticated;/.test(q), 'nav lietotnei');
+    ok(/t:anon-cleanup-test\.sql/.test(rd('tests/run-sql.sh')), 'SQL tests');
   });
 }
 

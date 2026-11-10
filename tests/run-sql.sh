@@ -47,6 +47,10 @@ STEPS=(
   # B03 (audits 2): kopbrauciena maksa — ceļa izdevumu daļa (palaižama atkārtoti)
   s:rides-19-cost-share.sql s:rides-19-cost-share.sql
   t:cost-share-test.sql
+  # B07 (audits 2): nelietotu anonīmu kontu dzēšana (palaižama atkārtoti)
+  s:account-2-anon-cleanup.sql s:account-2-anon-cleanup.sql
+  t:anon-cleanup-test.sql
+  t:account-delete-test.sql
 )
 
 fail=0; pass=0
