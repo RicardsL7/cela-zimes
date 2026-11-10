@@ -16,7 +16,7 @@ import { createInterface } from 'node:readline';
 
 const CELL = 0.05;
 const OUT = new URL('../data/osm/', import.meta.url);
-const URLS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+const URLS = ['https://overpass-api.de/api/interpreter'];   // B05: bez maps.mail.ru (Krievija); galvenais avots — Geofabrik
 const QUERY = `[out:json][timeout:600][maxsize:1073741824];
 area["ISO3166-1"="LV"][admin_level=2]->.lv;
 (
