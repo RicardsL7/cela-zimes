@@ -3839,7 +3839,8 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     eq(a.captcha, null, 'nav CAPTCHA');
     await a.token({ create: true });
     ok(/\/auth\/v1\/signup$/.test(calls[0].url) && !('gotrue_meta_security' in calls[0].body), 'signup bez žetona');
-    eq(/captchaSiteKey: '',/.test(rd('rides-config.js')), true, 'rides-config.js: atslēga vēl tukša (ieslēdz īpašnieks)');
+    const sk = /captchaSiteKey: '([^']*)'/.exec(rd('rides-config.js'));
+    ok(sk && (sk[1] === '' || /^[01]x[0-9A-Za-z_-]{20,}$/.test(sk[1])), 'rides-config.js: tukša vai Turnstile Site Key formā (ne noslēpums)');
   });
   test('B07: ar CAPTCHA — signup un otp sūta gotrue_meta_security.captcha_token', async () => {
     const seen = [];
