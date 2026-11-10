@@ -53,7 +53,7 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 33 | radars-2-votes.sql | B08: radaru ziņojumi un „nav radara” tikai ar kontu, viena balss no konta, limiti; balsis 30 d. | **nē — aizsargāts** (pēc 34) |
 | 34 | rides-20-profiles-privacy.sql | B09: profilu (vārds, auto) redz tikai brauciena otra puse, ne visi lietotāji | jā (kamēr nav jaunāku) |
 
-**Produkcijā:** palaisti visi 1–33 (22–31 — 08.11.2026, 32–33 — 10.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
+**Produkcijā:** palaisti visi 1–34 (22–31 — 08.11.2026, 32–34 — 10.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
 Faili ar `cz_migration_begin` (27–…) atkārtoti palaižami tikai, kamēr nav palaists jaunāks (tad tie paši atsakās).
 
 ## Kopbraucienu profilu redzamība (B09)
