@@ -57,6 +57,20 @@ jobs:
       - run: psql --version
       - run: bash tests/run-sql.sh
 
+  authors:
+    name: Commit autori bez personīga e-pasta (B06)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 100
+      - name: Jaunajos commit tikai GitHub noreply adreses
+        env:
+          BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: bash tools/check-authors.sh
+
   map:
     name: Kartes dūmu tests (MapLibre)
     runs-on: ubuntu-latest
