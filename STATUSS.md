@@ -474,3 +474,15 @@
 - **10.11.2026:** īpašnieks ieslēdza abus GitHub iestatījumus; B06 commit jau ar noreply autoru, CI „Commit autori” zaļš.
 - Testi: `run.js` 216/216 (+3 B06).
 
+## B08 (audits 2) — radaru datus varēja sabojāt bez konta (10.11.2026)
+
+- **Īpašnieka lēmumi:** konta nav — izveido anonīmo neredzami; balsis glabā 30 dienas.
+- **`supabase/radars-2-votes.sql` (Nr. 33):** `radar_report` un `radar_bad` tikai `authenticated` (anon tiesības atņemtas);
+  `radar_votes` — viena balss no konta katram radaram (g/b), 30 dienas (pg_cron „cz-radar-votes” 02:37 UTC), kontu dzēšot —
+  uzreiz. Limiti no konta: ≤ 120 ziņojumi/h, ≤ 100 jauni radari/diennaktī, ≤ 100 „nav radara”/h; kopējie griesti 50 000.
+  `good` / `bad` palielinās tikai par jaunu kontu (agrāk — par katru izsaukumu). `radar_list` bez izmaiņām.
+- **Lietotne (app-gl.js v165):** ziņojumam un „nav radara” — konta žetons (`token({ create: true, interactive: false })`);
+  ja neizdodas — 10 min pauze, ziņojumi paliek rindā.
+- **Privātuma politika 2026-11-10c:** radaru ziņošanai vajag anonīmu kontu; ieraksts 30 dienas (2., 3. un 8. punkts).
+- Testi: `run.js` 219/219 (+3 B08), `run-sql.sh` (+ radar-votes-test, 17 pārbaudes), kartes tests kārtībā.
+- **Produkcijā:** jāpalaiž SQL 33 (ar īpašnieka atļauju), tad `status.sql`.

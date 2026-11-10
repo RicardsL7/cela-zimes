@@ -147,6 +147,13 @@ GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi
   palaiž drošības scenārijus, pārbauda `supabase/status.sql` un veco failu aizsardzību.
 - **Karte un lapu drošības politika** (Playwright + Chromium): `node tests/map-smoke.js . /tmp/karte` — sk. faila sākumu.
 
+## Radaru saraksts: ziņot un balsot tikai ar kontu (B08)
+
+- Kopīgo radaru sarakstu (`radar_list`) lasa jebkurš, arī bez konta. Ziņot par atrastu radaru (`radar_report`) un atzīmēt
+  „nav radara” (`radar_bad`) var tikai ar kontu — ja tā nav, lietotne izveido anonīmo neredzami (CAPTCHA bez loga).
+- Serveris skaita vienu balsi no konta katram radaram (`radar_votes`, glabā 30 dienas) un limitē: ≤ 120 ziņojumi stundā,
+  ≤ 100 jauni radari diennaktī, ≤ 100 „nav radara” stundā no konta. SQL — `supabase/radars-2-votes.sql` (Nr. 33).
+
 ## Viltoti konti: CAPTCHA un nelietotu kontu dzēšana (B07)
 
 - **CAPTCHA (Cloudflare Turnstile)** — `captcha.js`. Supabase Auth ar ieslēgtu CAPTCHA pieņem jauna konta izveidi (`/signup`)

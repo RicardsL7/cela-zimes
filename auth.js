@@ -11,7 +11,7 @@
 // cz.traffic.session tiek pārņemtas, nevis izmestas).
 
 const CZ_TERMS_VERSION = '2026-11-08b';       // B03: kopbrauciens = izdevumu dalīšana, ≤ 12 c/km (iepr. 2026-11-08 — A15)
-const CZ_PRIVACY_VERSION = '2026-11-10b';      // B07: Cloudflare Turnstile, anonīmu kontu dzēšana pēc 180 d. (iepr. 2026-11-10 — B05)
+const CZ_PRIVACY_VERSION = '2026-11-10c';      // B08: radaru balsis ar kontu, 30 d. (iepr. 2026-11-10b — B07 Turnstile, 180 d.)
 const CZ_AUTH_KEY = 'cz.auth.session';
 const CZ_CONSENT_KEY = 'cz.consent';
 const CZ_TRANSFER_KEY = 'cz.auth.transfer';

@@ -221,14 +221,29 @@ function radarMemSave() {
 }
 // 3) Kopīgais radaru saraksts visiem lietotājiem (supabase/radars.sql). Tajā ir tikai Mapillary
 //    zīmju numuri — pirms parādīšanas katru pārbauda pašā Mapillary (vieta un veids no turienes),
-//    tāpēc viltotu radaru tur iesūtīt nevar.
-const radarShared = { ids: new Set(), loaded: false, queue: new Map(), timer: null };
-function radarRpc(name, body) {
+//    tāpēc viltotu radaru tur iesūtīt nevar. B08: ziņot un balsot var tikai ar kontu (supabase/radars-2-votes.sql).
+const radarShared = { ids: new Set(), loaded: false, queue: new Map(), timer: null, authWait: 0 };
+// B08: saraksts (radar_list) — bez konta; paziņošana (radar_report) un „nav radara” (radar_bad) — tikai ar kontu
+// (serveris skaita vienu balsi no konta un limitē stundā). Ja konta vēl nav — izveido anonīmo neredzami (tikai ar
+// piekrišanu noteikumiem; CAPTCHA bez loga — braucot logs netiek rādīts). Ja neizdodas — 10 min pauze, tad mēģina vēlreiz.
+async function radarToken() {
+  if (Date.now() < radarShared.authWait) throw Object.assign(new Error('radar_auth_wait'), { code: 'radar_auth_wait' });
+  const a = typeof czAuthGet === 'function' ? czAuthGet() : null;
+  if (!a) throw Object.assign(new Error('nav servera'), { code: 'no_server' });
+  try {
+    const t = await a.token({ create: true, interactive: false });
+    if (!t) throw Object.assign(new Error('network'), { code: 'network' });
+    return t;
+  } catch (e) { radarShared.authWait = Date.now() + 10 * 60000; throw e; }
+}
+async function radarRpc(name, body, { account = false } = {}) {
   const cfg = typeof RIDES_CONFIG !== 'undefined' ? RIDES_CONFIG : null;
-  if (!cfg || !cfg.url || !cfg.anonKey) return Promise.reject(new Error('nav servera'));
-  return fetch(cfg.url.replace(/\/$/, '') + '/rest/v1/rpc/' + name, {
-    method: 'POST', headers: { apikey: cfg.anonKey, 'content-type': 'application/json' }, body: JSON.stringify(body || {}),
-  }).then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)));
+  if (!cfg || !cfg.url || !cfg.anonKey) throw new Error('nav servera');
+  const headers = { apikey: cfg.anonKey, 'content-type': 'application/json' };
+  if (account) headers.Authorization = 'Bearer ' + await radarToken();
+  const r = await fetch(cfg.url.replace(/\/$/, '') + '/rest/v1/rpc/' + name, { method: 'POST', headers, body: JSON.stringify(body || {}) });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
 }
 // Mapillary pārbauda līdz 50 zīmēm reizē. Ja kāds numurs neeksistē, tas noraida visu grupu —
 // tad grupu dala uz pusēm, līdz atrod nederīgos.
@@ -266,7 +281,7 @@ async function loadSharedRadars() {
     }
     if (added) { signs.refresh(); added = 0; }
   }
-  if (bad.length && czConsentOk()) radarRpc('radar_bad', { ids: bad.slice(0, 50) }).catch(() => {});
+  if (bad.length && czConsentOk()) radarRpc('radar_bad', { ids: bad.slice(0, 50) }, { account: true }).catch(() => {});
 }
 // Paziņo citiem: jauns radars (vai ilgi nav apstiprināts — reizi nedēļā)
 function radarShare(id, lat, lng, value, reportedAt) {
@@ -283,11 +298,14 @@ async function radarFlush() {
   if (!items.length) return;
   items.forEach(it => radarShared.queue.delete(it.id));
   try {
-    await radarRpc('radar_report', { items });
+    await radarRpc('radar_report', { items }, { account: true });
     const m = radarMemGet();
     for (const it of items) { radarShared.ids.add(it.id); if (m[it.id]) m[it.id][4] = Date.now(); }
     radarMemSave();
-  } catch (e) { console.warn('Radaru paziņošana neizdevās', e); }
+  } catch (e) {
+    if (e && e.code === 'radar_auth_wait') { items.forEach(it => radarShared.queue.set(it.id, it)); radarShared.timer = setTimeout(radarFlush, 10 * 60000); return; }
+    console.warn('Radaru paziņošana neizdevās', e && (e.code || e.message));
+  }
   if (radarShared.queue.size) radarShared.timer = setTimeout(radarFlush, 1000);
 }
 async function loadKnownRadars() {
