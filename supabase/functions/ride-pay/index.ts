@@ -249,6 +249,24 @@ async function sdb(path: string, init: RequestInit = {}): Promise<any> {
   if (!r.ok) throw new Error('DB ' + path.split('?')[0] + ' ' + r.status + ' ' + t.slice(0, 200));
   return t ? JSON.parse(t) : null;
 }
+// B10: šofera Stripe konta piesaiste — tikai servera funkcija (rpc/driver_account_link, izpildīt var tikai service_role;
+// supabase/rides-21-driver-accounts.sql). Izsauc tikai pēc tam, kad Stripe izveidojis kontu ar metadatiem cz_user = uid.
+// Kamēr SQL Nr. 35 nav palaists (funkcijas nav — 404 / PGRST202), raksta vecajā veidā ar lietotāja pieteikšanos.
+// deno-lint-ignore no-explicit-any
+async function linkDriverAccount(uid: string, acct: string, userDb: (path: string, init?: RequestInit) => Promise<any>) {
+  if (SRK) {
+    try {
+      if (await sdb('rpc/driver_account_link', { method: 'POST', body: JSON.stringify({ p_user_id: uid, p_acct: acct }) }) === true) return;
+      throw new Error('driver_account_link: nav apstiprināts');
+    } catch (e) {
+      if (!/ 404 |PGRST202|driver_account_link\(/.test(String((e as Error)?.message ?? e))) {
+        console.error('driver_account_link', String((e as Error)?.message ?? e).slice(0, 200));
+        throw new Fail('Neizdevās saglabāt Stripe kontu', 500);
+      }
+    }
+  }
+  await userDb('driver_accounts', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ user_id: uid, acct }) });
+}
 // Statusa pieraksts (rpc/ride_payment_mark — tikai service_role, tikai uz priekšu). userId — pārbaudīts brauciena dalībnieks.
 async function markPay(userId: string, oid: string, status: 'paid' | 'refunded', refundId: string | null = null, reason: string | null = null, cents: number | null = null) {
   if (!SRK) { console.error('mark: nav SUPABASE_SERVICE_ROLE_KEY'); return false; }
@@ -410,7 +428,7 @@ Deno.serve(async (req) => {
             configuration: { recipient: { capabilities: { stripe_balance: { stripe_transfers: { requested: true } } } } },
             metadata: { cz_user: uid },
           });
-          await db('driver_accounts', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ user_id: uid, acct: a.id }) });
+          await linkDriverAccount(uid, a.id, db);
           row = { acct: a.id };
         }
         const link = await stripeV2('core/account_links', {
