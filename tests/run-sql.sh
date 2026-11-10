@@ -58,6 +58,11 @@ STEPS=(
   s:rides-20-profiles-privacy.sql s:rides-20-profiles-privacy.sql
   t:profiles-privacy-test.sql
   t:open-privacy-test.sql
+  # B10 (audits 2): šofera Stripe kontu piesaista tikai ride-pay (service_role) (palaižama atkārtoti)
+  s:rides-21-driver-accounts.sql s:rides-21-driver-accounts.sql
+  t:driver-accounts-test.sql
+  t:account-delete-test.sql
+  t:anon-cleanup-test.sql
 )
 
 fail=0; pass=0

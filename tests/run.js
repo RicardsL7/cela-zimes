@@ -1778,7 +1778,7 @@ test('F17: ride_payment_mark — tikai service_role, lietotājs no JWT, pārlūk
   ok(/markPay\(uid, oid,/.test(m) && /sdb\('rpc\/ride_payment_mark'/.test(mp) && /p_user_id: userId/.test(mp) && /apikey: SRK/.test(fn.slice(fn.indexOf('async function sdb'))), 'mark — servisa atslēga + uid no JWT');
   ok(/const uid: string = \(await ur\.json\(\)\)\.id;/.test(fn) && /'\/auth\/v1\/user'/.test(fn), 'uid no /auth/v1/user');
   ok(!/[^s]db\('rpc\/ride_payment_mark'/.test(fn), 'ar lietotāja JWT nesauc');
-  ok(!/json\([^)]*SRK/.test(fn) && (fn.match(/SRK/g) || []).length <= 6, 'atslēga atbildē nenonāk');
+  ok(!/json\([^)]*SRK/.test(fn) && (fn.match(/SRK/g) || []).length <= 7, 'atslēga atbildē nenonāk');   // +1 B10 (linkDriverAccount)
   ok(/if \(i\.paid && r\.status === 'created'\) await mark\(r\.offer_id, 'paid'\)/.test(fn), 'paid tikai pēc Stripe');
   ok(/if \(r\.status === 'failed' \|\| r\.status === 'canceled'\)[\s\S]{0,700}if \(st2\.full\) await mark\(oid, 'refunded', r\.id/.test(fn), 'refunded tikai pēc veiksmīgas un pilnas atmaksas (A05)');
   for (const f of fs.readdirSync(path.join(__dirname, '..')).filter(f => /\.(js|html)$/.test(f))) {
@@ -3985,6 +3985,52 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/select=\*,driver:profiles\(name,car\)/.test(js) && /passenger:profiles\(name,car\)\)&order=created_at\.desc/.test(js), 'offersFor / myOffers');
     const pr = rd('privacy.html');
     ok(/Vārdu un auto redz tikai brauciena otra puse/.test(pr) && !/Vārdu un auto redz citi kopbraucienu lietotāji/.test(pr), 'privātuma politika 3. punkts');
+  });
+}
+
+// ---------- B10 (audits 2): šofera Stripe kontu piesaista tikai ride-pay (service_role) ----------
+{
+  const ROOT = path.join(__dirname, '..');
+  const rd = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+  test('B10: SQL 35 — insert politika dzēsta, INSERT/UPDATE atņemts, driver_account_link tikai service_role', () => {
+    const q = rd('supabase/rides-21-driver-accounts.sql');
+    ok(/^35 rides-21-driver-accounts\.sql$/m.test(rd('supabase/ORDER.txt')) && /\| 35 \| rides-21-driver-accounts\.sql \|/.test(rd('supabase/MIGRATIONS.md')), 'ORDER.txt, MIGRATIONS.md');
+    ok(/drop policy if exists "driver_accounts insert own" on public\.driver_accounts;/.test(q) && /revoke insert, update on public\.driver_accounts from anon, authenticated;/.test(q), 'klients vairs neraksta');
+    ok(/revoke all on function public\.driver_account_link\(uuid, text\) from public, anon, authenticated;/.test(q)
+      && /grant execute on function public\.driver_account_link\(uuid, text\) to service_role;/.test(q), 'tikai service_role');
+    ok(/Stripe konts jau piesaistīts citam lietotājam/.test(q) && /'\^acct_\[A-Za-z0-9\]\{6,40\}\$'/.test(q), 'viens konts — viens lietotājs, formāts');
+    ok(/t:driver-accounts-test\.sql/.test(rd('tests/run-sql.sh')), 'SQL tests');
+  });
+  test('B10: ride-pay — piesaiste caur rpc/driver_account_link; vecais ceļš tikai, ja SQL 35 vēl nav', async () => {
+    const ts = rd('supabase/functions/ride-pay/index.ts');
+    ok(/await linkDriverAccount\(uid, a\.id, db\);/.test(ts), 'connect izmanto linkDriverAccount');
+    eq((ts.match(/'driver_accounts', \{ method: 'POST'/g) || []).length, 1, 'tiešs POST tikai rezerves ceļā');
+    ok(ts.indexOf("metadata: { cz_user: uid }") < ts.indexOf('await linkDriverAccount(uid, a.id, db);'), 'piesaista tikai pēc Stripe konta ar cz_user izveides');
+    // funkcija izpildīta ar imitācijām (TS tipi noņemti)
+    const m = /async function linkDriverAccount\([\s\S]*?\n\}\n/.exec(ts);
+    ok(m, 'funkcija atrasta');
+    const js = m[0].replace(/\(uid: string, acct: string, userDb: \(path: string, init\?: RequestInit\) => Promise<any>\)/, '(uid, acct, userDb)')
+      .replace(/\(e as Error\)/g, 'e');
+    const run = async ({ srk = 'sb_secret_x', sdbImpl }) => {
+      const calls = [];
+      const ctx = { SRK: srk, console: { error() {} }, String, JSON,
+        Fail: class extends Error { constructor(m, s) { super(m); this.status = s; } },
+        sdb: async (p, i) => { calls.push(['sdb', p, JSON.parse(i.body)]); return sdbImpl(); } };
+      vm.createContext(ctx);
+      vm.runInContext(js + '\nthis.f = linkDriverAccount;', ctx);
+      let err = null;
+      try { await ctx.f('U1', 'acct_A1b2C3d4', async (p, i) => { calls.push(['user', p, JSON.parse(i.body)]); }); } catch (e) { err = e; }
+      return { calls, err };
+    };
+    let r = await run({ sdbImpl: async () => true });
+    eq(JSON.stringify(r.calls), JSON.stringify([['sdb', 'rpc/driver_account_link', { p_user_id: 'U1', p_acct: 'acct_A1b2C3d4' }]]), 'SQL 35 ir — tikai servera funkcija');
+    ok(!r.err, 'bez kļūdas');
+    r = await run({ sdbImpl: async () => { throw new Error('DB rpc/driver_account_link 404 {"code":"PGRST202"}'); } });
+    eq(r.calls.map(c => c[0]).join(','), 'sdb,user', 'SQL 35 vēl nav — vecais ceļš');
+    r = await run({ sdbImpl: async () => { throw new Error('DB rpc/driver_account_link 400 Stripe konts jau piesaistīts citam lietotājam'); } });
+    ok(r.err && r.err.status === 500 && r.calls.length === 1, 'cita kļūda — neraksta vecajā veidā');
+    r = await run({ srk: '', sdbImpl: async () => true });
+    eq(r.calls.map(c => c[0]).join(','), 'user', 'bez servisa atslēgas — vecais ceļš (tad SQL 35 to atteiks)');
   });
 }
 
