@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  actions: write      # B11: gh workflow run tests.yml
 
 concurrency:
   group: osm-data
@@ -36,6 +37,8 @@ jobs:
       - name: Sagatavo datus pa šūnām
         run: node tools/build-osm.mjs --geojsonseq f.geojsonseq
       - name: Saglabā izmaiņas
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -44,3 +47,5 @@ jobs:
           git commit -m "OSM dati: $(date -u +%Y-%m-%d)"
           git pull --rebase --autostash
           git push
+          # B11: robota (GITHUB_TOKEN) push testus nepalaiž — palaiž tos; pēc zaļiem testiem tiek izvietota vietne
+          gh workflow run tests.yml --ref main

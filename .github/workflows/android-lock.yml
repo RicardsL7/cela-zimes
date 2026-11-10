@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write
+  actions: write      # B11: gh workflow run tests.yml
 
 concurrency:
   group: android-lock
@@ -35,6 +36,8 @@ jobs:
       - name: Pārbauda — npm ci ar šo lockfile izdodas
         run: npm ci --ignore-scripts --no-audit --no-fund --legacy-peer-deps
       - name: Saglabā izmaiņas
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -43,3 +46,5 @@ jobs:
           git commit -m "A14: mobile/package-lock.json"
           git pull --rebase --autostash
           git push
+          # B11: robota (GITHUB_TOKEN) push testus nepalaiž — palaiž tos; pēc zaļiem testiem tiek izvietota vietne
+          gh workflow run tests.yml --ref main

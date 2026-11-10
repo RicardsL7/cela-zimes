@@ -1,4 +1,7 @@
 # Automātiskie testi (audits A08): katrai izmaiņai main zarā un katram pull request.
+# B11 (audits 2): vietne (GitHub Pages) tiek izvietota TIKAI šeit — darbs „deploy” pēc tam, kad visi testi zaļi, un tikai
+#   main zarā. Starpposma (sarkani) commit vietnē nenonāk. Robotu commit (OSM dati, vendor, Android) palaiž šo darbplūsmu ar
+#   `gh workflow run tests.yml` (GITHUB_TOKEN push citas darbplūsmas nepalaiž). Pages iestatījumos: Source = GitHub Actions.
 #   js   — node tests/run.js uz Linux UN Windows (rindu beigas / ceļi nedrīkst ietekmēt rezultātu)
 #   sql  — visa datubāzes shēma (supabase/*.sql) tīrā PostgreSQL 16 + drošības scenāriji A01–A04 (tests/run-sql.sh)
 #   map  — kartes dūmu tests ar MapLibre no vendor/ (tests/map-smoke.js, Chromium); A10: arī lapu drošības politika (CSP)
@@ -95,3 +98,31 @@ jobs:
             ${{ runner.temp }}/smoke.png
             ${{ runner.temp }}/smoke.json
           if-no-files-found: ignore
+
+  deploy:
+    name: Vietne (GitHub Pages) — tikai pēc zaļiem testiem (B11)
+    needs: [js, sql, authors, map]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      # Tas pats Jekyll, ko izmantoja „Deploy from a branch” (_config.yml: include .well-known)
+      - uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./
+          destination: ./_site
+      - uses: actions/upload-pages-artifact@v3
+      - id: deployment
+        uses: actions/deploy-pages@v4

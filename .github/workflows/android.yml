@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: write
+  actions: write      # B11: gh workflow run tests.yml
 
 concurrency:
   group: android
@@ -104,6 +105,7 @@ jobs:
         env:
           CZ_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           CZ_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           FP=$(keytool -list -v -keystore "$CZ_KEYSTORE_FILE" -alias "$CZ_KEY_ALIAS" -storepass "$CZ_KEYSTORE_PASSWORD" | sed -n 's/^[[:space:]]*SHA256: *//p' | head -1)
           if ! echo "$FP" | grep -Eq '^([0-9A-F]{2}:){31}[0-9A-F]{2}$'; then echo "::error::Neizdevās nolasīt sertifikāta SHA-256"; exit 1; fi
@@ -117,6 +119,8 @@ jobs:
           git commit -m "A14: .well-known/assetlinks.json (Android App Links)"
           git pull --rebase --autostash
           git push
+          # B11: robota (GITHUB_TOKEN) push testus nepalaiž — palaiž tos; pēc zaļiem testiem tiek izvietota vietne
+          gh workflow run tests.yml --ref main
 
       - name: Notīra atslēgas failu
         if: always()
