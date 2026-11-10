@@ -3773,6 +3773,53 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   });
 }
 
+// ---------- B06 (audits 2): personīgais e-pasts — ne failos, ne jaunos commit ----------
+{
+  const ROOT = path.join(__dirname, '..');
+  test('B06: neviens fails nesatur personīgu e-pastu (tikai atbalsta adrese)', () => {
+    const skip = /(^|\/)(\.git|node_modules|vendor|data)(\/|$)|\.(png|jpe?g|gif|webp|ico|pdf|mov|mp4|jar|keystore|woff2?|ttf|zip|gz)$/i;
+    const walk = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => {
+      const p = path.join(d, e.name), rel = path.relative(ROOT, p).split(path.sep).join('/');
+      if (skip.test(rel)) return [];
+      return e.isDirectory() ? walk(p) : [rel];
+    });
+    const files = walk(ROOT);
+    ok(files.length > 50, 'pārbaudīti faili: ' + files.length);
+    const bad = [];
+    for (const f of files) {
+      const t = fs.readFileSync(path.join(ROOT, f), 'utf8');
+      for (const m of t.matchAll(/[A-Za-z0-9._%+-]+@(gmail|inbox|yahoo|outlook|hotmail|icloud)\.[a-z]{2,}/gi))
+        if (m[0].toLowerCase() !== 'support.travel24@gmail.com') bad.push(f);
+    }
+    eq(bad.join(', '), '', 'personīgas adreses failos');
+  });
+  test('B06: CI pārbauda jauno commit autorus (tikai GitHub noreply)', () => {
+    const y = fs.readFileSync(path.join(ROOT, '.github/workflows/tests.yml'), 'utf8');
+    ok(/authors:\n\s+name: Commit autori bez personīga e-pasta \(B06\)/.test(y) && /run: bash tools\/check-authors\.sh/.test(y), 'darbs tests.yml');
+    ok(/BEFORE: \$\{\{ github\.event\.before \}\}/.test(y) && /BASE: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/.test(y), 'tikai jaunie commit (vēsturi nepārraksta)');
+    const sh = fs.readFileSync(path.join(ROOT, 'tools/check-authors.sh'), 'utf8');
+    ok(sh.includes("ok_re='(@users\\.noreply\\.github\\.com|^noreply@github\\.com)$'"), 'atļautās adreses');
+    ok(/domēns: \$\{e#\*@\}/.test(sh) && !/echo[^\n]*\$e\b/.test(sh.replace(/\$\{e#\*@\}/g, '')), 'žurnālā tikai domēns, ne adrese');
+  });
+  if (process.platform !== 'win32') test('B06: check-authors.sh — atsaka personīgu, pieņem noreply', () => {
+    const cp = require('child_process'), os = require('os');
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'b06-'));
+    const git = (args, env = {}) => cp.execFileSync('git', args, { cwd: d, env: { ...process.env, ...env }, stdio: 'pipe' }).toString();
+    git(['init', '-q']);
+    const mk = (mail, msg) => git(['-c', 'user.name=T', '-c', 'user.email=' + mail, 'commit', '-q', '--allow-empty', '-m', msg]);
+    const run = range => { try { return { code: 0, out: cp.execFileSync('bash', [path.join(ROOT, 'tools/check-authors.sh'), ...(range ? [range] : [])], { cwd: d, stdio: 'pipe' }).toString() }; }
+      catch (e) { return { code: e.status, out: String(e.stdout) }; } };
+    mk('someone@example.org', 'vecs');
+    mk('1+t@users.noreply.github.com', 'jauns');
+    eq(run().code, 0, 'pēdējais commit noreply → kārtībā');
+    eq(run('HEAD~1..HEAD').code, 0, 'diapazons tikai ar jauno');
+    const old = run(git(['rev-list', '--max-parents=0', 'HEAD']).trim() + '^!');
+    eq(old.code, 1, 'personīgs (ne noreply) e-pasts → kļūda');
+    ok(/domēns: example\.org/.test(old.out) && !/someone@/.test(old.out), 'žurnālā tikai domēns');
+    fs.rmSync(d, { recursive: true, force: true });
+  });
+}
+
 // ---------- B07 (audits 2): CAPTCHA (Turnstile) jaunam kontam un e-pasta saitei; nelietotu anonīmu kontu dzēšana ----------
 {
   const ROOT = path.join(__dirname, '..');
