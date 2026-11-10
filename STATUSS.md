@@ -509,3 +509,14 @@
 - Testi: `run.js` (+2 B10, linkDriverAccount izpildīts ar imitācijām), `run-sql.sh` (+ driver-accounts-test, 11 pārbaudes).
 - **Produkcijā (10.11.2026, ar īpašnieka atļauju):** ride-pay izvietota no repozitorija (sha256 sakrīt, bez pieteikšanās
   atbild 401 „Nav pieteicies”), tad Nr. 35; `status.sql` — VISS KĀRTĪBĀ.
+
+## B11 (audits 2) — galvenais zars nav aizsargāts; vietnē nonāca arī sarkani starpposmi (10.11.2026)
+
+- **Īpašnieka lēmums:** izvietot tikai pēc zaļiem testiem; main aizsargāt pret dzēšanu un force push; PR nav obligāts.
+- **`tests.yml`:** jauns darbs `deploy` — `needs: [js, sql, authors, map]`, tikai main (ne PR), `actions/jekyll-build-pages`
+  (tas pats Jekyll un `_config.yml`), `upload-pages-artifact`, `deploy-pages`; atļaujas `pages: write`, `id-token: write` tikai šim darbam.
+- **Robotu darbplūsmas** (`osm-data`, `vendor`, `android-lock`, `android`): pēc `git push` — `gh workflow run tests.yml --ref main`
+  (`actions: write`), lai arī to izmaiņas tiktu pārbaudītas un izvietotas.
+- **Vajag īpašnieku (GitHub iestatījumi):** 1) Settings → Pages → Source = GitHub Actions; 2) Settings → Branches → Add rule
+  `main` (bez atzīmēm: aizliedz dzēšanu un force push).
+- Testi: `run.js` (+2 B11).

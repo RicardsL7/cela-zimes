@@ -3,7 +3,8 @@
 Navigācijas lietotne Latvijai: karte ar ceļa zīmēm, ātruma ierobežojumiem, radariem un brīdinājumiem uz ceļa,
 maršruts ar navigāciju, stāvvietas, sastrēgumi un kopbraucieni („Kopā”) ar kartes maksājumiem.
 
-- **Lietotne:** https://growlab.cc (GitHub Pages no šī repozitorija `main` zara; `CNAME`)
+- **Lietotne:** https://growlab.cc (GitHub Pages no šī repozitorija `main` zara; `CNAME`). Vietne tiek izvietota tikai pēc
+  zaļiem testiem (B11 — `.github/workflows/tests.yml`, darbs „deploy”).
 - **Android testa lietotne:** https://github.com/RicardsL7/cela-zimes/releases/download/android-test/cela-zimes.apk
 - **Izmaiņu žurnāls:** [`STATUSS.md`](STATUSS.md) · kopbraucieni: [`RIDES.md`](RIDES.md) ·
   konti un e-pasts: [`AUTH-IESTATIJUMI.md`](AUTH-IESTATIJUMI.md) · datubāze: [`supabase/MIGRATIONS.md`](supabase/MIGRATIONS.md)
@@ -146,6 +147,17 @@ GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi
   `PGHOST=localhost PGUSER=postgres PGPASSWORD=… bash tests/run-sql.sh` — uzbūvē visu shēmu no `supabase/*.sql`,
   palaiž drošības scenārijus, pārbauda `supabase/status.sql` un veco failu aizsardzību.
 - **Karte un lapu drošības politika** (Playwright + Chromium): `node tests/map-smoke.js . /tmp/karte` — sk. faila sākumu.
+
+## Izvietošana un main zara aizsardzība (B11)
+
+- **Vietne atjaunojas tikai pēc zaļiem testiem.** GitHub → Settings → Pages → Source = **GitHub Actions**. Darbplūsmā „Testi”
+  darbs `deploy` (`needs: js, sql, authors, map`, tikai `main`) uzbūvē lapu ar to pašu Jekyll (`_config.yml`) un izvieto to.
+  Ja kāds tests sarkans vai commit ir starpposms (vairāku failu labojums pa daļām) — vietne paliek iepriekšējā versijā.
+- **Robotu commit** (nakts OSM dati, `vendor/`, Android lockfile un assetlinks) pēc `git push` palaiž testus ar
+  `gh workflow run tests.yml` — GITHUB_TOKEN push citas darbplūsmas pats nepalaiž.
+- **main aizsardzība:** Settings → Branches → noteikums `main` (bez atzīmēm) — main nevar izdzēst un pārrakstīt (force push).
+  Pull request nav obligāts (īpašnieka lēmums 10.11.2026): izmaiņas iet tieši uz main, bet vietnē nonāk tikai pārbaudītas.
+- Ja izvietošana jāatkārto: Actions → „Testi” → Run workflow (main).
 
 ## Šofera Stripe konts: piesaista tikai serveris (B10)
 
