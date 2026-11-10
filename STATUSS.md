@@ -507,4 +507,5 @@
 - **ride-pay:** konta piesaiste — `linkDriverAccount` → `rpc/driver_account_link` ar servisa atslēgu; ja Nr. 35 vēl nav
   palaists (404 / PGRST202) — vecais ceļš. Secība produkcijā: 1) izvietot ride-pay, 2) palaist Nr. 35.
 - Testi: `run.js` (+2 B10, linkDriverAccount izpildīts ar imitācijām), `run-sql.sh` (+ driver-accounts-test, 11 pārbaudes).
-- **Produkcijā:** jāizvieto ride-pay un jāpalaiž SQL 35 (ar īpašnieka atļauju), tad `status.sql`.
+- **Produkcijā (10.11.2026, ar īpašnieka atļauju):** ride-pay izvietota no repozitorija (sha256 sakrīt, bez pieteikšanās
+  atbild 401 „Nav pieteicies”), tad Nr. 35; `status.sql` — VISS KĀRTĪBĀ.
