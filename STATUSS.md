@@ -485,4 +485,4 @@
   ja neizdodas — 10 min pauze, ziņojumi paliek rindā.
 - **Privātuma politika 2026-11-10c:** radaru ziņošanai vajag anonīmu kontu; ieraksts 30 dienas (2., 3. un 8. punkts).
 - Testi: `run.js` 219/219 (+3 B08), `run-sql.sh` (+ radar-votes-test, 17 pārbaudes), kartes tests kārtībā.
-- **Produkcijā:** jāpalaiž SQL 33 (ar īpašnieka atļauju), tad `status.sql`.
+- **Produkcijā:** Nr. 33 palaists 10.11.2026 ar īpašnieka atļauju; `status.sql` — VISS KĀRTĪBĀ. growlab.cc — v165 (privātums 2026-11-10c).
