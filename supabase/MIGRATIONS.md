@@ -51,7 +51,7 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 31 | rides-19-cost-share.sql | B03: kopbrauciena maksa ≤ ceļa izmaksas (attālums × 1,3 × 12 c/km, ≥ 2 €) | **nē — aizsargāts** (pēc 32) |
 | 32 | account-2-anon-cleanup.sql | B07: anonīmi konti, kas 180 d. nav pieslēgušies, tiek dzēsti katru nakti | jā (kamēr nav jaunāku) |
 
-**Produkcijā:** palaisti visi 1–31 (22–31 — 08.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
+**Produkcijā:** palaisti visi 1–32 (22–31 — 08.11.2026, 32 — 10.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
 Faili ar `cz_migration_begin` (27–…) atkārtoti palaižami tikai, kamēr nav palaists jaunāks (tad tie paši atsakās).
 
 ## Nelietoti anonīmi konti un CAPTCHA (B07)
