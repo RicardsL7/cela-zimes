@@ -6,5 +6,5 @@ const RIDES_CONFIG = {
   anonKey: 'sb_publishable_cL4eCL_RyUVwzlYdX5Vu_A_P9udXgrk',
   // B07: Cloudflare Turnstile publiskā „Site Key” (nav noslēpums). Tukša → bez CAPTCHA. Ieslēgšanas secība: vispirms šeit
   // (lietotne sāk sūtīt žetonu), TAD Supabase → Authentication → Attack Protection → CAPTCHA (Turnstile + Secret Key).
-  captchaSiteKey: '',
+  captchaSiteKey: '0x4AAAAAAF7rjuBfXLHIy_uS',   // ielikts 10.11.2026 (logrīks „Cela Zīme”, growlab.cc, Managed)
 };
