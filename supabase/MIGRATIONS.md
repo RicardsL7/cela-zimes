@@ -52,10 +52,18 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 32 | account-2-anon-cleanup.sql | B07: anonīmi konti, kas 180 d. nav pieslēgušies, tiek dzēsti katru nakti | **nē — aizsargāts** (pēc 33) |
 | 33 | radars-2-votes.sql | B08: radaru ziņojumi un „nav radara” tikai ar kontu, viena balss no konta, limiti; balsis 30 d. | **nē — aizsargāts** (pēc 34) |
 | 34 | rides-20-profiles-privacy.sql | B09: profilu (vārds, auto) redz tikai brauciena otra puse, ne visi lietotāji | **nē — aizsargāts** (pēc 35) |
-| 35 | rides-21-driver-accounts.sql | B10: šofera Stripe kontu piesaista tikai ride-pay (service_role); klients neraksta | jā (kamēr nav jaunāku) |
+| 35 | rides-21-driver-accounts.sql | B10: šofera Stripe kontu piesaista tikai ride-pay (service_role); klients neraksta | **nē — aizsargāts** (pēc 36) |
+| 36 | client-errors.sql | B12: lietotnes kļūdu pieraksts (client_error), saraksts admin.html, 30 d. | jā (kamēr nav jaunāku) |
 
 **Produkcijā:** palaisti visi 1–35 (22–31 — 08.11.2026, 32–35 — 10.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
 Faili ar `cz_migration_begin` (27–…) atkārtoti palaižami tikai, kamēr nav palaists jaunāks (tad tie paši atsakās).
+
+## Lietotnes kļūdu pieraksts (B12)
+
+- `client-errors.sql` (Nr. 36): tabula `client_errors` (viena rinda dienā katrai atšķirīgai kļūdai + skaitītājs `n`), bez
+  lietotāja ID, IP un vietas. `client_error(p)` — `anon` un `authenticated` (lietotne `errlog.js`); teksts attīrīts arī serverī
+  (`cz_scrub`: e-pasti, JWT, atslēgas/ID, URL parametri, koordinātas, garas ciparu virknes); ≤ 300 jaunas kļūdas dienā.
+- `admin_client_errors(dienas)` — tikai `is_app_admin()` (admin.html → „Kļūdas”). Glabā 30 dienas (pg_cron „cz-client-errors” 02:51 UTC).
 
 ## Šofera Stripe konta piesaiste (B10)
 
