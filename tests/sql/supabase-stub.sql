@@ -10,6 +10,9 @@ grant usage on schema public to service_role;
 alter default privileges in schema public grant all on tables to service_role;
 create schema auth;
 create table auth.users (id uuid primary key, is_anonymous boolean default false, email text, email_confirmed_at timestamptz, created_at timestamptz default now(), last_sign_in_at timestamptz default now());
+-- B07: kā Supabase auth.sessions (refreshed_at — timestamp BEZ laika joslas, kā GoTrue)
+create table auth.sessions (id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users on delete cascade,
+  created_at timestamptz default now(), updated_at timestamptz default now(), refreshed_at timestamp without time zone);
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 grant usage on schema auth to authenticated, anon;
 grant execute on function auth.uid() to authenticated, anon;
