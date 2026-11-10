@@ -461,3 +461,15 @@
 - **Vajag īpašnieku:** Cloudflare Turnstile atslēgas (README „Viltoti konti”) — publiskā `rides-config.js`, slepenā tikai Supabase;
   Supabase anonīmo pieteikšanos IP limits.
 
+## B06 (audits 2) — personīgais e-pasts publiskajā Git vēsturē (10.11.2026)
+
+- **Pārbaudīts:** repozitorija failos (arī visā vēsturē) personīgā adrese nav; tā ir tikai commit autora laukā (410 commit),
+  jo GitHub web lapa commit veido ar konta galveno e-pastu.
+- **Īpašnieks:** GitHub → Settings → Emails — „Keep my email addresses private” un „Block command line pushes that expose my email”.
+- **Vecā vēsture netiek pārrakstīta** (īpašnieka lēmums): adrese jau ir publiska, pārrakstīšana prasītu force push un sabojātu kopijas.
+- **Aizsardzība nākotnei:** CI darbs „Commit autori” (`tools/check-authors.sh`) — jaunajos commit (push / PR diapazonā) autoram
+  un iesniedzējam jābūt `…@users.noreply.github.com` vai `noreply@github.com`; žurnālā raksta tikai domēnu. Tests `run.js`
+  pārbauda visus repozitorija failus, ka tajos nav personīgu e-pastu (tikai atbalsta adrese).
+- **10.11.2026:** īpašnieks ieslēdza abus GitHub iestatījumus; B06 commit jau ar noreply autoru, CI „Commit autori” zaļš.
+- Testi: `run.js` 216/216 (+3 B06).
+

@@ -162,6 +162,13 @@ GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi
   180 dienas nav pieslēgušies serverim (sk. MIGRATIONS.md). Kontus ar e-pastu / Google nedzēš.
 - **IP limits** — Supabase → Authentication → Rate Limits → „anonymous sign-ins” (ieteicams ≤ 30 stundā no vienas IP).
 
+## Privātums repozitorijā (B06)
+
+- Repozitorijs ir publisks: failos drīkst būt tikai lietotnes atbalsta e-pasts (kā terms.html), ne personīgs (tests to pārbauda visos failos).
+- Commit autoram jābūt GitHub noreply adresei: GitHub → Settings → Emails — „Keep my email addresses private” un
+  „Block command line pushes that expose my email”. CI darbs „Commit autori” (`tools/check-authors.sh`) atsaka jaunus
+  commit ar citu adresi. Vecā vēsture apzināti netiek pārrakstīta (īpašnieka lēmums 10.11.2026).
+
 ## Ierobežojumi
 
 - Zīmes ir tikai tās, kas ievadītas OpenStreetMap vai atrastas Mapillary; laukos to ir mazāk.
