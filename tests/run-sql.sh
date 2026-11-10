@@ -63,6 +63,9 @@ STEPS=(
   t:driver-accounts-test.sql
   t:account-delete-test.sql
   t:anon-cleanup-test.sql
+  # B12 (audits 2): lietotnes kļūdu pieraksts (palaižama atkārtoti)
+  s:client-errors.sql s:client-errors.sql
+  t:client-errors-test.sql
 )
 
 fail=0; pass=0

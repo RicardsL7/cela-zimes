@@ -4062,6 +4062,78 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   });
 }
 
+// ---------- B12 (audits 2): lietotnes kļūdu pieraksts ----------
+{
+  const ROOT = path.join(__dirname, '..');
+  const rd = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+  const load = () => { delete require.cache[require.resolve('../errlog.js')]; return require('../errlog.js'); };
+  test('B12: errlog.js — attīrīšana, faila nosaukums, pārlūks, troksnis', () => {
+    const E = load();
+    const t = E.czErrScrub('x anna@ex.lv eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig sk_live_ABC123456 56.951234,24.105678 id 1234567 /p?lat=56&k=1#h', 300);
+    ok(!/@|eyJ|sk_live|56\.95|24\.10|1234567|lat=|#h/.test(t), 'attīrīts: ' + t);
+    eq(E.czErrScrub('a'.repeat(500), 300).length, 300, 'garums');
+    eq(E.czErrSrc('https://growlab.cc/app-gl.js?v=165', 'https://growlab.cc'), 'app-gl.js', 'tikai faila nosaukums');
+    eq(E.czErrSrc('https://evil.example/x.js', 'https://growlab.cc'), 'ārējs', 'citas vietnes fails');
+    eq(E.czErrSrc('chrome-extension://abc/x.js', 'https://growlab.cc'), null, 'paplašinājums — ignorē');
+    eq(E.czErrBrowser('Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36'), 'Chrome 131', 'Chrome');
+    eq(E.czErrBrowser('Mozilla/5.0 (iPhone) AppleWebKit/605.1.15 Version/18.1 Mobile/15E148 Safari/604.1'), 'Safari 18', 'Safari');
+    for (const m of ['Script error.', 'TypeError: Failed to fetch', 'AbortError: The operation was aborted.', 'ResizeObserver loop limit exceeded', 'Load failed'])
+      ok(E.czErrNoise(m), 'troksnis: ' + m);
+    ok(!E.czErrNoise('TypeError: Cannot read properties of undefined'), 'īsta kļūda nav troksnis');
+  });
+  test('B12: errlog.js — sūta uz rpc/client_error tikai ar piekrišanu, ≤ 5, katru vienreiz; nekad nemet kļūdu', () => {
+    const src = rd('errlog.js');
+    const calls = [], listeners = {};
+    let consent = false;
+    const ctx = { console, String, Number, JSON, Set, Object, Error, Intl,
+      RIDES_CONFIG: { url: 'https://x.supabase.co/', anonKey: 'pk' }, czConsentOk: () => consent,
+      fetch: (u, i) => { calls.push({ u, i, body: JSON.parse(i.body) }); return Promise.resolve({}); } };
+    ctx.window = { location: { origin: 'https://growlab.cc', pathname: '/' }, navigator: { userAgent: 'Chrome/131.0' },
+      document: { querySelector: () => ({ getAttribute: () => 'app-gl.js?v=166' }) },
+      addEventListener: (k, f) => { listeners[k] = f; }, fetch: (...a) => ctx.fetch(...a) };
+    vm.createContext(ctx);
+    vm.runInContext(src, ctx);
+    ok(listeners.error && listeners.unhandledrejection, 'klausītāji uzstādīti');
+    const err = (m, l = 10) => listeners.error({ message: m, filename: 'https://growlab.cc/app-gl.js?v=166', lineno: l, colno: 3 });
+    err('TypeError: a is undefined');
+    eq(calls.length, 0, 'bez piekrišanas — nesūta');
+    consent = true;
+    err('TypeError: a is undefined'); err('TypeError: a is undefined');
+    eq(calls.length, 1, 'tā pati kļūda — vienreiz');
+    eq(calls[0].u, 'https://x.supabase.co/rest/v1/rpc/client_error', 'adrese');
+    eq(calls[0].i.headers.apikey, 'pk', 'publiskā atslēga'); ok(!calls[0].i.headers.Authorization, 'bez lietotāja žetona');
+    eq(JSON.stringify(calls[0].body.p), JSON.stringify({ kind: 'error', msg: 'TypeError: a is undefined', src: 'app-gl.js', line: 10, col: 3,
+      ver: '166', page: 'app', browser: 'Chrome 131' }), 'saturs');
+    listeners.error({ message: 'Script error.', filename: '', lineno: 0 });
+    listeners.error({});                                                       // attēla ielādes kļūda — nav message
+    eq(calls.length, 1, 'troksnis un resursu kļūdas — nesūta');
+    listeners.unhandledrejection({ reason: Object.assign(new Error('boom at 56.951234,24.1'), { stack: 'Error: boom\n at f (https://growlab.cc/rides.js?v=1:44:9)' }) });
+    eq(calls[1].body.p.kind, 'rejection'); eq(calls[1].body.p.src, 'rides.js'); eq(calls[1].body.p.line, 44);
+    ok(!/56\.95/.test(calls[1].body.p.msg), 'koordinātas izņemtas');
+    for (let i = 0; i < 10; i++) err('Kļūda ' + i, 100 + i);
+    eq(calls.length, 5, 'ne vairāk kā 5 lapas ielādē');
+    ctx.fetch = () => { throw new Error('x'); };
+    vm.runInContext('czErr.count = 0; czErr.sent.clear();', ctx);
+    listeners.error({ message: 'TypeError: z', filename: 'https://growlab.cc/a.js', lineno: 1 });  // nemet kļūdu
+    ok(true, 'fetch kļūda netiek izmesta');
+  });
+  test('B12: errlog.js ielādējas pirmais pēc guard.js; SQL 36; admin cilne', () => {
+    for (const f of ['index.html', 'index-gl.html', 'admin.html']) {
+      const h = rd(f);
+      ok(/<script src="guard\.js\?v=\d+"><\/script>\n  <script src="errlog\.js\?v=166"><\/script>/.test(h), f + ': errlog.js tūlīt pēc guard.js (bez defer)');
+    }
+    const q = rd('supabase/client-errors.sql');
+    ok(/^36 client-errors\.sql$/m.test(rd('supabase/ORDER.txt')) && /t:client-errors-test\.sql/.test(rd('tests/run-sql.sh')), 'ORDER.txt, SQL tests');
+    ok(/grant execute on function public\.client_error\(jsonb\) to anon, authenticated;/.test(q)
+      && /revoke all on public\.client_errors from public, anon, authenticated;/.test(q), 'tikai caur funkciju');
+    ok(/if not is_app_admin\(\) then raise exception 'forbidden'/.test(q) && /cz-client-errors/.test(q), 'admin un 30 d.');
+    ok(!/user_id|auth\.uid\(\)|lat|lng|ip\b/i.test(q.slice(q.indexOf('create table'), q.indexOf('create index'))), 'tabulā nav personas datu kolonnu');
+    const a = rd('admin.js');
+    ok(/admRpc\('admin_client_errors', \{ p_days: 7 \}\)/.test(a) && /data-tab="errors"/.test(rd('admin.html')) && /id="admErrors"/.test(rd('admin.html')), 'admin cilne');
+    ok(/Kļūdu ziņojumi:/.test(rd('privacy.html')) && /Kļūdu ziņojumi \(2\. punkts\) — 30 dienas/.test(rd('privacy.html')), 'privātuma politika');
+  });
+}
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
