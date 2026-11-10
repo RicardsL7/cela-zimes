@@ -42,12 +42,14 @@ exp_mig(seq, name) as (values
   (28, 'account-1-delete.sql'),
   (29, 'presence-2-privacy.sql'),
   (30, 'rides-18-open-privacy.sql'),
-  (31, 'rides-19-cost-share.sql')
+  (31, 'rides-19-cost-share.sql'),
+  (32, 'account-2-anon-cleanup.sql')
 ),
 exp_fn(sig, h, secdef) as (values
   ('account_alias_ok(old_id uuid, new_id uuid)', '5d3cd15fa3ad944c76d4cb86de68bbfc', true),
   ('account_delete_blockers(me uuid)', 'd06ce639bd751f4c33ffb25de0dd1e6c', true),
   ('account_delete_check()', 'b5c4e29974a7a20b0dd5a409452c5198', true),
+  ('account_erase(me uuid)', '2052ba26bb1f00f6dd8f91db3a6c8530', true),
   ('account_transfer_claim(code text)', 'ad90e184a811e42717d863637547a38c', true),
   ('account_transfer_start()', '2a58937b3961640722155f471be7328c', true),
   ('admin_stats()', '6a802ea388a92b237d80493ef276c076', true),
@@ -57,12 +59,13 @@ exp_fn(sig, h, secdef) as (values
   ('coin_daily_cap()', '75808cc90ac78d1a378136f40f653e54', false),
   ('coin_today()', 'a7471e876725d3e2621b674248d98b5f', false),
   ('coin_trust_factor(t real)', 'fda97ae01d1e2fc13d48f0abb47b7fa3', false),
+  ('cz_anon_cleanup(p_days integer, p_limit integer)', 'b7643f8e0050b8e8c270e638753cdb96', true),
   ('cz_cleanup()', '513fde3354768d11c40aa4dc14afd284', true),
   ('cz_cleanup_status()', '4d5d8495c62557c37cfb93b5fbec24e7', true),
   ('cz_health()', '262c67a2d88644c3f110b8876bc56f79', true),
   ('cz_migration_begin(p_seq integer, p_name text)', '4239150cb52783ecddb3376722c8eba0', false),
   ('cz_migration_done(p_seq integer, p_name text)', 'e2f03f0cae1ad9d9353783425d6b8ba8', false),
-  ('delete_my_account(p_unclosed_acct text)', '4cc08c948676b6720487db5e60f21a25', true),
+  ('delete_my_account(p_unclosed_acct text)', 'cf53b9dd63042a0902f5e99d751219f3', true),
   ('has_offer_on(rid uuid)', 'c7a0c510cbc3b44a72638320372331d6', true),
   ('is_app_admin()', 'd79cac5c1d75eea0ad751cd75faf8abe', true),
   ('is_offer_party(oid uuid)', '4fb3ac67dfacb9ce6fc226847b397505', true),
@@ -507,6 +510,8 @@ exp_fpriv(sig, r, ok) as (values
   ('account_delete_blockers(me uuid)', 'authenticated', false),
   ('account_delete_check()', 'anon', false),
   ('account_delete_check()', 'authenticated', true),
+  ('account_erase(me uuid)', 'anon', false),
+  ('account_erase(me uuid)', 'authenticated', false),
   ('account_transfer_claim(code text)', 'anon', false),
   ('account_transfer_claim(code text)', 'authenticated', true),
   ('account_transfer_start()', 'anon', false),
@@ -525,6 +530,8 @@ exp_fpriv(sig, r, ok) as (values
   ('coin_today()', 'authenticated', true),
   ('coin_trust_factor(t real)', 'anon', true),
   ('coin_trust_factor(t real)', 'authenticated', true),
+  ('cz_anon_cleanup(p_days integer, p_limit integer)', 'anon', false),
+  ('cz_anon_cleanup(p_days integer, p_limit integer)', 'authenticated', false),
   ('cz_cleanup()', 'anon', false),
   ('cz_cleanup()', 'authenticated', false),
   ('cz_cleanup_status()', 'anon', false),
@@ -1074,6 +1081,7 @@ exp_fk(t, k, def) as (values
   ('user_wallet', 'user_wallet_user_id_fkey', 'FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE')
 ),
 exp_cron(name, sched) as (values
+  ('cz-anon-cleanup', '23 2 * * *'),
   ('cz-cleanup', '*/5 * * * *')
 ),
 act_cron as (
