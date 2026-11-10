@@ -456,5 +456,8 @@
 - **Privātuma politika 2026-11-10b:** Cloudflare (3. un 7. punkts), 180 dienas (8. punkts) — piekrišanas logs vēlreiz.
 - Versijas v163: captcha, auth, rides-config, rides-ui, traffic-gl, style-gl, admin.css.
 - Testi: `run.js` 213/213 (+7 B07), `run-sql.sh` (+ anon-cleanup-test), kartes tests kārtībā.
-- **Vajag īpašnieku:** Cloudflare Turnstile atslēgas (README „Viltoti konti”), SQL 32 produkcijā (ar atļauju), Supabase IP limits.
+- **Produkcijā:** Nr. 32 palaists 10.11.2026 ar īpašnieka atļauju; `status.sql` — VISS KĀRTĪBĀ. growlab.cc (v163): CSP atļauj
+  Turnstile, Cloudflare skripts netiek ielādēts, atverot lietotni; ar Cloudflare testa atslēgām žetons iegūts, bez loga — `captcha_needed`.
+- **Vajag īpašnieku:** Cloudflare Turnstile atslēgas (README „Viltoti konti”) — publiskā `rides-config.js`, slepenā tikai Supabase;
+  Supabase anonīmo pieteikšanos IP limits.
 
