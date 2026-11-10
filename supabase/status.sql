@@ -44,7 +44,8 @@ exp_mig(seq, name) as (values
   (30, 'rides-18-open-privacy.sql'),
   (31, 'rides-19-cost-share.sql'),
   (32, 'account-2-anon-cleanup.sql'),
-  (33, 'radars-2-votes.sql')
+  (33, 'radars-2-votes.sql'),
+  (34, 'rides-20-profiles-privacy.sql')
 ),
 exp_fn(sig, h, secdef) as (values
   ('account_alias_ok(old_id uuid, new_id uuid)', '5d3cd15fa3ad944c76d4cb86de68bbfc', true),
@@ -81,6 +82,7 @@ exp_fn(sig, h, secdef) as (values
   ('presence_clear()', '0ee75e6f41c3cd89f32eea2d737cd8bd', true),
   ('presence_nearby(p_lat double precision, p_lng double precision, p_speed_kmh double precision)', '4f8d8a2c4c8818664767bce0c4e28274', true),
   ('presence_update(p_lat double precision, p_lng double precision, p_heading integer, p_speed_kmh double precision)', '474cd22f74b587f896fc5386d3e87b77', true),
+  ('profile_visible(other uuid)', '8e59b77ae0a522fa99bc3968733e1513', true),
   ('radar_bad(ids text[])', 'c79a944b7affd7ac6ca9576f3b747cc9', true),
   ('radar_list()', 'cb753579e0c8f1abafe05be567a7119e', true),
   ('radar_report(items jsonb)', '8d5176c67930d9f9df8a6534d7419690', true),
@@ -446,6 +448,7 @@ exp_idx(i) as (values
   ('reports_user_time'),
   ('ride_messages_offer_idx'),
   ('ride_messages_pkey'),
+  ('ride_offers_driver_idx'),
   ('ride_offers_one_accepted'),
   ('ride_offers_one_active'),
   ('ride_offers_pkey'),
@@ -456,6 +459,7 @@ exp_idx(i) as (values
   ('ride_requests_from_idx'),
   ('ride_requests_open_idx'),
   ('ride_requests_pkey'),
+  ('ride_requests_user_idx'),
   ('skins_pkey'),
   ('stat_daily_pkey'),
   ('stat_meta_pkey'),
@@ -583,6 +587,8 @@ exp_fpriv(sig, r, ok) as (values
   ('presence_nearby(p_lat double precision, p_lng double precision, p_speed_kmh double precision)', 'authenticated', true),
   ('presence_update(p_lat double precision, p_lng double precision, p_heading integer, p_speed_kmh double precision)', 'anon', false),
   ('presence_update(p_lat double precision, p_lng double precision, p_heading integer, p_speed_kmh double precision)', 'authenticated', true),
+  ('profile_visible(other uuid)', 'anon', false),
+  ('profile_visible(other uuid)', 'authenticated', true),
   ('radar_bad(ids text[])', 'anon', false),
   ('radar_bad(ids text[])', 'authenticated', true),
   ('radar_list()', 'anon', true),

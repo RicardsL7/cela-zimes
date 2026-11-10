@@ -50,10 +50,20 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 30 | rides-18-open-privacy.sql | B02: atvērtie braucieni šoferiem aptuveni (~1 km, bez vārda/adreses/piezīmes) | **nē — aizsargāts** (pēc 31) |
 | 31 | rides-19-cost-share.sql | B03: kopbrauciena maksa ≤ ceļa izmaksas (attālums × 1,3 × 12 c/km, ≥ 2 €) | **nē — aizsargāts** (pēc 32) |
 | 32 | account-2-anon-cleanup.sql | B07: anonīmi konti, kas 180 d. nav pieslēgušies, tiek dzēsti katru nakti | **nē — aizsargāts** (pēc 33) |
-| 33 | radars-2-votes.sql | B08: radaru ziņojumi un „nav radara” tikai ar kontu, viena balss no konta, limiti; balsis 30 d. | jā (kamēr nav jaunāku) |
+| 33 | radars-2-votes.sql | B08: radaru ziņojumi un „nav radara” tikai ar kontu, viena balss no konta, limiti; balsis 30 d. | **nē — aizsargāts** (pēc 34) |
+| 34 | rides-20-profiles-privacy.sql | B09: profilu (vārds, auto) redz tikai brauciena otra puse, ne visi lietotāji | jā (kamēr nav jaunāku) |
 
 **Produkcijā:** palaisti visi 1–33 (22–31 — 08.11.2026, 32–33 — 10.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
 Faili ar `cz_migration_begin` (27–…) atkārtoti palaižami tikai, kamēr nav palaists jaunāks (tad tie paši atsakās).
+
+## Kopbraucienu profilu redzamība (B09)
+
+- `rides-20-profiles-privacy.sql` (Nr. 34): politika `profiles_read` = `profile_visible(id)` (agrāk `true` — jebkurš konts
+  varēja izlistēt visus vārdus un auto). Redz: savu profilu; pasažieris — šoferus, kas piedāvāja braucienu viņa
+  pieprasījumam; šoferis — pasažieri, kurš pieņēma viņa piedāvājumu (`was_accepted`, arī pēc atcelšanas).
+- Indeksi `ride_offers (driver_id)`, `ride_requests (user_id)` — politiku pārbauda katrai rindai.
+- Servera funkcijas (vēsture, administrators, kontu apvienošana) ir security definer — tās neietekmē. Lietotne nav jāmaina.
+- Pārbaude: `select pg_get_expr(polqual, polrelid) from pg_policy where polname = 'profiles_read';` → `profile_visible(id)`.
 
 ## Radaru ziņojumi un balsis (B08)
 
