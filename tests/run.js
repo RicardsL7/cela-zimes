@@ -3962,6 +3962,32 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   });
 }
 
+// ---------- B09 (audits 2): kopbraucienu profilus redz tikai brauciena otra puse ----------
+{
+  const ROOT = path.join(__dirname, '..');
+  const rd = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+  test('B09: SQL 34 — profiles_read nav true; profile_visible: savs, piedāvājušais šoferis, pieņēmušais pasažieris', () => {
+    const q = rd('supabase/rides-20-profiles-privacy.sql');
+    ok(/^34 rides-20-profiles-privacy\.sql$/m.test(rd('supabase/ORDER.txt')) && /\| 34 \| rides-20-profiles-privacy\.sql \|/.test(rd('supabase/MIGRATIONS.md')), 'ORDER.txt, MIGRATIONS.md');
+    ok(/create policy profiles_read on public\.profiles for select to authenticated using \(public\.profile_visible\(id\)\);/.test(q), 'jaunā politika');
+    ok(/select other = auth\.uid\(\)/.test(q) && /where r\.user_id = auth\.uid\(\) and o\.driver_id = other/.test(q)
+      && /where o\.driver_id = auth\.uid\(\) and o\.was_accepted and r\.user_id = other/.test(q), 'trīs gadījumi');
+    ok(/revoke all on function public\.profile_visible\(uuid\) from public, anon;/.test(q), 'anon — nē');
+    ok(/t:profiles-privacy-test\.sql/.test(rd('tests/run-sql.sh')), 'SQL tests');
+    // agrākā politika (rides.sql) paliek vēsturē, bet jaunākais fails to aizstāj
+    ok(/using \(true\)/.test(rd('supabase/rides.sql')) && rd('supabase/ORDER.txt').indexOf('rides-20') > rd('supabase/ORDER.txt').indexOf('rides.sql'), 'secība');
+  });
+  test('B09: lietotne lasa profilus tikai atļautajos gadījumos; politika precizēta', () => {
+    const js = rd('rides.js');
+    const uses = (js.match(/profiles[(?]/g) || []).length;
+    eq(uses, 4, 'profiles izmantojumi rides.js (savs, vecais atvērto ceļš, offersFor, myOffers)');
+    ok(/profiles\?id=eq\.\$\{this\.id\}/.test(js), 'savs profils');
+    ok(/select=\*,driver:profiles\(name,car\)/.test(js) && /passenger:profiles\(name,car\)\)&order=created_at\.desc/.test(js), 'offersFor / myOffers');
+    const pr = rd('privacy.html');
+    ok(/Vārdu un auto redz tikai brauciena otra puse/.test(pr) && !/Vārdu un auto redz citi kopbraucienu lietotāji/.test(pr), 'privātuma politika 3. punkts');
+  });
+}
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);

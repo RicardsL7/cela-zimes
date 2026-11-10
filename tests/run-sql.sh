@@ -54,6 +54,10 @@ STEPS=(
   # B08 (audits 2): radaru ziņojumi un balsis tikai ar kontu, viena balss no konta (palaižama atkārtoti)
   s:radars-2-votes.sql s:radars-2-votes.sql
   t:radar-votes-test.sql
+  # B09 (audits 2): profilus (vārds, auto) redz tikai brauciena otra puse (palaižama atkārtoti)
+  s:rides-20-profiles-privacy.sql s:rides-20-profiles-privacy.sql
+  t:profiles-privacy-test.sql
+  t:open-privacy-test.sql
 )
 
 fail=0; pass=0
