@@ -532,4 +532,5 @@
 - **admin.html (v166):** cilne „Kļūdas” (pēdējās 7 dienas; šodienas skaits uz cilnes).
 - **Privātuma politika:** 2. un 8. punkts precizēts (bez jaunas piekrišanas — nav personas datu).
 - Testi: `run.js` (+3 B12), `run-sql.sh` (+ client-errors-test, 10 pārbaudes).
-- **Produkcijā:** jāpalaiž SQL 36 (ar īpašnieka atļauju), tad `status.sql`. Līdz tam lietotne ziņojumus sūta, bet serveris tos atraida (404) — bez ietekmes uz lietotni.
+- **Produkcijā:** Nr. 36 palaists 11.11.2026 ar īpašnieka atļauju; `status.sql` — VISS KĀRTĪBĀ. Pārbaude: `client_error` bez konta → true;
+  `admin_client_errors` bez konta → atteikts. growlab.cc ielādē `errlog.js?v=166`.
