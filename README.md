@@ -147,6 +147,11 @@ GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi
   palaiž drošības scenārijus, pārbauda `supabase/status.sql` un veco failu aizsardzību.
 - **Karte un lapu drošības politika** (Playwright + Chromium): `node tests/map-smoke.js . /tmp/karte` — sk. faila sākumu.
 
+## Kopbraucienu profili: redz tikai brauciena otra puse (B09)
+
+- Vārdu un auto (`profiles`) redz tikai: pats; pasažieris — šoferi, kas viņam piedāvāja braucienu; šoferis — pasažieris,
+  kurš pieņēma viņa piedāvājumu. Tālrunis (`contacts`) — tikai pēc saskaņošanas (kā līdz šim). SQL — `supabase/rides-20-profiles-privacy.sql` (Nr. 34).
+
 ## Radaru saraksts: ziņot un balsot tikai ar kontu (B08)
 
 - Kopīgo radaru sarakstu (`radar_list`) lasa jebkurš, arī bez konta. Ziņot par atrastu radaru (`radar_report`) un atzīmēt

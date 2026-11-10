@@ -486,3 +486,14 @@
 - **Privātuma politika 2026-11-10c:** radaru ziņošanai vajag anonīmu kontu; ieraksts 30 dienas (2., 3. un 8. punkts).
 - Testi: `run.js` 219/219 (+3 B08), `run-sql.sh` (+ radar-votes-test, 17 pārbaudes), kartes tests kārtībā.
 - **Produkcijā:** Nr. 33 palaists 10.11.2026 ar īpašnieka atļauju; `status.sql` — VISS KĀRTĪBĀ. growlab.cc — v165 (privātums 2026-11-10c).
+
+## B09 (audits 2) — visu lietotāju vārdus un auto varēja izlistēt (10.11.2026)
+
+- **`supabase/rides-20-profiles-privacy.sql` (Nr. 34):** `profiles_read` vairs nav `true` — `profile_visible(id)`: savs profils;
+  pasažierim — šoferi, kas piedāvāja braucienu; šoferim — pasažieris, kurš pieņēma viņa piedāvājumu (arī vēsturē).
+  Indeksi `ride_offers_driver_idx`, `ride_requests_user_idx`.
+- Lietotne nav jāmaina: tā lasa profilus tikai šajos gadījumos (savs, `offersFor`, `myOffers`); vēsture un administrators —
+  servera funkcijas (security definer).
+- **Privātuma politika:** 3. punkts precizēts (redzamība samazināta — jauna piekrišana nav vajadzīga, versija tā pati).
+- Testi: `run.js` (+2 B09), `run-sql.sh` (+ profiles-privacy-test, 14 pārbaudes; open-privacy-test atkārtoti).
+- **Produkcijā:** jāpalaiž SQL 34 (ar īpašnieka atļauju), tad `status.sql`.
