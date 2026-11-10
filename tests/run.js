@@ -4034,6 +4034,34 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   });
 }
 
+// ---------- B11 (audits 2): vietne tikai pēc zaļiem testiem; robotu commit palaiž testus ----------
+{
+  const ROOT = path.join(__dirname, '..');
+  const rd = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+  test('B11: tests.yml — deploy darbs pēc visiem testiem, tikai main, Pages atļaujas tikai tam', () => {
+    const y = rd('.github/workflows/tests.yml');
+    const i = y.indexOf('\n  deploy:\n');
+    ok(i > 0, 'deploy darbs');
+    const d = y.slice(i);
+    ok(/needs: \[js, sql, authors, map\]/.test(d), 'gaida visus testus');
+    ok(/if: github\.ref == 'refs\/heads\/main' && github\.event_name != 'pull_request'/.test(d), 'tikai main');
+    ok(/permissions:\n      contents: read\n      pages: write\n      id-token: write/.test(d) && /^permissions:\n  contents: read\n/m.test(y), 'atļaujas tikai deploy darbam');
+    ok(/actions\/jekyll-build-pages@v1/.test(d) && /actions\/upload-pages-artifact@v3/.test(d) && /uses: actions\/deploy-pages@v4/.test(d), 'Jekyll + Pages');
+    ok(/name: github-pages/.test(d) && /group: pages\n      cancel-in-progress: false/.test(d), 'vide un secība');
+    ok(/workflow_dispatch:/.test(y.slice(0, y.indexOf('jobs:'))), 'var palaist ar roku / no robotiem');
+    ok(/include:\n  - \.well-known/.test(rd('_config.yml')), '_config.yml (Jekyll) — .well-known paliek');
+  });
+  test('B11: robotu darbplūsmas pēc push palaiž testus (gh workflow run, actions: write)', () => {
+    for (const f of ['osm-data.yml', 'vendor.yml', 'android-lock.yml', 'android.yml']) {
+      const y = rd('.github/workflows/' + f);
+      ok(/          git push\n          # B11:[^\n]*\n          gh workflow run tests\.yml --ref main\n/.test(y), f + ': gh workflow run pēc push');
+      ok(/permissions:\n  contents: write\n  actions: write/.test(y), f + ': actions: write');
+      const step = y.slice(0, y.lastIndexOf('gh workflow run tests.yml'));
+      ok(/GH_TOKEN: \$\{\{ github\.token \}\}/.test(step.slice(step.lastIndexOf('- name:'))), f + ': GH_TOKEN tajā pašā solī');
+    }
+  });
+}
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
