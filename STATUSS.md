@@ -459,7 +459,8 @@
 - **Produkcijā:** Nr. 32 palaists 10.11.2026 ar īpašnieka atļauju; `status.sql` — VISS KĀRTĪBĀ. growlab.cc (v163): CSP atļauj
   Turnstile, Cloudflare skripts netiek ielādēts, atverot lietotni; ar Cloudflare testa atslēgām žetons iegūts, bez loga — `captcha_needed`.
 - **10.11.2026 (v164):** Turnstile logrīks izveidots (growlab.cc, Managed); publiskā Site Key ielikta `rides-config.js` — lietotne sūta žetonu.
-- **Vajag īpašnieku:** Supabase → Attack Protection → CAPTCHA (Turnstile + Secret Key, tikai Supabase); anonīmās pieteikšanās IP limits.
+- **10.11.2026 — IZDARĪTS:** īpašnieks ieslēdza Supabase CAPTCHA (Turnstile, Secret Key tikai Supabase); anonīmās pieteikšanās
+  limits 30 stundā no IP (jau bija). Pārbaude growlab.cc: e-pasta saites pieprasījums ar Turnstile žetonu izdevās.
 
 ## B06 (audits 2) — personīgais e-pasts publiskajā Git vēsturē (10.11.2026)
 
