@@ -51,6 +51,9 @@ STEPS=(
   s:account-2-anon-cleanup.sql s:account-2-anon-cleanup.sql
   t:anon-cleanup-test.sql
   t:account-delete-test.sql
+  # B08 (audits 2): radaru ziņojumi un balsis tikai ar kontu, viena balss no konta (palaižama atkārtoti)
+  s:radars-2-votes.sql s:radars-2-votes.sql
+  t:radar-votes-test.sql
 )
 
 fail=0; pass=0

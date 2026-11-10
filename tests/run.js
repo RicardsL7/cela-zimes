@@ -3453,7 +3453,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   test('A15: politika un noteikumi — kas paliek, kad nevar dzēst; jauna versija', () => {
     const pr = fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8'), te = fs.readFileSync(path.join(ROOT, 'terms.html'), 'utf8');
     const au = fs.readFileSync(path.join(ROOT, 'auth.js'), 'utf8');
-    ok(/CZ_PRIVACY_VERSION = '2026-11-(08b?|[1-3]\db?)'/.test(au) && /CZ_TERMS_VERSION = '2026-11-(08b?|[1-3]\d)'/.test(au), 'jaunas versijas → piekrišanas logs');
+    ok(/CZ_PRIVACY_VERSION = '2026-11-(08b?|[1-3]\d[a-z]?)'/.test(au) && /CZ_TERMS_VERSION = '2026-11-(08b?|[1-3]\d)'/.test(au), 'jaunas versijas → piekrišanas logs');
     ok(/Kas paliek otram brauciena dalībniekam/.test(pr) && /~1 km/.test(pr) && /kontu dzēst nevar/.test(pr), 'privacy.html');
     ok(/izņemot, kamēr ir aktīvs brauciens/.test(te), 'terms.html');
     const ui = fs.readFileSync(path.join(ROOT, 'rides-ui.js'), 'utf8');
@@ -3560,7 +3560,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(!/citi braucēji kartē redz/.test(tr) && !/presenceStop/.test(tr), 'ātruma dalīšana vairs nerāda tevi citiem');
     const pr = fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8');
     ok(/~150 m/.test(pr) && /Citu braucēju redzēšana/.test(pr) && /līdz 15 km/.test(pr) && /noklusēti izslēgta/.test(pr), 'privacy.html §6');
-    ok(/CZ_PRIVACY_VERSION = '2026-11-(08b|[1-3]\db?)'/.test(fs.readFileSync(path.join(ROOT, 'auth.js'), 'utf8')) && /Versija 2026-11-(08b|[1-3]\d)/.test(pr), 'jauna politikas versija');
+    ok(/CZ_PRIVACY_VERSION = '2026-11-(08b|[1-3]\d[a-z]?)'/.test(fs.readFileSync(path.join(ROOT, 'auth.js'), 'utf8')) && /Versija 2026-11-(08b|[1-3]\d)/.test(pr), 'jauna politikas versija');
   });
 }
 
@@ -3761,7 +3761,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     for (const w of ['routing.openstreetmap.de', 'overpass-api.de', 'jsDelivr', 'OpenStreetMap API', 'Open-Meteo (Šveice)', 'Mapillary (Meta Platforms)', 'Google Fonts', 'Lietotne neizmanto serverus Krievijā'])
       ok(pr.includes(w), 'politikā: ' + w);
     ok(/Versija 2026-11-10/.test(pr) && /<p>2026-11-10: /.test(pr), 'versija + izmaiņu ieraksts');
-    ok(/CZ_PRIVACY_VERSION = '2026-11-10b?'/.test(rd('auth.js')), 'auth.js → piekrišanas logs');
+    ok(/CZ_PRIVACY_VERSION = '2026-11-10[a-z]?'/.test(rd('auth.js')), 'auth.js → piekrišanas logs');
     for (const f of ['index.html', 'index-gl.html', 'admin.html']) ok(/auth\.js\?v=1[6-9]\d/.test(rd(f)) && !/auth\.js\?v=160/.test(rd(f)), f + ': auth.js jauna versija');
     // katrs CSP connect-src ārējais serveris ir minēts politikā (pēc nosaukuma vai adreses)
     const NAMES = { 'pkqusuoicxmwcgwsrdqy.supabase.co': 'Supabase', 'tiles.openfreemap.org': 'OpenFreeMap', 'tile.openstreetmap.org': 'OpenStreetMap',
@@ -3897,7 +3897,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     }
     const pr = rd('privacy.html');
     ok(/Cloudflare Turnstile/.test(pr) && /<b>Cloudflare<\/b> \(ASV\)/.test(pr) && /<b>180 dienas<\/b>/.test(pr), 'politika: Cloudflare un 180 dienas');
-    ok(/Versija 2026-11-10b/.test(pr) && /CZ_PRIVACY_VERSION = '2026-11-10b'/.test(rd('auth.js')), 'jauna versija');
+    ok(/Versija 2026-11-10[b-z]/.test(pr) && /CZ_PRIVACY_VERSION = '2026-11-10[b-z]'/.test(rd('auth.js')), 'jauna versija');
   });
   test('B07: SQL 32 — dzēšana pēc 180 d., ne mazāk par 90, katru nakti; delete_my_account tā pati dzēšana', () => {
     const q = rd('supabase/account-2-anon-cleanup.sql');
@@ -3908,6 +3908,57 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/perform account_erase\(me\);/.test(q) && /cron\.schedule\('cz-anon-cleanup', '23 2 \* \* \*'/.test(q), 'kopīga dzēšana, plānotājs');
     ok(/revoke all on function public\.cz_anon_cleanup\(int, int\) from public, anon, authenticated;/.test(q), 'nav lietotnei');
     ok(/t:anon-cleanup-test\.sql/.test(rd('tests/run-sql.sh')), 'SQL tests');
+  });
+}
+
+// ---------- B08 (audits 2): radaru ziņojumi un „nav radara” tikai ar kontu, viena balss no konta ----------
+{
+  const ROOT = path.join(__dirname, '..');
+  const rd = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+  test('B08: SQL 33 — tikai authenticated, viena balss no konta, limiti, balsis 30 d.', () => {
+    const q = rd('supabase/radars-2-votes.sql');
+    ok(/^33 radars-2-votes\.sql$/m.test(rd('supabase/ORDER.txt')) && /\| 33 \| radars-2-votes\.sql \|/.test(rd('supabase/MIGRATIONS.md')), 'ORDER.txt, MIGRATIONS.md');
+    ok(/primary key \(mly_id, user_id, kind\)/.test(q) && /references auth\.users \(id\) on delete cascade/.test(q), 'viena balss; dzēšot kontu — dzēš');
+    ok(/revoke all on public\.radar_votes from public, anon, authenticated;/.test(q) && /alter table public\.radar_votes enable row level security;/.test(q), 'tabula nav lietotnei');
+    ok(/revoke all on function public\.radar_report\(jsonb\) from public, anon;/.test(q) && /revoke all on function public\.radar_bad\(text\[\]\) from public, anon;/.test(q)
+      && /grant execute on function public\.radar_report\(jsonb\) to authenticated;/.test(q) && /grant execute on function public\.radar_bad\(text\[\]\) to authenticated;/.test(q), 'anon tiesības atņemtas');
+    ok((q.match(/if me is null then raise exception 'nepieciešama pieteikšanās'/g) || []).length === 2, 'abas funkcijas prasa kontu');
+    ok(/hour_n \+ jsonb_array_length\(items\) > 120/.test(q) && /day_new < 100 and total < 50000/.test(q) && /exit when hour_n >= 100;/.test(q), 'limiti: 120/h, 100 jauni/d, 100 „nav”/h');
+    ok(/delete from radar_votes where at < now\(\) - interval '30 days'/.test(q) && /cron\.schedule\('cz-radar-votes', '37 2 \* \* \*'/.test(q), '30 dienas, katru nakti');
+    ok(!/grant[^;]*radar_list[^;]*;/.test(q.replace(/--.*$/gm, '')), 'radar_list netiek mainīts (lasīt var bez konta)');
+    ok(/t:radar-votes-test\.sql/.test(rd('tests/run-sql.sh')), 'SQL tests');
+  });
+  test('B08: lietotne — saraksts bez konta, ziņojums un „nav radara” ar kontu (neredzami, bez CAPTCHA loga)', async () => {
+    const app = rd('app-gl.js');
+    const a = app.indexOf('const radarShared'), b = app.indexOf('// Mapillary pārbauda līdz 50');
+    ok(a > 0 && b > a, 'radaru bloks atrasts');
+    ok(/radarRpc\('radar_list'\)/.test(app) && /radarRpc\('radar_report', \{ items \}, \{ account: true \}\)/.test(app)
+      && /radarRpc\('radar_bad', \{ ids: bad\.slice\(0, 50\) \}, \{ account: true \}\)/.test(app), 'kurš izsaukums ar kontu');
+    const calls = []; let tokenOpts = null, fail = null;
+    const ctx = { Date, Object, Error, JSON, RIDES_CONFIG: { url: 'https://x.supabase.co/', anonKey: 'pk' },
+      czAuthGet: () => ({ token: async o => { tokenOpts = o; if (fail) { const e = new Error(fail); e.code = fail; throw e; } return 'JWT1'; } }),
+      fetch: async (url, init) => { calls.push({ url, h: init.headers }); return { ok: true, json: async () => 3 }; } };
+    vm.createContext(ctx);
+    vm.runInContext(app.slice(a, b) + '\nthis.radarRpc = radarRpc; this.radarShared = radarShared;', ctx);
+    await ctx.radarRpc('radar_list');
+    ok(calls[0].url === 'https://x.supabase.co/rest/v1/rpc/radar_list' && !calls[0].h.Authorization && calls[0].h.apikey === 'pk', 'saraksts bez konta');
+    eq(await ctx.radarRpc('radar_report', { items: [] }, { account: true }), 3, 'atbilde');
+    eq(calls[1].h.Authorization, 'Bearer JWT1', 'ziņojums ar konta žetonu');
+    eq(JSON.stringify(tokenOpts), JSON.stringify({ create: true, interactive: false }), 'konts tiek izveidots neredzami, bez CAPTCHA loga');
+    fail = 'captcha_needed';
+    let e1 = null; try { await ctx.radarRpc('radar_bad', { ids: ['1'] }, { account: true }); } catch (e) { e1 = e.code; }
+    eq(e1, 'captcha_needed', 'bez konta — nesūta');
+    fail = null; let e2 = null; try { await ctx.radarRpc('radar_bad', { ids: ['1'] }, { account: true }); } catch (e) { e2 = e.code; }
+    eq(e2, 'radar_auth_wait', 'pēc kļūmes — 10 min pauze (nemēģina katru reizi)');
+    eq(calls.length, 2, 'bez konta pieprasījumi netika sūtīti');
+    ok(/if \(e && e\.code === 'radar_auth_wait'\) \{ items\.forEach\(it => radarShared\.queue\.set\(it\.id, it\)\)/.test(app), 'pauzes laikā ziņojumi paliek rindā');
+  });
+  test('B08: privātuma politika 2026-11-10c — 30 dienas; versijas v165', () => {
+    const pr = rd('privacy.html');
+    ok(/Versija 2026-11-10c/.test(pr) && /<p>2026-11-10c: /.test(pr) && /CZ_PRIVACY_VERSION = '2026-11-10c'/.test(rd('auth.js')), 'jauna versija → piekrišanas logs');
+    ok(/serveris <b>30 dienas<\/b> glabā, kurš konts par kuru radaru ziņoja/.test(pr) && /par radaru vai atzīmēja to kā nederīgu, — 30 dienas/.test(pr), '2. un 8. punkts');
+    for (const f of ['index.html', 'index-gl.html']) ok(/app-gl\.js\?v=165/.test(rd(f)) && /auth\.js\?v=165/.test(rd(f)), f + ': v165');
+    ok(/auth\.js\?v=165/.test(rd('admin.html')), 'admin.html: auth v165');
   });
 }
 
