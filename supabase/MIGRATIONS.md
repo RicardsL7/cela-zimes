@@ -51,10 +51,20 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 31 | rides-19-cost-share.sql | B03: kopbrauciena maksa ≤ ceļa izmaksas (attālums × 1,3 × 12 c/km, ≥ 2 €) | **nē — aizsargāts** (pēc 32) |
 | 32 | account-2-anon-cleanup.sql | B07: anonīmi konti, kas 180 d. nav pieslēgušies, tiek dzēsti katru nakti | **nē — aizsargāts** (pēc 33) |
 | 33 | radars-2-votes.sql | B08: radaru ziņojumi un „nav radara” tikai ar kontu, viena balss no konta, limiti; balsis 30 d. | **nē — aizsargāts** (pēc 34) |
-| 34 | rides-20-profiles-privacy.sql | B09: profilu (vārds, auto) redz tikai brauciena otra puse, ne visi lietotāji | jā (kamēr nav jaunāku) |
+| 34 | rides-20-profiles-privacy.sql | B09: profilu (vārds, auto) redz tikai brauciena otra puse, ne visi lietotāji | **nē — aizsargāts** (pēc 35) |
+| 35 | rides-21-driver-accounts.sql | B10: šofera Stripe kontu piesaista tikai ride-pay (service_role); klients neraksta | jā (kamēr nav jaunāku) |
 
 **Produkcijā:** palaisti visi 1–34 (22–31 — 08.11.2026, 32–34 — 10.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
 Faili ar `cz_migration_begin` (27–…) atkārtoti palaižami tikai, kamēr nav palaists jaunāks (tad tie paši atsakās).
+
+## Šofera Stripe konta piesaiste (B10)
+
+- `rides-21-driver-accounts.sql` (Nr. 35): politika „driver_accounts insert own” dzēsta, `anon`/`authenticated` nav INSERT
+  un UPDATE. Ierakstu veido `driver_account_link(user, acct)` — izpildīt var tikai `service_role` (ride-pay ar iebūvēto
+  servisa atslēgu), tikai pēc tam, kad Stripe izveidojis kontu ar metadatiem `cz_user` = lietotājs. Viens Stripe konts —
+  vienam lietotājam. Lasīt un dzēst savu ierakstu — kā līdz šim.
+- ride-pay (B10 versija) strādā arī pirms šī faila (ja funkcijas nav — vecais ceļš). Ieteicamā secība: izvietot ride-pay,
+  tad palaist Nr. 35. Vecā ride-pay pēc Nr. 35 jaunu šofera kontu saglabāt nevarētu.
 
 ## Kopbraucienu profilu redzamība (B09)
 
