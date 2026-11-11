@@ -4155,7 +4155,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
       ok(!/pg_dump|db dump|pg_dumpall|SUPABASE_DB_URL|postgres(ql)?:\/\//.test(y), f + ': nav datubāzes eksporta');
     }
     const m = rd('README.md');
-    ok(/## Rezerves kopijas un atjaunošana \(B13\)/.test(m) && /Database → Backups/.test(m) && /tools\/restore-cron\.sql/.test(m)
+    ok(/## Rezerves kopijas un atjaunošana \(B13\)/.test(m) && /cela-zimes-backup/.test(m) && /tools\/restore-cron\.sql/.test(m)
       && /tools\/backup-counts\.sql/.test(m) && /status\.sql/.test(m), 'README: atjaunošanas instrukcija');
     ok(/B13: atjaunots no kopijas/.test(rd('tests/run-sql.sh')), 'run-sql.sh: atjaunošanas mēģinājums');
   });
