@@ -4161,6 +4161,188 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   });
 }
 
+// ---------- B14 (audits 2): bezsaistes režīms (sw.js, pwa.js, manifests) ----------
+{
+  const fs14 = require('fs'), path14 = require('path');
+  const rd = f => fs14.readFileSync(path14.join(__dirname, '..', f), 'utf8');
+  const loadSw = () => { delete require.cache[require.resolve('../sw.js')]; return require('../sw.js'); };
+  const O = 'https://growlab.cc';
+  // Viltota Cache API (ievietošanas secībā, kā pārlūkā)
+  const fakeCaches = () => {
+    const store = new Map();
+    const open = async n => { if (!store.has(n)) store.set(n, new Map()); const m = store.get(n); const key = k => (typeof k === 'string' ? k : k.url);
+      return { put: async (k, r) => { m.delete(key(k)); m.set(key(k), r); }, match: async k => m.get(key(k)) || undefined,
+        keys: async () => [...m.keys()].map(url => ({ url })), delete: async k => m.delete(key(k)) }; };
+    return { store, open, keys: async () => [...store.keys()], delete: async n => store.delete(n) };
+  };
+  const resp = (body, st = 200, date) => new Response(body, { status: st, headers: date ? { date } : {} });
+  test('B14: sw.js — kas tiek kešots un kas nekad', () => {
+    const { czSwRoute } = loadSw();
+    const r = (u, mode = 'cors', m = 'GET') => czSwRoute(new URL(u), mode, m, O);
+    eq(r(O + '/', 'navigate'), 'page', 'lapa');
+    eq(r(O + '/?code=abc#x', 'navigate'), 'page', 'lapa ar parametriem');
+    eq(r(O + '/app-gl.js?v=165', 'no-cors'), 'static', 'skripts ar versiju');
+    eq(r(O + '/vendor/maplibre-gl-6.15.0/maplibre-gl-worker.mjs'), 'static', 'MapLibre');
+    eq(r(O + '/data/osm/c_1113_529.json'), 'data', 'dati');
+    eq(r(O + '/skins/ninja.svg'), 'fresh', 'tēls');
+    eq(r(O + '/admin.html', 'navigate'), null, 'admin.html — nekad');
+    eq(r(O + '/admin.js?v=166'), null, 'admin.js — nekad');
+    eq(r(O + '/sw.js'), null, 'sw.js — nekad');
+    eq(r(O + '/.well-known/assetlinks.json'), null, 'assetlinks — nekad');
+    eq(r(O + '/rpc', 'cors', 'POST'), null, 'POST — nekad');
+    eq(r('https://pkqusuoicxmwcgwsrdqy.supabase.co/rest/v1/rides'), null, 'Supabase — nekad');
+    eq(r('https://graph.mapillary.com/images?access_token=MLY|x'), null, 'Mapillary API (atslēga adresē) — nekad');
+    eq(r('https://tiles.mapillary.com/maps/vtp/mly1/2/14/1/2?access_token=MLY|x'), null, 'Mapillary flīzes — nekad');
+    eq(r('https://router.project-osrm.org/route/v1/driving/1,2;3,4'), null, 'maršruts — nekad');
+    eq(r('https://nominatim.openstreetmap.org/search?q=x'), null, 'meklēšana — nekad');
+    eq(r('https://tiles.openfreemap.org/styles/liberty'), 'style', 'stils — vispirms tīkls');
+    eq(r('https://tiles.openfreemap.org/planet'), 'style', 'TileJSON — vispirms tīkls');
+    eq(r('https://tiles.openfreemap.org/planet/20251105_001001_pt/14/9300/5000.pbf'), 'tile', 'flīze');
+    eq(r('https://tiles.openfreemap.org/fonts/Noto%20Sans%20Regular/0-255.pbf'), 'tile', 'burti');
+    eq(r('https://tiles.openfreemap.org/sprites/ofm_f384/ofm.png'), 'tile', 'ikonas');
+    eq(r('https://tile.openstreetmap.org/14/9300/5000.png'), 'osm', 'OSM flīze (7 d.)');
+    eq(r('https://cdn.jsdelivr.net/gh/mapillary/mapillary_sprite_source@1465defa53e47e24b4cfb49e03288cc38652407b/package_signs/x.svg'), 'tile', 'zīmju ikonas');
+    eq(r('https://cdn.jsdelivr.net/npm/evil@1/x.js'), null, 'cits jsDelivr — ne');
+    eq(r('https://challenges.cloudflare.com/turnstile/v0/api.js'), null, 'Turnstile — ne');
+  });
+  test('B14: sw.js — lapas resursi no HTML; lapas atslēga bez parametriem', () => {
+    const { czSwAssets, czSwPageKey } = loadSw();
+    const a = czSwAssets(rd('index-gl.html'));
+    ok(a.includes('./app-gl.js?v=' + /app-gl\.js\?v=(\d+)/.exec(rd('index-gl.html'))[1]), 'app-gl.js');
+    ok(a.includes('./manifest.webmanifest') && a.some(x => /^\.\/style-gl\.css\?v=/.test(x)) && a.some(x => /maplibre-gl\.css$/.test(x)), 'manifests, stili');
+    ok(!a.some(x => /^\.\/(https?:|\/\/)|fonts\.googleapis|\.html/.test(x)), 'nav ārējo / html');
+    ok(a.length >= 40, 'faili: ' + a.length);
+    eq(czSwPageKey(new URL(O + '/?code=1#t')), O + '/index.html', '/ → /index.html');
+    eq(czSwPageKey(new URL(O + '/privacy.html?x')), O + '/privacy.html', 'bez parametriem');
+  });
+  test('B14: sw.js — stratēģijas ar tīklu un bez tā', async () => {
+    const sw = loadSw();
+    const c = fakeCaches(); sw.czSw.caches = c;
+    let online = true, calls = 0;
+    sw.czSw.fetch = async req => { calls++; if (!online) throw new TypeError('Failed to fetch'); const u = typeof req === 'string' ? req : req.url;
+      return u.includes('missing') ? resp('nf', 404) : resp('net:' + u, 200, new Date().toUTCString()); };
+    const H = (u, mode = 'cors') => sw.czSwHandle({ url: u, mode, method: 'GET' }, O);
+    // lapa: tīkls → kešs; bez tīkla — kešs (arī ar citiem parametriem)
+    eq(await (await H(O + '/', 'navigate')).text(), 'net:' + O + '/', 'lapa no tīkla');
+    await new Promise(r => setTimeout(r, 5));
+    online = false;
+    eq(await (await H(O + '/?code=x', 'navigate')).text(), 'net:' + O + '/', 'bez tīkla — saglabātā lapa');
+    const off = await H(O + '/terms.html', 'navigate');
+    ok(off.status === 503 && /Nav interneta/.test(await off.text()), 'nesaglabāta lapa — paziņojums');
+    // skripts ar versiju: pēc saglabāšanas — bez tīkla
+    online = true;
+    await H(O + '/a.js?v=1');
+    await new Promise(r => setTimeout(r, 5));
+    online = false; calls = 0;
+    eq(await (await H(O + '/a.js?v=1')).text(), 'net:' + O + '/a.js?v=1', 'versija — no keša');
+    eq(calls, 0, 'versija — tīklu neprasa');
+    let threw = false; try { await H(O + '/b.js?v=1'); } catch { threw = true; }
+    ok(threw, 'nesaglabāts bez tīkla — kļūda (kā bez sw)');
+    // dati: tīkls pirmais; bez tīkla — saglabātie
+    online = true;
+    eq(await (await H(O + '/data/osm/index.json')).text(), 'net:' + O + '/data/osm/index.json', 'dati no tīkla');
+    await new Promise(r => setTimeout(r, 5));
+    online = false;
+    eq(await (await H(O + '/data/osm/index.json')).text(), 'net:' + O + '/data/osm/index.json', 'dati bez tīkla');
+    // 404 netiek kešots
+    online = true;
+    eq((await H(O + '/data/missing.json')).status, 404, '404 atdod');
+    await new Promise(r => setTimeout(r, 5));
+    ok(!c.store.get('cz-data-v1').has(O + '/data/missing.json'), '404 nekešo');
+    // flīze: veca (> 30 d.) — jāprasa tīklam; bez tīkla — vecā der
+    const T = 'https://tiles.openfreemap.org/planet/x/1/1/1.pbf';
+    await (await c.open('cz-tiles-v1')).put(T, resp('old', 200, new Date(Date.now() - 40 * 864e5).toUTCString()));
+    online = false;
+    eq(await (await H(T)).text(), 'old', 'bez tīkla — vecā flīze');
+    online = true;
+    eq(await (await H(T)).text(), 'net:' + T, 'ar tīklu — atjauno vecu');
+  });
+  test('B14: sw.js — uzstādīšana kešo lapu un failus, vecās versijas un svešos kešus dzēš; cz-api-v1 paliek', async () => {
+    const sw = loadSw();
+    const c = fakeCaches(); sw.czSw.caches = c;
+    const html = '<link href="style-gl.css?v=2"><script src="app-gl.js?v=9"></script><script src="https://x.test/a.js"></script><a href="privacy.html">';
+    sw.czSw.fetch = async req => { const u = req.url || req; return u.endsWith('/index-gl.html') ? resp(html) : u.includes('icon-192') ? resp('x', 404) : resp('f:' + u); };
+    const shell = await c.open('cz-shell-v1');
+    await shell.put(O + '/app-gl.js?v=8', resp('old'));
+    await shell.put(O + '/skins/x.svg', resp('keep'));
+    await (await c.open('cz-shell-v0')).put(O + '/x', resp('x'));
+    await (await c.open('cz-mly-tiles-v1')).put(O + '/m', resp('m'));
+    await (await c.open('cz-api-v1')).put('https://cela-zimes.cache/api/x', resp('api'));
+    await (await c.open('cits')).put(O + '/y', resp('y'));
+    await sw.czSwInstall(O + '/');
+    const keys = [...c.store.get('cz-shell-v1').keys()];
+    ok(keys.includes(O + '/app-gl.js?v=9') && keys.includes(O + '/style-gl.css?v=2') && keys.includes(O + '/index.html') && keys.includes(O + '/index-gl.html'), 'jaunie faili un lapa');
+    ok(!keys.includes(O + '/app-gl.js?v=8'), 'vecā versija dzēsta');
+    ok(keys.includes(O + '/skins/x.svg'), 'bezversijas fails paliek');
+    ok(!keys.some(k => k.includes('x.test') || k.includes('privacy')), 'nav ārēju / citu lapu');
+    ok(c.store.get('cz-data-v1').has(O + '/data/osm/cameras.json'), 'kameras — datos');
+    await sw.czSwActivate();
+    ok(!c.store.has('cz-shell-v0') && c.store.has('cz-api-v1') && c.store.has('cz-mly-tiles-v1') && c.store.has('cits'), 'dzēš tikai savas vecās versijas (cz-api-v1, cz-mly-tiles-v1, citi paliek)');
+    // ierobežojums
+    const t = await c.open('cz-tiles-v1');
+    for (let i = 0; i < 12; i++) await t.put('https://t/' + i, resp('x'));
+    await sw.czSwTrim('cz-tiles-v1', 5);
+    eq([...c.store.get('cz-tiles-v1').keys()].join(','), [7, 8, 9, 10, 11].map(i => 'https://t/' + i).join(','), 'vecākās flīzes ārā');
+  });
+  test('B14: pwa.js — reģistrē sw.js (ne Android lietotnē), paziņojums bez tīkla', async () => {
+    const vm = require('vm');
+    const mk = (native, proto = 'https:') => {
+      const ls = {}, regs = [{ unregister: async () => { regs.unreg = (regs.unreg || 0) + 1; return true; } }];
+      const body = { kids: [], appendChild(e) { this.kids.push(e); } };
+      const el = () => ({ hidden: false, style: {}, attrs: {}, classList: { s: new Set(), add(c) { this.s.add(c); }, remove(c) { this.s.delete(c); } },
+        setAttribute(k, v) { this.attrs[k] = v; }, getBoundingClientRect: () => ({ bottom: 120, height: 40 }) });
+      const topbar = el(); const nav = el(); nav.hidden = true;
+      const w = { location: { protocol: proto, hostname: 'growlab.cc' }, ls,
+        navigator: { onLine: true, serviceWorker: { register: async (u, o) => { w.reg = [u, o]; return {}; }, getRegistrations: async () => regs } },
+        document: { readyState: 'complete', body, createElement: el, getElementById: id => ({ topbar, navBanner: nav }[id] || null), addEventListener() {} },
+        addEventListener(ev, f) { (w.ev = w.ev || {})[ev] = f; }, Capacitor: native ? { isNativePlatform: () => true } : undefined, regs };
+      return w;
+    };
+    const load = () => { delete require.cache[require.resolve('../pwa.js')]; return require('../pwa.js'); };
+    let P = load(), w = mk(false);
+    P.czPwaInit(w); await new Promise(r => setTimeout(r, 5));
+    eq(JSON.stringify(w.reg), JSON.stringify(['sw.js', { scope: './', updateViaCache: 'none' }]), 'reģistrē sw.js');
+    w.ev.offline();
+    const b = P.CZ_PWA.el;
+    ok(b && !b.hidden && /Nav interneta/.test(b.textContent) && b.attrs.role === 'status' && b.style.top === '128px', 'paziņojums zem joslas');
+    w.ev.online();
+    ok(/atkal ir/.test(b.textContent) && b.classList.s.has('back'), 'internets atkal ir');
+    P = load(); w = mk(true);
+    P.czPwaInit(w); await new Promise(r => setTimeout(r, 5));
+    ok(!w.reg && w.regs.unreg === 1, 'Android lietotnē — nereģistrē, veco noņem');
+    P = load(); w = mk(false, 'http:');
+    P.czPwaInit(w); await new Promise(r => setTimeout(r, 5));
+    ok(!w.reg, 'http (nedrošs) — nereģistrē');
+  });
+  test('B14: manifests, ikonas, lapas, CSP, privātums, CI', () => {
+    const m = JSON.parse(rd('manifest.webmanifest'));
+    ok(m.name === 'Ceļa Zīmes' && m.start_url === './' && m.scope === './' && m.display === 'standalone' && m.lang === 'lv', 'manifests');
+    for (const i of m.icons) {
+      const b = fs14.readFileSync(path14.join(__dirname, '..', i.src));
+      const wdt = b.readUInt32BE(16), hgt = b.readUInt32BE(20);
+      ok(b.slice(1, 4).toString() === 'PNG' && i.sizes === wdt + 'x' + hgt, i.src + ' ' + wdt + 'x' + hgt);
+    }
+    ok(m.icons.some(i => i.purpose === 'maskable'), 'maskable ikona');
+    for (const f of ['index.html', 'index-gl.html']) {
+      const h = rd(f);
+      ok(/<link rel="manifest" href="manifest\.webmanifest">/.test(h) && /<script defer src="pwa\.js\?v=\d+"><\/script>/.test(h)
+        && /apple-touch-icon\.png/.test(h), f + ': manifests un pwa.js');
+      ok(/worker-src 'self'/.test(h), f + ': CSP ļauj sw.js');
+    }
+    ok(!/manifest|pwa\.js/.test(rd('admin.html')), 'admin.html bez sw');
+    const sw = rd('sw.js');
+    ok(!/supabase\.co|access_token/.test(sw.replace(/^\/\/.*$/gm, '')), 'sw.js kodā nav Supabase / atslēgu');
+    ok(/cz-api-v1/.test(sw) && /CZ_SW_KEEP/.test(sw), 'cache.js kešs saglabājas');
+    ok(/apskatītās kartes daļas, lai lietotne atvērtos bez interneta/.test(rd('privacy.html')), 'privātuma politika');
+    const y = rd('.github/workflows/tests.yml');
+    ok(/node tests\/offline-smoke\.js/.test(y), 'CI: bezsaistes tests');
+    ok(/serviceWorkers: 'block'/.test(rd('tests/map-smoke.js')), 'kartes testā sw.js netraucē');
+    const k = rd('tools/sw-kill.js').replace(/^\/\/.*$/gm, '');
+    ok(/registration\.unregister\(\)/.test(k) && !/'fetch'|navigate\(|reload/.test(k) && /\^cz-\(shell\|data\|tiles\)-v/.test(k), 'avārijas sw-kill.js: noņem sevi, bez fetch, bez pārlādes cilpas');
+    ok(/## Bezsaistes režīms \(B14\)/.test(rd('README.md')) && /tools\/sw-kill\.js/.test(rd('README.md')), 'README: bezsaistes režīms un izslēgšana');
+  });
+}
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);

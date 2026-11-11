@@ -25,7 +25,7 @@ const STYLE = {
 const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : f.endsWith('.css') ? 'text/css' : f.endsWith('.html') ? 'text/html' : f.endsWith('.json') ? 'application/json' : f.endsWith('.svg') ? 'image/svg+xml' : f.endsWith('.png') ? 'image/png' : 'application/octet-stream';
 (async () => {
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-  const ctx = await browser.newContext({ viewport: { width: 420, height: 860 }, geolocation: { latitude: 56.95, longitude: 24.11 }, permissions: ['geolocation'] });
+  const ctx = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 420, height: 860 }, geolocation: { latitude: 56.95, longitude: 24.11 }, permissions: ['geolocation'] });
   // Piekrišana pašreizējām versijām (no auth.js — pēc versijas maiņas tests neapstājas pie piekrišanas loga)
   const authSrc = require('fs').readFileSync(require('path').join(__dirname, '..', 'auth.js'), 'utf8');
   const consentV = { terms: (authSrc.match(/CZ_TERMS_VERSION = '([^']+)'/) || [])[1], privacy: (authSrc.match(/CZ_PRIVACY_VERSION = '([^']+)'/) || [])[1] };
@@ -168,7 +168,7 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
   await page.keyboard.press('Escape'); await page.waitForTimeout(300);
   res.a11y.garageClosed = await page.evaluate(() => ({ sheet: document.getElementById('garageSheet').hidden, active: document.activeElement && document.activeElement.id }));
   // Piekrišanas ekrāns (jauns lietotājs): fokuss tajā, fons inert, Esc neaizver, solis „Nepiekrītu” nepazaudē fokusu
-  { const ctx2 = await browser.newContext({ viewport: { width: 420, height: 860 } });
+  { const ctx2 = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 420, height: 860 } });
     await ctx2.route('**/*', routeAll);
     const pg = await ctx2.newPage(); const errs = [];
     pg.on('pageerror', e => errs.push(String(e && e.message || e).slice(0, 200)));
