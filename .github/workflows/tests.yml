@@ -87,11 +87,28 @@ jobs:
         run: bash tools/vendor.sh --check
       - name: Playwright + Chromium
         run: |
-          npm install --no-save --no-package-lock playwright@1.56.0
+          npm install --no-save --no-package-lock playwright@1.56.0 esbuild@0.25.5
           npx playwright install --with-deps chromium
       - run: node tests/map-smoke.js . "$RUNNER_TEMP/smoke"
       - name: Bezsaistes režīms (B14)
         run: node tests/offline-smoke.js . "$RUNNER_TEMP/offline"
+      # B15: vietne, kas tiks izvietota — tīra kopija, saspiesti faili, versijas pēc satura; tie paši testi būvētajai vietnei
+      - name: Vietnes būvēšana (B15)
+        run: |
+          mkdir -p "$RUNNER_TEMP/site"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/site"
+          node tools/build.mjs "$RUNNER_TEMP/site" --minify
+      - name: Būvētā vietne — kartes un bezsaistes tests
+        run: |
+          node tests/map-smoke.js "$RUNNER_TEMP/site" "$RUNNER_TEMP/smoke-site"
+          node tests/offline-smoke.js "$RUNNER_TEMP/site" "$RUNNER_TEMP/offline-site"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vietne
+          path: ${{ runner.temp }}/site
+          include-hidden-files: true
+          retention-days: 3
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -101,6 +118,10 @@ jobs:
             ${{ runner.temp }}/smoke.json
             ${{ runner.temp }}/offline.png
             ${{ runner.temp }}/offline.json
+            ${{ runner.temp }}/smoke-site.png
+            ${{ runner.temp }}/smoke-site.json
+            ${{ runner.temp }}/offline-site.png
+            ${{ runner.temp }}/offline-site.json
           if-no-files-found: ignore
 
   deploy:
@@ -120,12 +141,16 @@ jobs:
       group: pages
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      # B15: tieši tā vietne, kuru darbs „Kartes dūmu tests” uzbūvēja un pārbaudīja (tools/build.mjs)
+      - uses: actions/download-artifact@v4
+        with:
+          name: vietne
+          path: ./site
       - uses: actions/configure-pages@v5
       # Tas pats Jekyll, ko izmantoja „Deploy from a branch” (_config.yml: include .well-known)
       - uses: actions/jekyll-build-pages@v1
         with:
-          source: ./
+          source: ./site
           destination: ./_site
       - uses: actions/upload-pages-artifact@v3
       - id: deployment
