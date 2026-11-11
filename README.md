@@ -148,6 +148,15 @@ GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi
   palaiž drošības scenārijus, pārbauda `supabase/status.sql` un veco failu aizsardzību.
 - **Karte un lapu drošības politika** (Playwright + Chromium): `node tests/map-smoke.js . /tmp/karte` — sk. faila sākumu.
 
+## Rezerves kopijas un atjaunošana (B13)
+
+- **Supabase Pro:** datubāzes kopija katru dienu, glabā 7 dienas (Database → Backups); ietver arī kontus un pg_cron darbus.
+  Kopiju nekad neglabā publiskajā repozitorijā vai GitHub Actions artefaktos (tie ir publiski) — `tests/run.js` to pārbauda.
+- **Atjaunošana:** pirms — `tools/backup-counts.sql`; Database → Backups → Restore; pēc — `supabase/status.sql` →
+  „VISS KĀRTĪBĀ” (ja pazuduši pg_cron darbi — `tools/restore-cron.sql`), `tools/backup-counts.sql` salīdzināšanai.
+  Pilna instrukcija — `supabase/MIGRATIONS.md` → „Datu rezerves kopija un atjaunošana”.
+- `tests/run-sql.sh` katrā CI palaišanā izmēģina atjaunošanu: kopija → jauna datubāze → status.sql un rindu skaits sakrīt.
+
 ## Lietotnes kļūdas (B12)
 
 - `errlog.js` (ielādējas pirmais pēc `guard.js` visās lapās) pieraksta `window.onerror` un nepārtvertās Promise kļūdas un sūta

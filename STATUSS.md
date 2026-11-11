@@ -534,3 +534,15 @@
 - Testi: `run.js` (+3 B12), `run-sql.sh` (+ client-errors-test, 10 pārbaudes).
 - **Produkcijā:** Nr. 36 palaists 11.11.2026 ar īpašnieka atļauju; `status.sql` — VISS KĀRTĪBĀ. Pārbaude: `client_error` bez konta → true;
   `admin_client_errors` bez konta → atteikts. growlab.cc ielādē `errlog.js?v=166`.
+
+## B13 (audits 2) — nebija datubāzes rezerves kopiju (11.11.2026)
+
+- **Lēmums (īpašnieks):** Supabase Pro ($25/mēn.) — ikdienas kopijas, 7 dienas, atjaunošana Supabase panelī. Variants ar
+  kopiju GitHub Actions tika atmests: publiskā repozitorijā artefakti ir publiski (arī šifrēti — nav pieņemami).
+- **`supabase/MIGRATIONS.md`:** sadaļa „Datu rezerves kopija un atjaunošana (B13)” — kad atjaunot, soļi pirms/pēc, jauns projekts.
+- **`tools/restore-cron.sql`** (jauns): pg_cron darbu atjaunošana (saraksts sakrīt ar `supabase/*.sql` — run.js pārbauda).
+- **`tools/backup-counts.sql`** (jauns): rindu skaits tabulās pirms/pēc atjaunošanas (tikai lasa).
+- **Testi:** `run-sql.sh` (+4: pg_dump → jauna datubāze → status.sql, rindu skaits, pazaudēti cron darbi → restore-cron.sql),
+  `run.js` (+2 B13: cron saraksts, nekāda datubāzes eksporta darbplūsmās, README).
+- **Vajag īpašnieku:** Supabase → Organization → Billing → plāns Pro; pēc dienas — Database → Backups → redzama pirmā kopija.
+
