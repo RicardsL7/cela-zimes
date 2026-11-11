@@ -163,7 +163,7 @@ palaid **visus failus no tā, kas definē šo funkciju jaunāko versiju, līdz b
 ## Jauns Supabase projekts (atjaunošana no nulles)
 
 1. Supabase → New project (reģions ES).
-2. SQL Editor: visi faili no `ORDER.txt` pēc kārtas (1 → 31); beigās `status.sql` → „VISS KĀRTĪBĀ”. (`cleanup-1.sql` pats
+2. SQL Editor: visi faili no `ORDER.txt` pēc kārtas (1 → pēdējais); beigās `status.sql` → „VISS KĀRTĪBĀ”. (`cleanup-1.sql` pats
    ieslēdz plānotāju pg_cron; ja Supabase to neļauj — Integrations → Cron → ieslēgt, un palaist failu vēlreiz.)
 3. Authentication: kā aprakstīts `AUTH-IESTATIJUMI.md` (Site URL, Redirect URLs, anonīmie konti, Google, SMTP).
 4. Servera funkcijas (Edge Functions): `ride-pay` un `stripe-webhook` (pēdējo — ar `--no-verify-jwt`).
@@ -186,16 +186,33 @@ palaid **visus failus no tā, kas definē šo funkciju jaunāko versiju, līdz b
   `status.sql` rāda „plānotājs … nav ieplānots”, ja darbs pazudis.
 - GitHub ieplānotos darbus aptur pēc 60 dienām bez izmaiņām repozitorijā — tad Actions → „Uzraudzība” → Enable workflow.
 
-## Datu rezerves kopija
+## Datu rezerves kopija un atjaunošana (B13)
 
-- **Galvenais veids:** Supabase → Database → Backups (maksas plānos — automātiski katru dienu; atjauno Supabase pats,
-  ieskaitot kontus). Bezmaksas plānā automātisku kopiju nav — tad vismaz reizi nedēļā pašam (zemāk).
-- **Pašam** (savā datorā; datubāzes parole — Supabase → Project Settings → Database). Paroli un kopiju **nekad** neliec
-  repozitorijā — tajā ir lietotāju personas dati; glabā šifrētā vietā.
-  - tikai shēma (salīdzināšanai): `pg_dump "<connection string>" --schema-only --schema=public > shema.sql`
+- **Galvenais veids — Supabase Pro** (īpašnieka lēmums 11.11.2026): Supabase katru dienu pats taisa kopiju un glabā
+  **7 dienas** (Database → Backups → Scheduled backups). Kopija ietver visu datubāzi — arī kontus (`auth`) un pg_cron darbus;
+  **neietver** Storage failus (lietotne tos neizmanto), Edge Functions kodu un Secrets, Authentication iestatījumus.
+  Bezmaksas plānā kopiju nav vispār. Kopiju **nekad** neglabā publiskajā repozitorijā (GitHub Actions artefakti arī ir publiski).
+- **Kad atjaunot:** dati izdzēsti vai sabojāti (kļūdaina migrācija, ļaunprātīga darbība). Kopija ir no dienas sākuma —
+  visu, kas notika pēc tās, zaudē. Ja problēma ir tikai kodā (vietne, funkcija) — atjauno kodu (git), ne datubāzi.
+- **Atjaunošana (tajā pašā projektā):**
+  1. Pirms: SQL Editor → `tools/backup-counts.sql` → saglabā rezultātu (salīdzināšanai). Ja var — pieraksti, kas un kad notika.
+  2. Database → Backups → Scheduled backups → pie vajadzīgās dienas (pēdējā PIRMS problēmas) → **Restore** → apstiprini.
+     Projekts ir bezsaistē dažas minūtes (~30 MB datubāze); lietotne tikmēr rāda kļūdu kopbraucienos un radaru ziņojumos,
+     karte un navigācija strādā (dati no vietnes).
+  3. Pēc: SQL Editor → `supabase/status.sql` → jābūt „VISS KĀRTĪBĀ”.
+     - „plānotājs … nav ieplānots” → `tools/restore-cron.sql` → `status.sql` vēlreiz.
+     - „trūkst / cita versija / migrācija” → kopija ir vecāka par pēdējo migrāciju → palaid trūkstošos failus no
+       `ORDER.txt` (pēc numura, sk. `select max(seq) from cz_migrations`).
+  4. `tools/backup-counts.sql` — skaitiem jābūt tuviem 1. solim (mazāk — tikai tas, kas radās pēc kopijas).
+  5. Lietotnē: atvērt growlab.cc, pieteikties, atvērt „Kopā”; admin.html → statistika un „Kļūdas” bez sarkaniem brīdinājumiem.
+     Stripe: ja kopija vecāka par maksājumiem — Stripe Dashboard ir patiesība; nesakritības — admin.html → Kopbraucieni.
+- **Jauns projekts** (ja vecais vairs nav pieejams): Supabase „Restore to new project” (Database → Backups, ja piedāvā) vai
+  Supabase atbalsts; pēc tam — sadaļa „Jauns Supabase projekts” 3.–7. solis (Auth iestatījumi, funkcijas, Secrets, Stripe
+  webhook, `rides-config.js` ar jaunā projekta URL un publishable atslēgu, Turnstile Secret Key CAPTCHA iestatījumos).
+- **Pārbaudīts lokāli:** `tests/run-sql.sh` katrā CI palaišanā — kopija (pg_dump) → jauna datubāze → `status.sql` VISS KĀRTĪBĀ,
+  rindu skaits sakrīt; izdzēsti pg_cron darbi → `tools/restore-cron.sql` → atkal VISS KĀRTĪBĀ.
+- **Papildus pašam** (nav obligāti; savā datorā, datubāzes parole — Supabase → Project Settings → Database). Paroli un kopiju
+  **nekad** neliec repozitorijā — tajā ir lietotāju personas dati; glabā šifrētā vietā.
   - viss: `pg_dump "<connection string>" --format=custom --schema=public --schema=auth > cela-zimes.dump`
-- **Atjaunošana no paša kopijas** jaunā projektā: `ORDER.txt` failus **nepalaid** — atjauno visu kopiju
-  (`pg_restore --no-owner -d "<jaunā connection string>" cela-zimes.dump`): pg_restore vispirms izveido tabulas,
-  tad ieliek datus un tikai pēc tam trigerus un politikas, tāpēc trigeri datus nemaina. **Neizmanto `--data-only`**
-  uz jau izveidotas shēmas — tad trigeri (piem. A03 gaitas aizsardzība) mainītu atjaunotos datus.
-  Pēc tam `status.sql`. Kontu (`auth`) atjaunošana ārpus Supabase rīkiem ir sarežģīta — ja vajag, labāk ar Supabase atbalstu.
+  - atjaunošana jaunā projektā: `ORDER.txt` failus **nepalaid** — `pg_restore --no-owner -d "<jaunā connection string>" cela-zimes.dump`
+    (pg_restore trigerus izveido pēc datiem, tāpēc tie datus nemaina; **Neizmanto `--data-only`** — tad trigeri mainītu atjaunotos datus). Pēc tam `status.sql`.
