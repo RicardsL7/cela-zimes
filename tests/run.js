@@ -4388,6 +4388,26 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     eq(rd('index-gl.html'), before, 'repozitorijā nekas nav mainīts');
     fs15.rmSync(dir, { recursive: true, force: true });
   });
+  test('B15: tools/build.mjs --minify (aizstājējs esbuild vietā) — ES modulis, sintakse, pazudis nosaukums', async () => {
+    const b = await B();
+    const mk = files => { const dir = fs15.mkdtempSync(path15.join(os15.tmpdir(), 'czm-'));
+      for (const [f, c] of Object.entries(files)) { fs15.mkdirSync(path15.dirname(path15.join(dir, f)), { recursive: true }); fs15.writeFileSync(path15.join(dir, f), c); } return dir; };
+    // „saspiež” kā esbuild: atstarpes ārā, „import * as” → „import*as”
+    const fake = { transform: async (code, o) => ({ code: o.loader === 'css' ? code.replace(/\s+/g, ' ') : code.replace(/import \* as /g, 'import*as ').replace(/\n\s+/g, '\n') }) };
+    const page = '<link href="s.css?v=1"><script type="module" src="m.js?v=1"></script><script defer src="a.js?v=1"></script><script src="vendor/v.mjs"></script>';
+    let dir = mk({ 'index.html': page, 's.css': 'a {  color: red; }', 'm.js': "import * as x from './vendor/v.mjs';\nwindow.x = x;\n", 'a.js': 'function keep() {\n  return 1;\n}\n', 'vendor/v.mjs': 'export const v = 1;\n' });
+    const r = await b.czBuild(dir, { minify: true, esbuild: fake, log: () => {} });
+    ok(/import\*as x/.test(fs15.readFileSync(path15.join(dir, 'm.js'), 'utf8')) && r.files.length === 3, 'ES modulis — bez klasiskā skripta sintakses pārbaudes');
+    eq(fs15.readFileSync(path15.join(dir, 'vendor/v.mjs'), 'utf8'), 'export const v = 1;\n', 'vendor/ netiek aiztikts');
+    fs15.rmSync(dir, { recursive: true, force: true });
+    dir = mk({ 'index.html': '<script src="a.js?v=1"></script>', 'a.js': 'function keep() {}\n' });
+    let err = '';
+    try { await b.czBuild(dir, { minify: true, esbuild: { transform: async () => ({ code: 'function k(){}' }) }, log: () => {} }); } catch (e) { err = e.message; }
+    ok(/pazuda augšējā līmeņa nosaukumi: keep/.test(err), 'pārdēvēts globālais nosaukums — būvēšana neizdodas');
+    try { await b.czBuild(dir, { minify: true, esbuild: { transform: async () => ({ code: 'function keep( {' }) }, log: () => {} }); err = ''; } catch (e) { err = e.message; }
+    ok(err && !/pazuda/.test(err), 'sintakses kļūda — būvēšana neizdodas');
+    fs15.rmSync(dir, { recursive: true, force: true });
+  });
   test('B15: lazy.js — ielādē secībā, izsauc init, atceras spiedienu līdz ielādei', async () => {
     delete require.cache[require.resolve('../lazy.js')];
     const L = require('../lazy.js');
