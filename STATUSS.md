@@ -537,12 +537,15 @@
 
 ## B13 (audits 2) — nebija datubāzes rezerves kopiju (11.11.2026)
 
-- **Lēmums (īpašnieks):** Supabase Pro ($25/mēn.) — ikdienas kopijas, 7 dienas, atjaunošana Supabase panelī. Variants ar
-  kopiju GitHub Actions tika atmests: publiskā repozitorijā artefakti ir publiski (arī šifrēti — nav pieņemami).
-- **`supabase/MIGRATIONS.md`:** sadaļa „Datu rezerves kopija un atjaunošana (B13)” — kad atjaunot, soļi pirms/pēc, jauns projekts.
-- **`tools/restore-cron.sql`** (jauns): pg_cron darbu atjaunošana (saraksts sakrīt ar `supabase/*.sql` — run.js pārbauda).
-- **`tools/backup-counts.sql`** (jauns): rindu skaits tabulās pirms/pēc atjaunošanas (tikai lasa).
+- **Lēmums (īpašnieks):** bez maksas — privāts repozitorijs `RicardsL7/cela-zimes-backup` ar GitHub Actions (Supabase Pro
+  $25/mēn. atteikts). Kopija šajā publiskajā repozitorijā atmesta: artefakti publiski.
+- **`cela-zimes-backup`:** `backup.yml` katru nakti 03:17 — pārbauda, ka repozitorijs privāts; `pg_dump` public + auth; pārbaude
+  (≥ 30 tabulas, auth.users, izmērs); AES-256 (`BACKUP_PASSPHRASE`) + atšifrēšanas pārbaude; artefakts 14 dienas; `LAST.md`
+  (lai GitHub neaptur ieplānoto darbu). Pirmā kopija 11.11.2026 02:49 — zaļa (53 s, 103 KB).
+- Īpašnieks: izveidoja privāto repozitoriju, nomainīja datubāzes paroli, ielika Secrets `SUPABASE_DB_URL` (Session pooler)
+  un `BACKUP_PASSPHRASE`.
+- **`supabase/MIGRATIONS.md`:** „Datu rezerves kopija un atjaunošana (B13)” — atšifrēšana, pg_restore jaunā projektā, pārbaudes.
+- **`tools/restore-cron.sql`**, **`tools/backup-counts.sql`** (jauni).
 - **Testi:** `run-sql.sh` (+4: pg_dump → jauna datubāze → status.sql, rindu skaits, pazaudēti cron darbi → restore-cron.sql),
-  `run.js` (+2 B13: cron saraksts, nekāda datubāzes eksporta darbplūsmās, README).
-- **Vajag īpašnieku:** Supabase → Organization → Billing → plāns Pro; pēc dienas — Database → Backups → redzama pirmā kopija.
-
+  `run.js` (+2 B13: cron saraksts, nekāda datubāzes eksporta šī repozitorija darbplūsmās, README).
+- **Nav pārbaudīts:** īsta atjaunošana no šīs kopijas jaunā Supabase projektā (ieteicams reizi gadā).
