@@ -147,6 +147,25 @@ GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi
   `PGHOST=localhost PGUSER=postgres PGPASSWORD=… bash tests/run-sql.sh` — uzbūvē visu shēmu no `supabase/*.sql`,
   palaiž drošības scenārijus, pārbauda `supabase/status.sql` un veco failu aizsardzību.
 - **Karte un lapu drošības politika** (Playwright + Chromium): `node tests/map-smoke.js . /tmp/karte` — sk. faila sākumu.
+- **Bezsaistes režīms** (Playwright + Chromium): `node tests/offline-smoke.js . /tmp/bezsaiste` — sk. faila sākumu.
+
+## Bezsaistes režīms (B14)
+
+- **`sw.js`** (service worker, reģistrē `pwa.js`): lietotnes lapa, skripti, stili un MapLibre paliek ierīcē; apskatītā pamatkarte
+  (OpenFreeMap stils, flīzes, burti; OSM flīzes — 7 dienas), zīmju ikonas un `data/` (kameras, stāvvietas) — arī.
+  Bez interneta lietotne atveras un rāda saglabāto. Kešs: `cz-shell-v1` (pēc `?v=` — nemainīgi; vecās versijas dzēš),
+  `cz-data-v1` (vispirms tīkls), `cz-tiles-v1` (≤ 4000). **Nekad nekešo:** Supabase, Mapillary (atslēga adresē), maršrutus,
+  meklēšanu, `admin.*`, POST. Lapa — vispirms tīkls (jaunā versija nonāk uzreiz), bez tīkla / > 8 s — saglabātā.
+- **„Nav interneta”** paziņojums (`pwa.js`, online/offline notikumi) zem meklēšanas joslas; „Internets atkal ir” — 3 s.
+- **Instalējama lietotne (PWA):** `manifest.webmanifest`, `icons/` (192, 512, maskable, Apple). Telefonā: pārlūka izvēlne →
+  „Pievienot sākuma ekrānam”.
+- **Android lietotnē (Capacitor)** `sw.js` netiek reģistrēts (lapu ielādē lietotne pati un pievieno savu tiltu); paziņojums
+  „Nav interneta” tur strādā; bez interneta palaižot — `mobile/www/index.html`.
+- **Jauna versija:** kā līdz šim — `?v=` jāmaina mainītajiem failiem; `sw.js` pats tos ielādē. Mainot `sw.js` — `CZ_SW_VERSION`.
+- **Avārijas izslēgšana:** `tools/sw-kill.js` saturu ieliec `sw.js` vietā un izvieto — pie nākamās atvēršanas sw.js un tā
+  keši tiek noņemti, lietotne strādā kā pirms B14 (bez pārlādēm). Atjaunot — īstais `sw.js` no git.
+- Testi: `run.js` (stratēģijas ar viltotu Cache API), `tests/offline-smoke.js` (Chromium: ar tīklu → bez tīkla → atpakaļ,
+  Android, avārijas izslēgšana) — CI darbā „Kartes dūmu tests”.
 
 ## Rezerves kopijas un atjaunošana (B13)
 

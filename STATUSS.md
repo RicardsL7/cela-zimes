@@ -549,3 +549,23 @@
 - **Testi:** `run-sql.sh` (+4: pg_dump → jauna datubāze → status.sql, rindu skaits, pazaudēti cron darbi → restore-cron.sql),
   `run.js` (+2 B13: cron saraksts, nekāda datubāzes eksporta šī repozitorija darbplūsmās, README).
 - **Nav pārbaudīts:** īsta atjaunošana no šīs kopijas jaunā Supabase projektā (ieteicams reizi gadā).
+
+## B14 (audits 2) — nebija bezsaistes režīma (11.11.2026)
+
+- **`sw.js` (jauns, service worker, `CZ_SW_VERSION` 167):** lietotnes lapa un visi tās faili (no `index-gl.html` uzstādot; vecās
+  `?v=` versijas dzēš), `data/` (vispirms tīkls, 6 s), pamatkartes stils (vispirms tīkls) un flīzes/burti/ikonas (≤ 4000,
+  30 d.; OSM flīzes 7 d.), Mapillary zīmju ikonas (jsDelivr, piesaistīts commit). Lapa — vispirms tīkls, bez tīkla / > 8 s —
+  saglabātā; nesaglabāta lapa — „Nav interneta” lapa. Nekad: Supabase, Mapillary API/flīzes, maršruti, meklēšana, admin.*, POST.
+  Citu failu kešus (`cz-api-v1`, `cz-mly-tiles-v1`) neaiztiek.
+- **`pwa.js` (jauns, v167):** reģistrē `sw.js` (`updateViaCache: 'none'`; ne Android lietotnē — tur noņem); paziņojums
+  „Nav interneta” / „Internets atkal ir” zem meklēšanas joslas (navigācijas laikā — zem pagrieziena joslas).
+- **PWA:** `manifest.webmanifest`, `icons/` (192, 512, maskable 512, apple-touch 180; avots `icons/icon.svg`).
+  index.html / index-gl.html: manifests, ikonas, `pwa.js?v=167`, `style-gl.css?v=167`.
+- **`tools/sw-kill.js`:** avārijas izslēgšana (sw.js vietā) — noņem sw.js un tā kešus, bez pārlādes cilpas.
+- **Privātuma politika** 2. punkts: ierīcē glabājas arī lietotnes faili un apskatītās kartes daļas (bez jaunas piekrišanas).
+- **Testi:** `run.js` (+6 B14), `tests/offline-smoke.js` (jauns, CI darbā „Kartes dūmu tests”): reģistrācija, kešs (nav
+  Supabase/admin/Mapillary), bez tīkla lapa + skripti + kartes stils + paziņojums, admin.html netiek rādīts no keša,
+  tīkls atpakaļ, Android (Capacitor) — nereģistrē, avārijas izslēgšana. `map-smoke.js` — `serviceWorkers: 'block'`.
+- **Nav pārbaudīts:** īstā telefonā (Android Chrome, iPhone Safari) — instalēšana un bezsaiste; Android lietotnē bezsaistes
+  palaišana paliek kā līdz šim (`mobile/www/index.html`).
+
