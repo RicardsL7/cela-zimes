@@ -3635,6 +3635,7 @@ async function init() {
   wirePlaces();
   czWhenConsent(startGps);          // atrašanās vietas atļauju prasa tikai pēc piekrišanas noteikumiem
   map.once('load', loadAllForView);
+  if (typeof czLazyStart === 'function') czLazyStart();   // B15: „Kopā”, stāvēšana, Garāža — tagad (lazy.js)
 }
 
 init();

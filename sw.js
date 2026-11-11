@@ -9,7 +9,7 @@
 // Android lietotnē (Capacitor) netiek reģistrēts — tur lapu ielādē pati lietotne (pwa.js).
 // Avārijas izslēgšana: README → „Bezsaistes režīms (B14)”.
 
-const CZ_SW_VERSION = '167';
+const CZ_SW_VERSION = '168';
 const CZ_SW_SHELL = 'cz-shell-v1', CZ_SW_DATA = 'cz-data-v1', CZ_SW_TILES = 'cz-tiles-v1';
 const CZ_SW_KEEP = [CZ_SW_SHELL, CZ_SW_DATA, CZ_SW_TILES, 'cz-api-v1'];
 const CZ_SW_MAX = { [CZ_SW_DATA]: 600, [CZ_SW_TILES]: 4000 };
@@ -61,7 +61,9 @@ function czSwPageKey(u) {
   return u.origin + p;
 }
 
-const czSw = { puts: 0, fetch: (...a) => fetch(...a), caches: typeof caches !== 'undefined' ? caches : null, now: () => Date.now() };
+const czSw = { puts: 0, fetch: (...a) => fetch(...a), caches: typeof caches !== 'undefined' ? caches : null, now: () => Date.now(),
+  // B15: ierīce zina, ka tīkla nav — saglabāto atdod uzreiz, negaidot tīkla kļūdu (dažos tīklos tā nāk tikai pēc ilga laika)
+  offline: () => typeof navigator !== 'undefined' && navigator.onLine === false };
 
 function czSwTimeout(p, ms) {
   return new Promise((res, rej) => {
@@ -102,6 +104,7 @@ function czSwOfflinePage() {
 // Lapa: vispirms tīkls (lai jaunā versija nonāk uzreiz); lēns tīkls (> 8 s) vai nav tīkla — saglabātā
 async function czSwPage(req, u) {
   const key = czSwPageKey(u);
+  if (czSw.offline()) { const c = await czSwMatch(CZ_SW_SHELL, key); if (c) return c; }
   const net = czSw.fetch(req);
   try {
     const res = await czSwTimeout(net, 8000);
@@ -117,6 +120,7 @@ async function czSwPage(req, u) {
 }
 // Dati: vispirms tīkls (līdz 6 s), tad saglabātais
 async function czSwNetFirst(name, req, ms) {
+  if (czSw.offline()) { const c = await czSwMatch(name, req.url); if (c) return c; }
   const net = czSw.fetch(req);
   try {
     const res = await czSwTimeout(net, ms);
@@ -179,10 +183,12 @@ async function czSwInstall(base) {
     try {
       const u = new URL(href);
       const isData = u.pathname.startsWith('/data/');
+      const fixed = u.searchParams.has('v') || u.pathname.startsWith('/vendor/');
+      if (fixed && !isData && await c.match(href)) return;          // B15: nemainīgs pēc adreses un jau ir — neielādē vēlreiz
       const r = await czSw.fetch(new Request(href, { cache: 'reload' }));
       if (!r.ok) return;
       if (isData) return czSwPut(CZ_SW_DATA, href, r);
-      return czSwPut(CZ_SW_SHELL, u.searchParams.has('v') || u.pathname.startsWith('/vendor/') ? href : czSwPageKey(u), r);
+      return czSwPut(CZ_SW_SHELL, fixed ? href : czSwPageKey(u), r);
     } catch { /* viens fails neizdodas — pārējie paliek */ }
   }));
   // Vecas versijas: tas pats fails ar citu ?v=

@@ -455,11 +455,8 @@
   <script defer src="signs-gl.js?v=150"></script>
   <script defer src="nav.js?v=161"></script>
   <script defer src="times.js?v=93"></script>
-  <script defer src="parking.js?v=93"></script>
   <script defer src="alerts.js?v=144"></script>
   <script defer src="reports.js?v=158"></script>
-  <script defer src="skins-art.js?v=125"></script>
-  <script defer src="skins.js?v=125"></script>
   <script defer src="places.js?v=161"></script>
   <script defer src="model.js?v=93"></script>
   <script defer src="rides-config.js?v=164"></script>
@@ -468,13 +465,18 @@
   <script defer src="auth.js?v=165"></script>
   <script defer src="mly-config.js?v=93"></script>
   <script defer src="traffic.js?v=93"></script>
-  <script defer src="rides.js?v=160"></script>
-  <script defer src="rides-ui.js?v=163"></script>
-  <script defer src="garage.js?v=158"></script>
-  <script defer src="presence.js?v=158"></script>
-  <script defer src="app-gl.js?v=165"></script>
-  <script defer src="park-gl.js?v=161"></script>
-  <script defer src="park-dest-gl.js?v=93"></script>
+  <script defer src="lazy.js?v=168"></script>
+  <script defer src="app-gl.js?v=168"></script>
   <script defer src="traffic-gl.js?v=163"></script>
+  <!-- B15: vēlā ielāde (lazy.js) — pēc kartes palaišanas, šajā secībā; data-init izsauc pēc faila -->
+  <script type="text/x-cz-lazy" src="parking.js?v=93"></script>
+  <script type="text/x-cz-lazy" src="park-gl.js?v=161"></script>
+  <script type="text/x-cz-lazy" src="park-dest-gl.js?v=93"></script>
+  <script type="text/x-cz-lazy" src="rides.js?v=160"></script>
+  <script type="text/x-cz-lazy" src="rides-ui.js?v=163" data-init="ridesInit"></script>
+  <script type="text/x-cz-lazy" src="skins-art.js?v=125"></script>
+  <script type="text/x-cz-lazy" src="skins.js?v=125"></script>
+  <script type="text/x-cz-lazy" src="garage.js?v=158" data-init="garageInit"></script>
+  <script type="text/x-cz-lazy" src="presence.js?v=158" data-init="presenceInit"></script>
 </body>
 </html>

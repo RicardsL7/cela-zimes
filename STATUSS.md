@@ -569,3 +569,20 @@
 - **Nav pārbaudīts:** īstā telefonā (Android Chrome, iPhone Safari) — instalēšana un bezsaiste; Android lietotnē bezsaistes
   palaišana paliek kā līdz šim (`mobile/www/index.html`).
 
+## B15 (audits 2) — 33 skripti, viss ielādējas uzreiz; versijas ar roku (11.11.2026)
+
+- **`tools/build.mjs` (jauns):** izvietojot — esbuild saspiešana (bez apvienošanas, sintakse netiek pārveidota; pārbauda
+  globālos nosaukumus un sintaksi) un `?v=` → satura jaucējvērtība (sha256, 10 zīmes). Bez `--minify` — bez atkarībām.
+- **CI (`tests.yml`):** darbs „Kartes dūmu tests” — `git archive` kopija → build → `map-smoke.js` un `offline-smoke.js`
+  būvētajai vietnei → artefakts `vietne`; darbs „Vietne” to izvieto (Jekyll `source: ./site`, bez checkout). esbuild 0.25.5.
+- **`lazy.js` (jauns, v168):** 9 faili (≈ 1/3 koda: „Kopā”, stāvēšana, Garāža, citi braucēji) — pēc `app-gl.js` init;
+  `data-init` funkcijas; agrs spiediens uz pogu tiek atcerēts; rezerve — pēc lapas `load`. `app-gl.js` v168: `czLazyStart()`.
+- **`sw.js` v168:** uzstādot neielādē vēlreiz nemainīgus failus (`?v=`, `vendor/`), kas jau ir kešā; ja ierīce zina, ka tīkla nav
+  (`navigator.onLine === false`), lapu, datus un kartes stilu atdod no keša uzreiz (negaida tīkla kļūdu).
+- **`offline-smoke.js`:** kartes stila pārbaude — vai ielādēts tieši testa stils (avots „t”), nevis `map.isStyleLoaded()`, kas gaida
+  arī visus lietotnes atjauninātos avotus (lokāli ≈ 1 no 7 reizēm false — tests bija nestabils).
+- **Testi:** `run.js` (+6 B15; 3 vecie pielāgoti vēlajai ielādei), `map-smoke.js` (vēlā ielāde: visi faili, init; „Kopā” uzspiests,
+  kamēr `rides-ui.js` vēl ielādējas — atveras pēc ielādes), `offline-smoke.js` (vēlā ielāde bez tīkla no keša; hash versijas).
+- **Nav pārbaudīts lokāli:** esbuild saspiešana (šeit nav pieejama) — to pārbauda CI ar tiem pašiem testiem būvētajai vietnei;
+  ja tie neizdodas, vietne netiek izvietota.
+

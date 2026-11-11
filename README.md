@@ -11,7 +11,7 @@ maršruts ar navigāciju, stāvvietas, sastrēgumi un kopbraucieni („Kopā”)
 
 ## Kā tas uzbūvēts
 
-Statiska lapa (HTML + JavaScript bez būvēšanas soļa) + Supabase (datubāze, konti, servera funkcijas) + Stripe (maksājumi).
+Statiska lapa (HTML + JavaScript; izvietojot — saspiešana un versijas pēc satura, `tools/build.mjs`, B15) + Supabase (datubāze, konti, servera funkcijas) + Stripe (maksājumi).
 
 | Daļa | Kas |
 |---|---|
@@ -148,6 +148,22 @@ GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi
   palaiž drošības scenārijus, pārbauda `supabase/status.sql` un veco failu aizsardzību.
 - **Karte un lapu drošības politika** (Playwright + Chromium): `node tests/map-smoke.js . /tmp/karte` — sk. faila sākumu.
 - **Bezsaistes režīms** (Playwright + Chromium): `node tests/offline-smoke.js . /tmp/bezsaiste` — sk. faila sākumu.
+
+## Būvēšana un vēlā ielāde (B15)
+
+- **Repozitorijā un lokāli** — bez būvēšanas: `python -m http.server` rāda tos pašus failus kā līdz šim.
+- **Izvietojot** (GitHub Actions, darbs „Kartes dūmu tests”): `git archive` → `node tools/build.mjs <mape> --minify` —
+  katru lapās ar `?v=` norādīto pašu `.js` / `.css` saspiež ar esbuild (katrs fails paliek atsevišķs; globālie nosaukumi
+  netiek pārdēvēti — būvēšana to pārbauda un citādi neizdodas), un `?v=` aizstāj ar faila satura jaucējvērtību.
+  Tad **tie paši kartes un bezsaistes testi** būvētajai vietnei; darbs „Vietne” izvieto tieši to (artefakts `vietne`).
+  `vendor/` un `sw.js` netiek aiztikti.
+- **`?v=` ar roku mainīt vairs nav vajadzīgs** — versija rodas no satura. Jaunam failam lapā tomēr jāraksta `?v=1`
+  (tikai faili ar `?v=` tiek saspiesti un versēti).
+- **Vēlā ielāde (`lazy.js`):** „Kopā” (`rides.js`, `rides-ui.js`), stāvēšana (`parking.js`, `park-gl.js`, `park-dest-gl.js`)
+  un Garāža ar citiem braucējiem (`skins-art.js`, `skins.js`, `garage.js`, `presence.js`) lapā ir kā
+  `<script type="text/x-cz-lazy">` — tos ielādē pēc kartes palaišanas (`app-gl.js` init beigās), tajā pašā secībā, un izsauc
+  `data-init` (`ridesInit`, `garageInit`, `presenceInit`). Pogas „Kopā” / „Garāža” / „Stāvēt”, uzspiestas pirms ielādes,
+  atveras, kad kods ielādēts. Jaunu „vēlu” failu pievieno šajā sarakstā; ja citi faili to izsauc — tikai ar `typeof … === 'function'`.
 
 ## Bezsaistes režīms (B14)
 
