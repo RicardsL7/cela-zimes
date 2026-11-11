@@ -3,6 +3,7 @@
 // izveidi, slāņus, kameru, markerus, popup, maršrutu, brīdinājumu ikonas, stila maiņu un ka attribution XSS neizpildās.
 // A10: lapas drošības politika (CSP meta tags) ir spēkā — neviens CSP pārkāpums nedrīkst rasties; kartes worker no tās
 // pašas adreses; admin/privacy/terms atveras bez pārkāpumiem; lapa svešā rāmī (iframe) netiek rādīta.
+// B15: vēlā ielāde (lazy.js) — visi faili ielādējas, init izsaukti, „Kopā” pirms ielādes atveras, kad gatavs.
 // A12: paneļi ar tastatūru — fokuss panelī, fons paslēpts (modāliem), Tab riņķo, Esc aizver, fokuss atpakaļ; piekrišanas ekrāns.
 // Lietošana: node tests/map-smoke.js <repo mape> <izvades prefikss>   (vendor/ jābūt — bash tools/vendor.sh)
 // Rezultāts: <prefikss>.json (res.xss jābūt 0, res.app visi „ok”/skaitļi, nav PAGEERROR, res.csp tukšs) un <prefikss>.png
@@ -181,6 +182,26 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
     await pg.click('#consentGate [data-act="back"]'); await pg.waitForTimeout(200);
     await pg.click('#consentGate [data-act="accept"]'); await pg.waitForTimeout(300); c.accepted = await g(); c.errs = errs;
     res.a11y.consent = c; await ctx2.close(); }
+  // B15: vēlā ielāde — visi faili ielādēti, init izsaukti; „Kopā” uzspiests, kamēr rides-ui.js vēl ielādējas (lēns tīkls)
+  res.lazy = await page.evaluate(() => ({ done: [...CZ_LAZY.done], failed: [...CZ_LAZY.failed], queue: CZ_LAZY.queue,
+    rides: !!(typeof rides !== 'undefined' && rides.store), garage: typeof garage !== 'undefined', presence: typeof presence !== 'undefined' && !!presence.pollTimer }));
+  { const ctx3 = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 420, height: 860 } });
+    await ctx3.addInitScript(v => { try { localStorage.setItem('cz.consent', JSON.stringify({ terms: v.terms, privacy: v.privacy, at: 'x' })); } catch (e) {} }, consentV);
+    await ctx3.route('**/*', async route => {
+      if (/\/rides-ui\.js/.test(route.request().url())) await new Promise(r => setTimeout(r, 2500));   // lēns tīkls
+      return routeAll(route);
+    });
+    const pg = await ctx3.newPage(); const errs = [];
+    pg.on('pageerror', e => errs.push(String(e && e.message || e).slice(0, 200)));
+    await pg.goto('https://app.test/index-gl.html');
+    await pg.waitForFunction(() => typeof CZ_LAZY !== 'undefined' && CZ_LAZY.started, null, { timeout: 20000 }).catch(() => {});
+    const before = await pg.evaluate(() => ({ loaded: CZ_LAZY.done.has('rides-ui.js'), open: !document.getElementById('ridesSheet').hidden }));
+    await pg.click('#ridesBtn');
+    const pending = await pg.evaluate(() => ({ pending: CZ_LAZY.pending.has('rides-ui.js'), open: !document.getElementById('ridesSheet').hidden }));
+    await pg.waitForFunction(() => !document.getElementById('ridesSheet').hidden, null, { timeout: 15000 }).catch(() => {});
+    const after = await pg.evaluate(() => ({ loaded: CZ_LAZY.done.has('rides-ui.js'), open: !document.getElementById('ridesSheet').hidden }));
+    res.lazyEarly = { before, pending, after, errs };
+    await ctx3.close(); }
   res.pages = {};
   for (const p of ['admin.html', 'privacy.html', 'terms.html']) {
     const pg = await ctx.newPage(); const errs = [];
@@ -242,6 +263,14 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
   if (!C.accepted || C.accepted.open || C.accepted.mapInert) bad.push('piekrišana pēc „Piekrītu”: ' + JSON.stringify(C.accepted));
   if (C.errs && C.errs.length) bad.push('piekrišanas lapā kļūda: ' + C.errs[0]);
   for (const n of net) if (/^404 /.test(n) && !/favicon/.test(n)) bad.push('trūkst faila: ' + n.slice(4));
+  // B15
+  const LZ = res.lazy || {};
+  if (!LZ.queue || LZ.queue.length < 9 || LZ.done.length !== LZ.queue.length || LZ.failed.length) bad.push('vēlā ielāde: ' + JSON.stringify(LZ));
+  if (!LZ.rides || !LZ.garage || !LZ.presence) bad.push('vēlā ielāde: init nav izsaukts ' + JSON.stringify(LZ));
+  const E = res.lazyEarly || {};
+  if (!E.before || E.before.loaded || E.before.open || !E.pending || !E.pending.pending || E.pending.open || !E.after || !E.after.loaded || !E.after.open)
+    bad.push('„Kopā” pirms ielādes: ' + JSON.stringify(E));
+  if (E.errs && E.errs.length) bad.push('vēlā ielāde (lēns tīkls): ' + E.errs[0]);
   if (bad.length) { console.error('KARTES TESTS NEIZDEVĀS:\n  ' + bad.join('\n  ')); process.exit(1); }
   console.log('Kartes tests: viss kārtībā (MapLibre ' + res.version + ')');
 })().catch(e => { console.error(e); process.exit(1); });

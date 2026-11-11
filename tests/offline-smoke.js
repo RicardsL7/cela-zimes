@@ -11,6 +11,8 @@ process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';   // service wo
 const { chromium } = require('playwright');
 const http = require('http'), fs = require('fs'), path = require('path');
 const [ROOT, OUT] = process.argv.slice(2);
+// Kartes stils: testa stils ar avotu „t” ielādēts (nevis rezerves klasiskais). map.isStyleLoaded() gaida arī visus avotus un
+// attēlus, ko lietotne visu laiku atjauno, — tas nav stabils signāls (lokāli ≈ 1 no 7 reizēm false 30 s).
 const STYLE = {
   version: 8,
   sources: { t: { type: 'vector', tiles: ['https://tiles.openfreemap.org/planet/test/{z}/{x}/{y}.pbf'], maxzoom: 14 } },
@@ -64,12 +66,12 @@ function serve(port) {
   await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 15000 }).catch(() => {});
   step('ready');
   res.controlled = await page.evaluate(() => !!navigator.serviceWorker.controller);
-  await page.waitForFunction(() => typeof map !== 'undefined' && map && map.isStyleLoaded && map.isStyleLoaded(), null, { timeout: 30000 }).catch(() => {});
+  await page.waitForFunction(() => (typeof map !== 'undefined' && map && map.style && map.style._loaded && !!map.getStyle().sources.t), null, { timeout: 30000 }).catch(() => {});
   step('style');
-  res.styleOnline = await page.evaluate(() => !!(typeof map !== 'undefined' && map && map.isStyleLoaded()));
+  res.styleOnline = await page.evaluate(() => !!(typeof map !== 'undefined' && map && map.style && map.style._loaded && !!map.getStyle().sources.t));
   // Otrā atvēršana ar tīklu (pirmajā lapa vēl nav kontrolēta — stils un flīzes iet garām sw.js)
   await page.reload({ waitUntil: 'load' });
-  await page.waitForFunction(() => typeof map !== 'undefined' && map && map.isStyleLoaded && map.isStyleLoaded(), null, { timeout: 30000 }).catch(() => {});
+  await page.waitForFunction(() => (typeof map !== 'undefined' && map && map.style && map.style._loaded && !!map.getStyle().sources.t), null, { timeout: 30000 }).catch(() => {});
   await page.waitForTimeout(2500);
   res.caches = await page.evaluate(async () => {
     const out = {};
@@ -80,7 +82,7 @@ function serve(port) {
   res.shellCount = (res.caches['cz-shell-v1'] || []).length;
   res.forbidden = all.filter(u => /supabase|admin\.|mapillary\.com|\/sw\.js|challenges\.cloudflare/.test(u));
   res.hasIndex = all.includes(base + 'index.html');
-  res.hasAppGl = all.some(u => /\/app-gl\.js\?v=\d+$/.test(u));
+  res.hasAppGl = all.some(u => /\/app-gl\.js\?v=[0-9a-z]+$/.test(u));
   res.hasStyle = all.some(u => u.startsWith('https://tiles.openfreemap.org/styles/'));
   res.version = await page.evaluate(() => new Promise(r => { const c = new MessageChannel(); c.port1.onmessage = e => r(e.data); navigator.serviceWorker.controller.postMessage('cz-sw-version', [c.port2]); setTimeout(() => r(null), 3000); }));
 
@@ -93,9 +95,10 @@ function serve(port) {
   step('reloaded');
   res.offlineTitle = await page.title().catch(() => '');
   res.offlineScripts = await page.evaluate(() => ['czPwaInit', 'czNetHost', 'czAuthGet'].map(f => typeof window[f] === 'function' || typeof eval(f) === 'function')).catch(e => 'ERR ' + e.message);
-  await page.waitForFunction(() => typeof map !== 'undefined' && map && map.isStyleLoaded && map.isStyleLoaded(), null, { timeout: 20000 }).catch(() => {});
-  res.styleOffline = await page.evaluate(() => !!(typeof map !== 'undefined' && map && map.isStyleLoaded())).catch(() => false);
+  await page.waitForFunction(() => (typeof map !== 'undefined' && map && map.style && map.style._loaded && !!map.getStyle().sources.t), null, { timeout: 20000 }).catch(() => {});
+  res.styleOffline = await page.evaluate(() => !!(typeof map !== 'undefined' && map && map.style && map.style._loaded && !!map.getStyle().sources.t)).catch(() => false);
   await page.waitForTimeout(1500);
+  res.offlineLazy = await page.evaluate(() => typeof CZ_LAZY !== 'undefined' ? CZ_LAZY.done.size + '/' + CZ_LAZY.queue.length : 'nav').catch(() => 'ERR');   // B15
   res.bannerOffline = await page.evaluate(() => { const b = document.getElementById('offlineBanner'); return b && !b.hidden ? b.textContent : null; });
   res.bannerBox = await page.evaluate(() => { const b = document.getElementById('offlineBanner'), t = document.getElementById('topbar');
     return b && t ? { top: Math.round(b.getBoundingClientRect().top), topbarBottom: Math.round(t.getBoundingClientRect().bottom) } : null; });
@@ -150,6 +153,7 @@ function serve(port) {
   need(res.offlineTitle === 'Ceļa Zīmes', 'bez tīkla lapa atveras (' + res.offlineTitle + ')');
   need(Array.isArray(res.offlineScripts) && res.offlineScripts.every(Boolean), 'bez tīkla skripti strādā');
   need(res.styleOffline, 'bez tīkla karte ielādē saglabāto stilu');
+  need(/^(\d+)\/\1$/.test(res.offlineLazy) && parseInt(res.offlineLazy) >= 9, 'bez tīkla vēlā ielāde (B15) no kešatmiņas: ' + res.offlineLazy);
   need(res.bannerOffline && /Nav interneta/.test(res.bannerOffline), '„Nav interneta” redzams');
   need(res.bannerBox && res.bannerBox.top >= res.bannerBox.topbarBottom, 'paziņojums zem augšējās joslas');
   need(!res.offlineErrors.length, 'bez lapas kļūdām: ' + res.offlineErrors.join(' | '));
