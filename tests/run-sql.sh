@@ -149,6 +149,27 @@ for f in $(grep -lE "cz_migrations where seq > [0-9]+\)" supabase/*.sql); do   #
   else bad_ "aizsardzība: $(basename "$f") NEatteicās" "$out"; fi
 done
 out=$(status_check ok) && ok_ "status.sql pēc atteikumiem: nekas nav mainījies" || bad_ "status.sql pēc atteikumiem" "$out"
+# B13 (audits 2): atjaunošanas mēģinājums — kopija (pg_dump) → jauna datubāze → status.sql un rindu skaits sakrīt;
+# pazaudēti pg_cron darbi → tools/restore-cron.sql tos atjauno (lokāli pg_cron aizstājējs — bez „create extension”)
+psql -X -q -v ON_ERROR_STOP=1 -c "insert into auth.users (id) values ('00000000-0000-0000-0000-0000000b1301')" \
+  -c "insert into public.profiles (id, name) values ('00000000-0000-0000-0000-0000000b1301', 'B13')" >/dev/null 2>&1 || true
+cnt_before=$(psql -X -q -At -v ON_ERROR_STOP=1 -f tools/backup-counts.sql 2>&1)
+RDB="${DB}_restore"
+PGDATABASE=postgres psql -X -q -v ON_ERROR_STOP=1 -c "drop database if exists \"$RDB\"" -c "create database \"$RDB\"" >/dev/null 2>&1 || die "neizdevās izveidot $RDB"
+if out=$(pg_dump --no-owner "$ODB" 2>&1 | psql -X -q -v ON_ERROR_STOP=1 -d "$RDB" 2>&1); then
+  out=$(PGDATABASE="$RDB" status_check ok) && ok_ "B13: atjaunots no kopijas — status.sql: VISS KĀRTĪBĀ" || bad_ "B13: atjaunotā datubāze" "$out"
+  cnt_after=$(PGDATABASE="$RDB" psql -X -q -At -v ON_ERROR_STOP=1 -f tools/backup-counts.sql 2>&1)
+  if [ "$cnt_before" = "$cnt_after" ] && grep -q '^public\.profiles|[1-9]' <<<"$cnt_after" && grep -q '^auth\.users|[1-9]' <<<"$cnt_after"; then
+    ok_ "B13: backup-counts.sql — rindu skaits sakrīt ($(wc -l <<<"$cnt_after") tabulas)"
+  else bad_ "B13: rindu skaits atšķiras" "$(diff <(echo "$cnt_before") <(echo "$cnt_after"))"; fi
+  PGDATABASE="$RDB" psql -X -q -c "delete from cron.job" >/dev/null
+  out=$(PGDATABASE="$RDB" status_check "nav ieplānots (pg_cron)") && ok_ "B13: status.sql pamana pazaudētus pg_cron darbus" || bad_ "B13: status.sql nepamanīja cron" "$out"
+  out=$(grep -v '^create extension' tools/restore-cron.sql | PGDATABASE="$RDB" psql -X -q -v ON_ERROR_STOP=1 2>&1 >/dev/null) \
+    && out=$(grep -v '^create extension' tools/restore-cron.sql | PGDATABASE="$RDB" psql -X -q -v ON_ERROR_STOP=1 2>&1 >/dev/null) \
+    && out=$(PGDATABASE="$RDB" status_check ok) && ok_ "B13: tools/restore-cron.sql (2×) → VISS KĀRTĪBĀ" || bad_ "B13: restore-cron.sql" "$out"
+else bad_ "B13: pg_dump → atjaunošana neizdevās" "$out"; fi
+PGDATABASE=postgres psql -X -q -c "drop database if exists \"$RDB\"" >/dev/null 2>&1
+psql -X -q -c "delete from public.profiles where id = '00000000-0000-0000-0000-0000000b1301'" -c "delete from auth.users where id = '00000000-0000-0000-0000-0000000b1301'" >/dev/null 2>&1 || true
 out=$(PGOPTIONS='-c cz.allow_rerun=on' psql -X -q -v ON_ERROR_STOP=1 -f supabase/rides-2-chat-trip.sql 2>&1) || bad_ "piespiedu atkārtošana (cz.allow_rerun)" "$out"
 out=$(status_check "ride_driver_update(oid uuid, p_trip text, p_lat double precision, p_lng double precision, p_heading real) | cita versija") \
   && ok_ "status.sql pamana vecu funkcijas versiju (rides-2 pēc rides-15)" || bad_ "status.sql nepamanīja vecu versiju" "$out"

@@ -4134,6 +4134,33 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   });
 }
 
+// ---------- B13 (audits 2): rezerves kopijas un atjaunošana ----------
+{
+  const fs13 = require('fs'), path13 = require('path');
+  const rd = f => fs13.readFileSync(path13.join(__dirname, '..', f), 'utf8');
+  test('B13: tools/restore-cron.sql = visi pg_cron darbi no supabase/*.sql; backup-counts tikai lasa', () => {
+    const dir = path13.join(__dirname, '..', 'supabase');
+    const jobs = fs13.readdirSync(dir).filter(f => f.endsWith('.sql') && f !== 'status.sql').sort()
+      .flatMap(f => rd('supabase/' + f).split('\n').filter(l => l.startsWith('select cron.schedule(')));
+    const r = rd('tools/restore-cron.sql').split('\n').filter(l => l.startsWith('select cron.schedule('));
+    ok(jobs.length >= 4, 'atrasti pg_cron darbi: ' + jobs.length);
+    eq([...r].sort().join('\n'), [...new Set(jobs)].sort().join('\n'), 'restore-cron.sql sakrīt ar supabase/*.sql');
+    const c = rd('tools/backup-counts.sql').replace(/--.*$/gm, '');
+    ok(/^\s*select /.test(c) && !/\b(insert|update|delete|drop|alter|create|truncate|grant)\b/i.test(c.replace(/query_to_xml\(format\('select count\(\*\)/, '')), 'backup-counts.sql — tikai select');
+  });
+  test('B13: datubāzes kopija nekad netiek likta publiskajā repozitorijā; instrukcija README', () => {
+    const wf = path13.join(__dirname, '..', '.github', 'workflows');
+    for (const f of fs13.readdirSync(wf)) {
+      const y = rd('.github/workflows/' + f);
+      ok(!/pg_dump|db dump|pg_dumpall|SUPABASE_DB_URL|postgres(ql)?:\/\//.test(y), f + ': nav datubāzes eksporta');
+    }
+    const m = rd('README.md');
+    ok(/## Rezerves kopijas un atjaunošana \(B13\)/.test(m) && /Database → Backups/.test(m) && /tools\/restore-cron\.sql/.test(m)
+      && /tools\/backup-counts\.sql/.test(m) && /status\.sql/.test(m), 'README: atjaunošanas instrukcija');
+    ok(/B13: atjaunots no kopijas/.test(rd('tests/run-sql.sh')), 'run-sql.sh: atjaunošanas mēģinājums');
+  });
+}
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
