@@ -46,12 +46,12 @@ export function czBuildCheckNames(src, out) {
   return czBuildTopNames(src).filter(n => !new RegExp('(^|[^\\w$.])' + n.replace(/\$/g, '\\$') + '(?![\\w$])').test(out));
 }
 
-export async function czBuild(dir, { minify = false, log = console.log } = {}) {
+export async function czBuild(dir, { minify = false, log = console.log, esbuild: eb = null } = {}) {
   const pages = fs.readdirSync(dir).filter(f => f.endsWith('.html'));
   const files = new Set();
   for (const p of pages) for (const f of czBuildRefs(fs.readFileSync(path.join(dir, p), 'utf8'))) files.add(f);
   let esbuild = null;
-  if (minify) esbuild = await import('esbuild');
+  if (minify) esbuild = eb || await import('esbuild');                 // eb — testiem (tests/run.js)
   const hashes = new Map();
   let before = 0, after = 0;
   for (const f of [...files].sort()) {
@@ -66,7 +66,8 @@ export async function czBuild(dir, { minify = false, log = console.log } = {}) {
       if (!css) {
         const lost = czBuildCheckNames(src, out);
         if (lost.length) throw new Error(f + ': saspiežot pazuda augšējā līmeņa nosaukumi: ' + lost.join(', '));
-        if (!/^\s*(import|export)\s/m.test(out)) new vm.Script(out, { filename: f });     // sintakses pārbaude (klasiskie skripti)
+        // Sintakses pārbaude klasiskajiem skriptiem (ES moduļus — pēc oriģināla: saspiestajā ir „import*as …”)
+        if (!/^\s*(import|export)\b/m.test(src)) new vm.Script(out, { filename: f });
       }
       fs.writeFileSync(fp, out);
       src = out;
