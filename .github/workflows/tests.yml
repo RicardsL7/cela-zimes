@@ -90,6 +90,8 @@ jobs:
           npm install --no-save --no-package-lock playwright@1.56.0
           npx playwright install --with-deps chromium
       - run: node tests/map-smoke.js . "$RUNNER_TEMP/smoke"
+      - name: Bezsaistes režīms (B14)
+        run: node tests/offline-smoke.js . "$RUNNER_TEMP/offline"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -97,6 +99,8 @@ jobs:
           path: |
             ${{ runner.temp }}/smoke.png
             ${{ runner.temp }}/smoke.json
+            ${{ runner.temp }}/offline.png
+            ${{ runner.temp }}/offline.json
           if-no-files-found: ignore
 
   deploy:
