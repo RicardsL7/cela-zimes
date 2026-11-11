@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#1e5bb8"/>
+  <g transform="translate(256 256) scale(1.15) translate(-293 -272)">
+  <!-- ceļš perspektīvā -->
+  <path d="M196 404 L242 196 L270 196 L316 404 Z" fill="#16202e"/>
+  <path d="M196 404 L242 196 M316 404 L270 196" stroke="#fff" stroke-width="9" stroke-linecap="round"/>
+  <path d="M256 214 V236 M256 262 V292 M256 322 V362" stroke="#ffd43b" stroke-width="8" stroke-linecap="round"/>
+  <!-- aizlieguma zīme pie ceļa -->
+  <rect x="337" y="214" width="8" height="120" rx="3" fill="#dfe6ef"/>
+  <circle cx="341" cy="190" r="50" fill="#fff"/>
+  <circle cx="341" cy="190" r="42" fill="none" stroke="#d0202a" stroke-width="13"/>
+  <text x="341" y="207" text-anchor="middle" font-family="Arial Narrow, Arial, sans-serif" font-weight="700" font-size="46" fill="#16202e">50</text>
+  </g>
+</svg>
