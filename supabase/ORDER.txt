@@ -37,3 +37,4 @@
 34 rides-20-profiles-privacy.sql
 35 rides-21-driver-accounts.sql
 36 client-errors.sql
+37 reports-2-vote-once.sql

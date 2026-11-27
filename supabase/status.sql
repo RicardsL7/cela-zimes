@@ -47,7 +47,8 @@ exp_mig(seq, name) as (values
   (33, 'radars-2-votes.sql'),
   (34, 'rides-20-profiles-privacy.sql'),
   (35, 'rides-21-driver-accounts.sql'),
-  (36, 'client-errors.sql')
+  (36, 'client-errors.sql'),
+  (37, 'reports-2-vote-once.sql')
 ),
 exp_fn(sig, h, secdef) as (values
   ('account_alias_ok(old_id uuid, new_id uuid)', '5d3cd15fa3ad944c76d4cb86de68bbfc', true),
@@ -103,7 +104,7 @@ exp_fn(sig, h, secdef) as (values
   ('report_ttl(t text)', '9ed87360a926f3e18b316ed8dcbce1e5', false),
   ('report_type_ttl(t text)', 'b684683176144bb1d37286ce17f05c64', false),
   ('report_types_list()', '939ad354cc2bbc94708c0fa24b5c7303', true),
-  ('report_vote(p_id uuid, p_vote text)', '857ab5b56a31fcd4f767bba5d1701255', true),
+  ('report_vote(p_id uuid, p_vote text)', 'c7b1be0342c859c04b5248d8d2aba776', true),
   ('report_vote_apply(p_id uuid, p_user uuid, p_vote text)', 'bd92a06c6884703b50c5d74808692431', true),
   ('request_is_open(rid uuid)', 'c0805cb01d010d90d5e83d839d129526', true),
   ('ride_area(name text)', '3541dc50273690551d4bd650a42c9122', false),
