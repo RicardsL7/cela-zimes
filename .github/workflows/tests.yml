@@ -152,7 +152,6 @@ jobs:
       PGPORT: 5432
       PGUSER: postgres
       PGPASSWORD: postgres
-      CZ_E2E_BIN: ${{ runner.temp }}/e2e-bin
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -160,6 +159,7 @@ jobs:
           node-version: 22
       - name: Supabase Auth un PostgREST (fiksētas versijas, pārbaudīts SHA-256)
         run: |
+          CZ_E2E_BIN="$RUNNER_TEMP/e2e-bin" && echo "CZ_E2E_BIN=$CZ_E2E_BIN" >> "$GITHUB_ENV"
           mkdir -p "$CZ_E2E_BIN" && cd "$CZ_E2E_BIN"
           curl -fsSL -o auth.tar.gz https://github.com/supabase/auth/releases/download/v2.199.0/auth-v2.199.0-x86.tar.gz
           echo "caf7471bab439765aa7ce82d929a71546d2265b22cb3854949138e5c3011856f  auth.tar.gz" | sha256sum -c -
