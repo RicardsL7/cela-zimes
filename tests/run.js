@@ -2973,7 +2973,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/Neizmanto `--data-only`/.test(md), 'brīdinājums par trigeriem atjaunošanā');
     const rd = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
     ok(/MapLibre GL 6/.test(rd) && /supabase\/MIGRATIONS\.md/.test(rd) && /supabase\/ORDER\.txt/.test(rd) && /node tests\/run\.js/.test(rd), 'README: karte, datubāze, testi');
-    ok(!/`app\.js` — karte/.test(rd) && /netiek lietota/.test(rd), 'README vairs neapraksta veco Leaflet versiju kā galveno');
+    ok(!/`app\.js` — karte/.test(rd) && /Mantotie faili dzēsti/.test(rd), 'README vairs neapraksta veco Leaflet versiju kā galveno (B16: dzēsta)');
     ok(!/[A-Za-z0-9._%+-]+@gmail\.com/.test(rd + md), 'nav personīgu e-pastu');
   });
 }
