@@ -56,7 +56,7 @@ atkārtoti pilnā datubāzē un salīdzinot visas funkcijas, politikas, trigerus
 | 36 | client-errors.sql | B12: lietotnes kļūdu pieraksts (client_error), saraksts admin.html, 30 d. | **nē — aizsargāts** (pēc 37) |
 | 37 | reports-2-vote-once.sql | B17: ziņojuma balss no viena konta skaitās vienreiz (viens konts vairs nevar paslēpt ziņojumu) | jā (kamēr nav jaunāku) |
 
-**Produkcijā:** palaisti visi 1–36 (22–31 — 08.11.2026, 32–35 — 10.11.2026, 36 — 11.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). 37 — vēl nav (B17, 27.11.2026). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
+**Produkcijā:** palaisti visi 1–37 (22–31 — 08.11.2026, 32–35 — 10.11.2026, 36 — 11.11.2026, 37 — 27.11.2026, ar īpašnieka atļauju; pēc tam `status.sql` — VISS KĀRTĪBĀ). Jaunus failus — tikai pēc kārtas no `ORDER.txt`.
 Faili ar `cz_migration_begin` (27–…) atkārtoti palaižami tikai, kamēr nav palaists jaunāks (tad tie paši atsakās).
 
 ## Ziņojumu balsis — viens konts vienreiz (B17)
