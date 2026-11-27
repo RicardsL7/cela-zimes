@@ -457,10 +457,6 @@ test('v134: nobrauktā daļa — blāva līnija; griezums seko bultai arī pie v
   ok(app.indexOf("id: 'route-done-line'") < app.indexOf("id: 'route-casing'"), 'zem galvenā maršruta');
   ok(/routeDone\(route, along\)/.test(app), 'drawRoute zīmē arī nobraukto daļu');
   ok(/loc\.off <= ROUTE_CUT_M/.test(app) && /const ROUTE_CUT_M = 70;/.test(app), 'griezums arī tad, kad bulta nav piesaistīta');
-  for (const f of ['index.html']) {
-    const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    ok(/nav\.js\?v=(134|1[4-9]\d)/.test(h) && /app-gl\.js\?v=1[3-9]\d/.test(h), f + ': v134');
-  }
 });
 
 test('T. Virzienus nosaka tikai vajadzīgajām zīmēm', () => {
@@ -979,6 +975,19 @@ test('W. Kopbraucienu cena: griesti — ceļa izdevumu daļa (B03), ievade, komi
     await a.token({ create: true });
     eq(f.calls.filter(c => /signup/.test(c.url)).length, 1, 'otru kontu neveido');
   });
+  test('B17: vienlaicīga piekrišanu sūtīšana (konta izveide + piekrišanas ekrāns) → katra piekrišana serverī vienreiz', async () => {
+    const f = fakeFetch(() => [201, {}]);
+    const st = mem({ 'cz.consent': consent, 'cz.auth.session': JSON.stringify({ access_token: anonTok, refresh_token: 'r', expires_at: Date.now() + 3600e3, user_id: 'anon-1' }) });
+    const a = new CzAuth(cfg, { storage: st, fetch: f });
+    await Promise.all([a.syncTermsConsent(), a.syncTermsConsent(), a.syncConsent('terms', G('CZ_TERMS_VERSION'))]);
+    const sent = f.calls.filter(c => /user_consents/.test(c.url)).map(c => JSON.parse(c.body).kind).sort();
+    eq(sent.join(','), 'privacy,terms', 'terms un privacy pa vienam');
+    await a.syncTermsConsent();
+    eq(f.calls.filter(c => /user_consents/.test(c.url)).length, 2, 'atkārtoti nesūta (atzīme saglabāta)');
+    const f2 = fakeFetch(() => [500, {}]); const a2 = new CzAuth(cfg, { storage: mem({ 'cz.consent': consent, 'cz.auth.session': st.m['cz.auth.session'] }), fetch: f2 });
+    await a2.syncTermsConsent(); await a2.syncTermsConsent();
+    eq(f2.calls.filter(c => /user_consents/.test(c.url)).length, 4, 'servera kļūda — nākamreiz mēģina vēlreiz');
+  });
   test('F1: vecās sesijas (kopbraucienu un sastrēgumu) tiek pārņemtas, nevis izmestas', () => {
     const st = mem({ 'cz.rides.session': JSON.stringify({ access_token: anonTok, refresh_token: 'old-r', expires_at: 1, user_id: 'anon-1' }), 'cz.traffic.session': JSON.stringify({ token: jwt({ sub: 'tr-9' }), refresh: 'tr-r', exp: 1 }) });
     const a = new CzAuth(cfg, { storage: st, fetch: fakeFetch(() => [500, {}]) });
@@ -1076,23 +1085,6 @@ test('W. Kopbraucienu cena: griesti — ceļa izdevumu daļa (B03), ievade, komi
     eq(Object.keys(srv).length, rep.length, 'serverī nav lieku veidu');
     eq(T.police.ttl, 45); eq(T['camera-mobile'].ttl, 60); eq(T.accident.ttl, 60); eq(T.jam.ttl, 20); eq(T.obstacle.ttl, 30); eq(T.roadworks.ttl, 1440);
   });
-  test('F10: SQL — RLS, tieši rakstīt nevar, sarakstu var lasīt bez konta, ziņot — tikai ar kontu', () => {
-    ok(/alter table public\.reports enable row level security/.test(sql) && /alter table public\.report_votes enable row level security/.test(sql), 'RLS');
-    ok(!/create policy/i.test(sql), 'nav politiku — tikai funkcijas');
-    ok(/grant execute on function public\.report_list\([^)]*\) to anon, authenticated/.test(sql), 'saraksts arī anon');
-    for (const fn of ['report_create', 'report_vote', 'report_delete']) {
-      ok(new RegExp(`revoke all on function public\\.${fn}\\([^)]*\\) from public, anon`).test(sql), fn + ' nav anon');
-      ok(new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\) to authenticated;`).test(sql), fn + ' authenticated');
-    }
-    ok(/revoke all on function public\.report_vote_apply\([^)]*\) from public, anon, authenticated/.test(sql), 'iekšējā funkcija nav pieejama');
-    const list = sql.slice(sql.indexOf('function public.report_list'), sql.indexOf('$$;', sql.indexOf('function public.report_list')));
-    ok(!/returns table \([^)]*user_id/.test(list) && !/select r\.user_id/.test(list), 'report_list neatdod user_id');
-    ok(/n >= 10 then raise exception 'rate_limit'/.test(sql), 'limits 10 stundā');
-    ok(/g >= 2/.test(sql) && /primary key \(report_id, user_id\)/.test(sql), '2 dažādi „vairs nav”');
-    ok(/owner = me then raise exception 'own_report'/.test(sql), 'par savu nebalso');
-    ok(/2 \* ttl/.test(sql), 'pagarina ne vairāk kā 2×');
-    ok(/<= 150/.test(sql), 'dublikāti 150 m');
-  });
   test('F10: ziņojot bez konta — izveido anonīmu kontu un sūta ar sesiju; kļūdas — saprotamā valodā', async () => {
     const f = ff(u => signup(u) || (/report_create/.test(u) ? [200, { id: 'r1', merged: false }] : [201, {}]));
     const a = new CzAuth(cfg, { storage: mem({ 'cz.consent': consent }), fetch: f });
@@ -1171,12 +1163,6 @@ test('W. Kopbraucienu cena: griesti — ceļa izdevumu daļa (B03), ievade, komi
     ok(!/body\.(driver_id|user_id|uid)/.test(fn), 'lietotāja ID neņem no klienta datiem');
     ok(/o\.trip in \('', 'coming', 'arrived'\)/.test(sql), 'kandidāti — pirms iekāpšanas');
   });
-  test('F14: datubāze — statuss refunded, ID, laiks, iemesls; tieši mainīt nevar', () => {
-    for (const c of ['status text', 'refund_id text', 'refunded_at timestamptz', 'refund_reason text', 'refund_cents int']) ok(sql.includes(c), c);
-    ok(/'cancelled_before_pickup', 'driver_refund', 'stripe_dashboard'/.test(sql), 'iemesli');
-    ok(/Maksājuma statusu mainīt nevar/.test(sql) && /create trigger ride_payment_guard before update/.test(sql), 'aizsardzība');
-    ok(!/create or replace function public\.ride_payment_mark/.test(sql), 'vecā (authenticated) funkcija vairs netiek veidota');
-  });
   test('F14: saskarne — „Atmaksāt” tikai samaksātam un neatmaksātam, ar apstiprinājumu; ziņas kartītē / uznirstošas', () => {
     ok(/if \(!\(ok && p && p\.paid && \(ri\.state === 'none' \|\| ri\.state === 'partial'\)\)\) return line;/.test(ui), 'poga tikai samaksātam (un neatmaksātam / daļēji atmaksātam — A05)');
     ok(/Atmaksāt pasažierim \$\{rideMoney\(amount\)\}\? Šo nevar atsaukt\./.test(ui), 'apstiprinājums');
@@ -1212,8 +1198,6 @@ test('W. Kopbraucienu cena: griesti — ceļa izdevumu daļa (B03), ievade, komi
     ok(/id="trafficShare"/.test(html) && /id="trHelpersSet"/.test(html) && /id="routeHelpers"/.test(html));
   });
   test('F15: „Šobrīd palīdz” — RPC atdod tikai skaitli, lasīt var bez konta', () => {
-    ok(/returns int/.test(sql) && /select count\(\*\)::int from public\.traffic_quota where last_at > now\(\) - interval '15 minutes'/.test(sql));
-    ok(/grant execute on function public\.traffic_helpers\(\) to anon, authenticated/.test(sql));
     ok(/last_at = now\(\)/.test(sql), 'traffic_report pieraksta laiku');
     const f = new Function(tg.slice(tg.indexOf('function trHelpersText'), tg.indexOf('async function trHelpersLoad')) + '; return trHelpersText;')();
     eq(f(0), 'Šobrīd neviens nepalīdz — esi pirmais, kas palīdz!'); eq(f(1), 'Šobrīd palīdz: 1 braucējs');
@@ -1414,7 +1398,7 @@ test('W. Kopbraucienu cena: griesti — ceļa izdevumu daļa (B03), ievade, komi
     ok(/LIMIT_MATCH_M = 20/.test(app) && /\["maxspeed:type"\]/.test(app) && /"living_street"/.test(app));
     ok(/classList\.toggle\('has-limit'/.test(ul), 'nākamās zīmes kartīte neaizsedz plāksnīti');
     const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-    ok(/id="testSpeed"/.test(html) && /class="speedo-unit"/.test(html) && /speedlimit\.js\?v=\d+/.test(html));
+    ok(/id="testSpeed"/.test(html) && /class="speedo-unit"/.test(html) && /speedlimit\.js\?v=/.test(html));
   });
 }
 
@@ -1566,10 +1550,6 @@ test('F13: UI — kopsavilkums, vēsture, ziņas kartītē (nevis statusa joslā
   ok(/Mani braucieni/.test(fnOf(ui, 'ridesAccountBar')), '„Mani braucieni” joslā');
   ok(/rideRatingText\(sum\)/.test(fnOf(ui, 'ridesPerson')) && /o\.driver_id\),/.test(fnOf(ui, 'ridesRequestCard')), 'vērtējums piedāvājuma kartītē');
   ok(!/create table if not exists public\.reports\b/.test(sql) && /public\.user_reports/.test(sql), 'tabula user_reports');
-  ok(/unique \(offer_id, rater_id\)/.test(sql) && /check \(stars between 1 and 5\)/.test(sql) && /char_length\(comment\) <= 200/.test(sql));
-  ok(/public\.is_offer_party\(offer_id\)/.test(sql), 'RLS — is_offer_party');
-  ok(/new\.rated_id := pas/.test(sql) && /new\.reported_id := drv/.test(sql), 'otru pusi aizpilda triggeris');
-  ok(/>= 10 then/.test(sql), '≤ 10 ziņojumi dienā');
   const claim = sql.slice(sql.indexOf('function public.account_transfer_claim'), sql.indexOf('function public.delete_my_account'));
   ok(/update ride_ratings set rater_id = me where rater_id = src/.test(claim) && /update ride_ratings set rated_id = me/.test(claim)
      && /update user_reports set reporter_id = me/.test(claim) && /update user_reports set reported_id = me/.test(claim), 'pārcelšana pārceļ vērtējumus un ziņojumus');
@@ -1714,8 +1694,6 @@ test('F12: noraidīts / cits šoferis izvēlēts → kartīte 10 min ar „Labi�
   ok(/'cz\.rides\.declOk'/.test(fnOf('ridesDeclinedOk')) && /try \{ localStorage\.setItem/.test(fnOf('ridesDeclinedOk')), '„Labi” — localStorage');
   ok(/for \(const o of declined\) wrap\.append\(ridesDeclinedCard\(o\)\)/.test(fnOf('ridesDriveView')), 'šofera sarakstā');
   ok(/ridesDeclinedList\(\)\.map\(o => o\.id\)/.test(fnOf('ridesViewSig')), 'pārzīmē, kad pazūd');
-  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'rides-10-declined.sql'), 'utf8');
-  ok(/add column if not exists responded_at timestamptz/.test(sql) && /new\.status in \('accepted', 'declined'\)/.test(sql) && /new\.responded_at := old\.responded_at/.test(sql), 'SQL: laiku liek datubāze');
 });
 
 // ---------- F16: statistika ----------
@@ -1750,10 +1728,6 @@ test('F16: UI, SQL un ride-pay — īpašnieks tikai pēc servera pārbaudes', (
   ok(/rides\.statsView, rides\.myStats/.test(fnOf('ridesViewSig')), 'ridesViewSig');
   const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'stats-f16.sql'), 'utf8');
   const fn = name => { const i = sql.indexOf('function public.' + name + '('); return sql.slice(i, sql.indexOf('$$;', sql.indexOf('$$', i) + 2)); };
-  ok(/if not is_app_admin\(\) then raise exception 'forbidden'/.test(fn('admin_stats')), 'admin_stats pārbauda is_app_admin');
-  ok(/revoke all on function public\.admin_stats\(\) from public, anon;/.test(sql) && /revoke all on function public\.my_stats\(\) from public, anon;/.test(sql), 'revoke no anon');
-  ok(/alter table public\.app_admins enable row level security;/.test(sql) && !/create policy[^;]*app_admins/.test(sql), 'app_admins bez politikām');
-  ok(/declare me uuid := auth\.uid\(\)/.test(fn('my_stats')) && /if me is null then return null;/.test(fn('my_stats')), 'my_stats — auth.uid()');
   ok(!/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}/.test(sql.replace("'[TAVS E-PASTS]'", '')), 'repozitorijā nav e-pasta');
   ok(/delete from user_stat_counters where user_id = me;/.test(fn('delete_my_account')) && /insert into user_stat_counters \(user_id, kind, n\) select me, kind, n from user_stat_counters where user_id = src/.test(fn('account_transfer_claim')), 'dzēšana / pārcelšana');
   ok(/if n >= 10 then raise exception 'rate_limit'/.test(fn('report_create')) && /if n >= 60 then raise exception 'vote_limit'/.test(fn('report_vote')) && /q\.n \+ cnt > 1500/.test(fn('traffic_report')), 'limiti nemainīti');
@@ -1766,16 +1740,7 @@ test('F16: UI, SQL un ride-pay — īpašnieks tikai pēc servera pārbaudes', (
 
 // ---------- F17: maksājuma statusu raksta tikai ride-pay ----------
 test('F17: ride_payment_mark — tikai service_role, lietotājs no JWT, pārlūks nesauc', () => {
-  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'rides-11-paymark.sql'), 'utf8');
   const fn = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'ride-pay', 'index.ts'), 'utf8');
-  ok(/drop function if exists public\.ride_payment_mark\(uuid, text, text, text, int\);/.test(sql), 'vecā funkcija dzēsta');
-  ok(/function public\.ride_payment_mark\(p_user_id uuid, oid uuid,/.test(sql), 'lietotāja ID parametrā');
-  ok(/security definer set search_path = public, pg_temp/.test(sql), 'search_path');
-  ok(!/auth\.uid\(\)/.test(sql.slice(sql.indexOf('create or replace function public.ride_payment_mark'), sql.indexOf('revoke all'))), 'neizmanto auth.uid()');
-  ok(/o\.driver_id = p_user_id or r\.user_id = p_user_id/.test(sql), 'pārbauda dalībnieku');
-  ok(/revoke all on function public\.ride_payment_mark\(uuid, uuid, text, text, text, int\) from public, anon, authenticated;/.test(sql) &&
-     /grant execute on function public\.ride_payment_mark\(uuid, uuid, text, text, text, int\) to service_role;/.test(sql), 'tikai service_role');
-  ok(/old\.status = 'paid' and new\.session_id is distinct from old\.session_id/.test(sql), 'samaksātai rindai sesiju nemaina');
   const m = fn.slice(fn.indexOf('const mark = '), fn.indexOf('// ---------- Atmaksa (F14)'));
   const mp = fn.slice(fn.indexOf('async function markPay'), fn.indexOf('const SYNC_MAX'));
   ok(/markPay\(uid, oid,/.test(m) && /sdb\('rpc\/ride_payment_mark'/.test(mp) && /p_user_id: userId/.test(mp) && /apikey: SRK/.test(fn.slice(fn.indexOf('async function sdb'))), 'mark — servisa atslēga + uid no JWT');
@@ -1854,7 +1819,6 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
     ok(/clip-path="url\(#rwc\)"/.test(r) && r.includes('M24 40C24 20 36 10 50 10') && r.includes('#ffa53a') && r.includes('M31 48h38'), th + ': ceļa darbi — strādnieks ar oranžu ķiveri un brillēm');
     ok(/32 61/.test(r) && r.includes('cx="32" cy="28" r="23"') && r.includes('M29.8 48L32 61'), th + ': v140 — lielāks aplis, īsāka adata; smaile vietā');
   }
-  for (const f of ['index.html']) ok(/alerts\.js\?v=14\d/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': alerts.js ≥ v140');
   // v141: traffic lights half size — the traffic-light check must come BEFORE ['has', 'pin'] (alerts mode: all signs have pin)
   const sg141 = fs.readFileSync(path.join(__dirname, '..', 'signs-gl.js'), 'utf8');
   const sfn = new Function(sg141.slice(sg141.indexOf('const TRAFFIC_LIGHT_SCALE'), sg141.indexOf('\n}', sg141.indexOf('function signsIconSize')) + 2) + '; return signsIconSize;')();
@@ -1878,10 +1842,6 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
   eq(ev(afn(1)[6], { icon: 'alert:traffic-light' }), 0.5, 'alerts slānī luksofors arī uz pusi mazāks');
   for (const f of ['index.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    ok(/signs-gl\.js\?v=(14[1-9]|1[5-9]\d)/.test(h) && /app-gl\.js\?v=(14[1-9]|1[5-9]\d)/.test(h), f + ': v141');
-    ok(/app-gl\.js\?v=(14[3-9]|1[5-9]\d)/.test(h), f + ': v143');
-    ok(/alerts\.js\?v=144/.test(h) && /signs-gl\.js\?v=(14[4-9]|1[5-9]\d)/.test(h) && /app-gl\.js\?v=(14[4-9]|1[5-9]\d)/.test(h), f + ': v144');
-    ok(/signs-gl\.js\?v=(14[5-9]|1[5-9]\d)/.test(h) && /app-gl\.js\?v=(14[5-9]|1[5-9]\d)/.test(h), f + ': v145');
   }
   {
     // v145: traffic restrictions hidden from the map (alerts mode), still in the data for the "next ahead" card
@@ -1918,8 +1878,6 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
     ok(/tag_name: android-test/.test(wf) && /files: out\/cela-zimes\.apk/.test(wf) && /assembleDebug/.test(wf), 'GitHub pats uzbūvē APK un ieliek to lapā android-test');
     const ps = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'scripts', 'patch-android.js'), 'utf8');
     ok(/FOREGROUND_SERVICE_LOCATION/.test(ps) && /POST_NOTIFICATIONS/.test(ps) && !/ACCESS_BACKGROUND_LOCATION/.test(ps), 'atļaujas: priekšplāna serviss ar atrašanās vietu, bez „vienmēr” atļaujas');
-    for (const f of ['index.html'])
-      ok(/app-gl\.js\?v=(14[6-9]|1[5-9]\d)/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': v146');
   }
   // v142: icons ↔ dots — happens after about half the zoom-out, and the animation is twice as fast
   ok(/const MARKER_IN_ZOOM = 15\.6;/.test(ap141) && /const MARKER_OUT_ZOOM = 15\.2;/.test(ap141), 'v143: punkti parādās vēl agrāk (15,2 / 15,6)');
@@ -2098,15 +2056,6 @@ test('v124: Garāža — 8 tēli kā serverī, retums pēc cenas, kartīšu stā
 });
 
 test('v124: citi braucēji — tikai ar „Palīdzēt citiem” (jaunā versija), braucot, noapaļoti, bez ID; privātums atjaunots', () => {
-  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'coins-2-presence.sql'), 'utf8');
-  ok(/alter table public\.user_presence enable row level security/.test(sql) && !/create policy/i.test(sql), 'RLS, tikai funkcijas');
-  ok(/kind = 'speed_share'/.test(sql) && /version >= '2026-11-01'/.test(sql), 'tikai ar jaunāko piekrišanu');
-  ok(/p_speed_kmh < 15/.test(sql) && /delete from user_presence where user_id = me/.test(sql), 'apstājoties — dzēš uzreiz');
-  ok(/interval '2 minutes'/.test(sql) && /interval '10 minutes'/.test(sql), '2 min redzams, 10 min dzēš');
-  ok(/round\(p_lat::numeric \* 5000\) \/ 5000/.test(sql), 'noapaļots ~20 m');
-  const nb = sql.slice(sql.indexOf('function public.presence_nearby'), sql.indexOf('$$;', sql.indexOf('function public.presence_nearby')));
-  ok(!/returns table \([^)]*user_id/.test(nb) && /user_id is distinct from auth\.uid\(\)/.test(nb), 'neatdod ID, neatdod mani');
-  ok(/revoke all on function public\.presence_update\([^)]*\) from public, anon/.test(sql) && /grant execute on function public\.presence_nearby\([^)]*\) to anon, authenticated/.test(sql), 'tiesības');
   const tr = fs.readFileSync(path.join(__dirname, '..', 'traffic-gl.js'), 'utf8');
   ok(/TR_SHARE_VERSION = '2026-11-01'/.test(tr) && /const trShareCurrent = /.test(tr) && /Tava vieta citiem braucējiem kartē netiek rādīta/.test(tr), 'piekrišanas teksts un versija (A16: bez vietas citu kartē)');
   const pj = fs.readFileSync(path.join(__dirname, '..', 'presence.js'), 'utf8');
@@ -2192,8 +2141,7 @@ test('v131: iestatījumi — Braukšana / Sastrēgumi / Izskats / Konts un priv�
     const form = h.slice(h.indexOf('id="searchForm"'), h.indexOf('</form>'));
     ok(/id="settingsBtn"/.test(form), f + ': iestatījumi ar 1 pieskārienu — meklēšanas joslā');
     ok(!/id="fabMore"|id="toggleSigns"/.test(h), f + ': v132 — ⋯ un „Zīmes/Brīdin.” poga noņemta (dublēja galveno slēdzi)');
-    ok(/style-gl\.css\?v=(13[2-9]|1[4-9]\d)/.test(h) && /app-gl\.js\?v=1[3-9]\d/.test(h), f + ': versijas ≥ v132');
-    ok(/<a id="call112" class="call-112" href="tel:112" hidden>/.test(h) && /Zvanīt 112/.test(h) && /places\.js\?v=(133|1[4-9]\d)/.test(h), f + ': v133 — poga „Zvanīt 112”');
+    ok(/<a id="call112" class="call-112" href="tel:112" hidden>/.test(h) && /Zvanīt 112/.test(h), f + ': v133 — poga „Zvanīt 112”');
     ok(!/[A-Za-z]{4,} (settings|Settings)/.test(set.replace(/<[^>]+>/g, '')), f + ': bez angļu teksta');
   }
   const app = czAppSrc();
@@ -2292,8 +2240,6 @@ test('Coins: SQL — report types config, validated confirmations, daily cap, at
     ['jam', 'Sastrēgums', 20, 'Vai sastrēgums vēl ir?'], ['accident', 'Avārija', 60, 'Vai avārija vēl ir šeit?'], ['obstacle', 'Šķērslis', 30, 'Vai šķērslis vēl ir uz ceļa?']]) {
     ok(new RegExp(`\\('${id}',\\s*'${label}',\\s*'[a-z-]+',\\s*${min},\\s*'${q.replace('?', '\\?')}'`).test(sql), id + ': config row');
   }
-  ok(/coin_reward\s+int\s+not null default 10/.test(sql) && /author_bonus\s+int\s+not null default 5/.test(sql) && /max_lifetime_factor\s+numeric not null default 2/.test(sql), 'defaults: 10 coins, +5 author, ≤ 2× lifetime');
-  ok(/coin_daily_cap\(\) returns int language sql immutable as \$\$ select 100 \$\$/.test(sql), 'daily cap 100');
   const rc = fnOf('report_confirm');
   for (const code of ['own_report', 'already_answered', 'not_nearby', 'not_driving', 'wrong_direction', 'poor_gps', 'gps_suspect']) ok(rc.includes(code), 'report_confirm checks ' + code);
   ok(/wallet_award\(me, t\.coin_reward, 'answer'/.test(rc) && /wallet_award\(r\.user_id, t\.author_bonus, 'author_bonus'/.test(rc), 'coins: answer + author bonus, decided on the server');
@@ -2301,16 +2247,12 @@ test('Coins: SQL — report types config, validated confirmations, daily cap, at
   const buy = fnOf('skin_buy');
   ok(/wallet_can_spend\(me\)/.test(buy) && /wallet_lock\(me\)/.test(buy) && /balance < s\.price/.test(buy) && /balance = balance - s\.price/.test(buy) && /insert into user_skins/.test(buy), 'purchase: account check, row lock, balance, deduct, grant');
   ok(/email_confirmed_at is not null/.test(fnOf('wallet_can_spend')), 'spending needs a confirmed e-mail account');
-  for (const tbl of ['report_types', 'skins', 'user_wallet', 'user_skins', 'coin_ledger']) ok(new RegExp(`alter table public\\.${tbl} enable row level security`).test(sql), tbl + ': RLS on');
-  ok(/revoke all on function public\.wallet_award\(uuid, int, text, uuid\) from public, anon, authenticated/.test(sql), 'award not callable by clients');
-  ok(!/grant execute on function public\.(skin_buy|wallet_get|report_confirm)[^;]*anon/.test(sql), 'anon cannot buy / confirm');
   ok(fs.existsSync(path.join(__dirname, 'coins-test.sql')), 'database scenario test present');
 });
 
 // ---------- F19: Stripe webhook + „Sinhronizēt ar Stripe” ----------
 test('F19: stripe-webhook — paraksts, notikumi, idempotence, tikai uz priekšu', () => {
   const wh = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'stripe-webhook', 'index.ts'), 'utf8');
-  const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'rides-12-webhook.sql'), 'utf8');
   ok(/const body = await req\.text\(\);/.test(wh) && !/req\.json\(\)/.test(wh), 'ķermenis kā teksts');
   ok(/webhooks\.constructEventAsync\(body, sig, WHSEC, undefined, cryptoProvider\)/.test(wh) && /Stripe\.createSubtleCryptoProvider\(\)/.test(wh), 'Stripe paraksta pārbaude');
   ok(/catch \{\s*return json\(\{ error: 'Nederīgs paraksts' \}, 400\);/.test(wh), 'nederīgs paraksts → 400');
@@ -2322,8 +2264,6 @@ test('F19: stripe-webhook — paraksts, notikumi, idempotence, tikai uz priekšu
   ok(/rpc\/ride_payment_mark/.test(wh) && /p_user_id: passenger/.test(wh), 'raksta caur ride_payment_mark (service_role)');
   ok(/seen\?\.length\) return json\(\{ received: true, duplicate: true \}\)/.test(wh), 'atkārtots notikums neko nedara');
   ok(!/json\([^)]*(SRK|WHSEC|SK)\b/.test(wh), 'atslēgas atbildē nenonāk');
-  ok(/create table if not exists public\.stripe_events \(\s*id text primary key/.test(sql) && /enable row level security/.test(sql) &&
-     /revoke all on table public\.stripe_events from public, anon, authenticated;/.test(sql), 'stripe_events tikai serverim');
 });
 test('F19: ride-pay „sync” — tikai īpašniekam, pa daļām; admin.html poga ar ziņu pie pogas', () => {
   const rp = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'ride-pay', 'index.ts'), 'utf8');
@@ -2399,9 +2339,6 @@ test('F23: atcelti braucieni + atsaukti pieprasījumi = atceltie vēsturē (demo
   ok(/admRow\('Atcelti braucieni', a\.cancelled_rides/.test(adm) && /admRow\('Atsaukti pieprasījumi', a\.withdrawn/.test(adm), 'admin lapa');
   const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'stats-2-f23.sql'), 'utf8');
   ok(/'passenger_withdrawn'/.test(sql) && /'cancelled_rides'/.test(sql) && /'withdrawn'/.test(sql), 'SQL lauki');
-  ok(/if not is_app_admin\(\) then raise exception 'forbidden'/.test(sql) && /me uuid := auth\.uid\(\)/.test(sql), 'tiesības tās pašas');
-  ok(/revoke all on function public\.my_stats\(\) from public, anon;/.test(sql) && /grant execute on function public\.my_stats\(\) to authenticated;/.test(sql), 'grants');
-  ok(!/\b(update|delete|insert)\b/i.test(sql.replace(/--.*$/gm, '')), 'dati netiek mainīti');
 });
 
 // ---------- F24: vietu nosaukumi — apraksti no OSM netiek rādīti kā nosaukums ----------
@@ -2465,11 +2402,6 @@ test('F16: admin.html — atsevišķa sesija, servera pārbaude, nav e-pasta', (
 // (citādi kolonnu tiesības produkcijā to noraidītu) un ka labojuma fails nav pazudis.
 test('A01: dalībnieku aizsardzība un lietotne maina tikai statusu', () => {
   const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'rides-13-guard.sql'), 'utf8');
-  ok(/new\.driver_id is distinct from old\.driver_id/.test(sql) && /new\.request_id is distinct from old\.request_id/.test(sql) && /new\.user_id is distinct from old\.user_id/.test(sql), 'trigeris sargā driver_id, request_id, user_id');
-  ok(/if current_user in \('authenticated', 'anon'\)/.test(sql), 'servera funkcijas (kontu apvienošana) netiek bloķētas');
-  ok(!/security definer/.test(sql.slice(sql.indexOf('function public.ride_guard_participants'), sql.indexOf('$$;'))), 'trigera funkcija NAV security definer (citādi current_user būtu īpašnieks)');
-  ok(/revoke update on public\.ride_offers from public, anon, authenticated;/.test(sql) && /grant update \(status\) on public\.ride_offers to authenticated;/.test(sql) &&
-     /grant update \(status\) on public\.ride_requests to authenticated;/.test(sql), 'authenticated drīkst mainīt tikai status');
   const js = fs.readFileSync(path.join(__dirname, '..', 'rides.js'), 'utf8');
   const patches = [...js.matchAll(/_rest\(`(ride_offers|ride_requests)\?[^`]*`, \{ method: 'PATCH'[^\n]*?body: JSON\.stringify\((\{[^)]*\})\)/g)];
   ok(patches.length >= 4, 'atrasti lietotnes PATCH pieprasījumi (' + patches.length + ')');
@@ -2530,8 +2462,6 @@ test('A02: SQL labojums un lietotnes pogas', () => {
   ok(/security definer/.test(fn) && /for update/.test(fn), 'funkcija ir security definer un bloķē pieprasījumu');
   ok(fn.indexOf('from ride_requests where id = rid for update') < fn.indexOf("update ride_offers set status = 'accepted'"), 'bloķē PIRMS maina');
   ok(/r\.user_id is distinct from me/.test(fn), 'pieņemt drīkst tikai pieprasījuma autors');
-  ok(/revoke all on function public\.ride_offer_accept\(uuid\) from public, anon;/.test(sql), 'anon nevar izsaukt');
-  ok(/create unique index ride_offers_one_accepted on public\.ride_offers \(request_id\) where status = 'accepted'/.test(sql), 'unikāls indekss');
   const guard = sql.slice(sql.indexOf('function public.ride_guard_status'));
   ok(!/security definer/.test(guard.slice(0, guard.indexOf('$$;'))), 'statusa trigeris NAV security definer');
   ok(/old\.status in \('pending', 'accepted', 'declined'\)/.test(guard), 'šoferis var atcelt arī tikko noraidītu piedāvājumu');
@@ -2541,10 +2471,6 @@ test('A02: SQL labojums un lietotnes pogas', () => {
   ok(/b\.disabled = true/.test(rr) && /catch \(e\)/.test(rr) && /rideErrorText\(e\)/.test(rr) && /finally/.test(rr), 'pogas atslēdz, kļūdu parāda, sarakstu atjauno');
   ok(/ridesRespond\(e\.currentTarget, o\.id, 'accepted'\)|ridesRespond\([^)]*'accepted'\)/.test(ui) && /ridesRespond\([^)]*'declined'\)/.test(ui), 'abas pogas izmanto ridesRespond');
   ok(/cancelOffer\(o\.id\);[\s\S]{0,200}catch \(err\)[\s\S]{0,80}rideErrorText\(err\)/.test(ui), '„Atcelt” kļūda neiestrēgst');
-  for (const f of ['index.html']) {
-    const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    ok(/rides\.js\?v=(14[7-9]|1[5-9]\d)/.test(h) && /rides-ui\.js\?v=(14[7-9]|1[5-9]\d)/.test(h), f + ': rides v147+');
-  }
   ok(fs.existsSync(path.join(__dirname, 'rides-accept-test.sql')) && fs.existsSync(path.join(__dirname, 'rides-accept-parallel.sh')), 'SQL testi repozitorijā');
 });
 
@@ -2585,8 +2511,6 @@ test('A03: SQL labojums un lietotnes pogas', () => {
   ok(/when old\.onboard_at is not null then old\.onboard_at/.test(guard) && /when old\.done_at is not null then old\.done_at/.test(guard), 'notikumu laiki nemaināmi');
   ok(/if client and new\.status is distinct from old\.status and old\.onboard_at is not null/.test(guard), 'pēc iekāpšanas lietotne neatceļ');
   ok(/not client and current_setting\('cz\.trip_repair', true\) = 'on'/.test(guard), 'labošanas slēdzis tikai īpašniekam');
-  ok(/create trigger ride_offers_guard_trip before insert or update on public\.ride_offers/.test(sql), 'trigeris uz insert un update');
-  ok(/create trigger ride_requests_guard_started before update of status on public\.ride_requests/.test(sql), 'pasažieris neatceļ pēc iekāpšanas');
   const du = sql.slice(sql.indexOf('function public.ride_driver_update'));
   ok(/for update/.test(du) && /rst is distinct from 'matched'/.test(du) && /where id = o\.request_id and status = 'matched'/.test(du), 'ride_driver_update — tikai saskaņotam braucienam');
   ok(/o\.onboard_at is null and o\.trip in \('', 'coming', 'arrived'\)/.test(sql), 'atmaksas kandidāti — tikai pirms iekāpšanas');
@@ -2595,10 +2519,6 @@ test('A03: SQL labojums un lietotnes pogas', () => {
   const cc = ui.slice(ui.indexOf('function ridesConfirmCancel'), ui.indexOf('function ridesDriveView'));
   ok(/catch \(err\)[\s\S]{0,60}rideErrorText\(err\)/.test(cc) && /finally \{ ridesRefresh\(true\); \}/.test(cc), 'pasažiera „Jā, atcelt” kļūda neiestrēgst');
   ok(/if \(st !== 'onboard'\) acts\.append/.test(ui), '„Atcelt” paslēpts ceļā (abām lomām)');
-  for (const f of ['index.html']) {
-    const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    ok(/rides\.js\?v=(14[89]|1[5-9]\d)/.test(h) && /rides-ui\.js\?v=(14[89]|1[5-9]\d)/.test(h), f + ': rides v148+');
-  }
   ok(fs.existsSync(path.join(__dirname, 'rides-trip-test.sql')), 'SQL scenārija tests repozitorijā');
 });
 
@@ -2725,9 +2645,6 @@ test('A03: SQL labojums un lietotnes pogas', () => {
     ok(/f\.stripeStatus = r\.status; f\.stripeType = j\?\.error\?\.type;/.test(ts), 'Stripe kļūdas statuss un tips saglabāts');
     const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'rides-16-checkout.sql'), 'utf8');
     ok(/function public\.ride_checkout_save[\s\S]*for update of o[\s\S]*for update;/.test(sql), 'saglabāšana bloķē rindas');
-    ok(/if p\.status <> 'created' or p_attempt <= p\.attempt then return false;/.test(sql), 'vecāks / samaksāts netiek pārrakstīts');
-    ok(/revoke all on function public\.ride_checkout_begin\(uuid\) from public, anon;/.test(sql), 'anon nevar');
-    ok(/if tg_op = 'INSERT' then new\.attempt := 1; else new\.attempt := old\.attempt;/.test(sql), 'klients numuru nemaina');
     ok(fs.existsSync(path.join(__dirname, 'rides-checkout-test.sql')), 'SQL scenārija tests');
   });
 }
@@ -2811,10 +2728,6 @@ test('A03: SQL labojums un lietotnes pogas', () => {
     const ui = fs.readFileSync(path.join(__dirname, '..', 'rides-ui.js'), 'utf8');
     ok(/const amount = rideRefundInfo\(p, o\.price_cents\)\.remaining/.test(ui), 'pēc daļējas — poga atmaksā atlikumu');
     ok(/else if \(r && r\.pending && !r\.already\)/.test(ui), 'automātiskā atmaksa apstrādē — atsevišķa ziņa');
-    for (const f of ['index.html']) {
-      const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-      ok(/rides\.js\?v=(149|1[5-9]\d)/.test(h) && /rides-ui\.js\?v=(149|1[5-9]\d)/.test(h), f + ': rides v149+');
-    }
   });
 }
 
@@ -2854,14 +2767,13 @@ test('A07: MapLibre 6.15.0 — ES modulis pirms visiem skriptiem, pārējie defe
     for (const [a, b, c] of vers) ok(a > 6 || (a === 6 && (b > 4 || (b === 4 && c >= 1))), f + ': versija ≥ 6.4.1 (' + [a, b, c].join('.') + ')');
     ok(h.includes('href="vendor/maplibre-gl-6.15.0/maplibre-gl.css"'), f + ': css 6.15.0');
     ok(/^import \* as maplibregl from '\.\/vendor\/maplibre-gl-6\.15\.0\/maplibre-gl\.mjs';\nwindow\.maplibregl = maplibregl;$/m.test(ld), 'maplibre-load.js uzliek window.maplibregl');
-    const mod = '<script type="module" src="maplibre-load.js?v=151"></script>';
-    ok(h.includes(mod), f + ': modulis uzliek window.maplibregl');
+    const mod = (/<script type="module" src="maplibre-load\.js\?v=\d+"><\/script>/.exec(h) || [''])[0];
+    ok(mod, f + ': modulis uzliek window.maplibregl');
     const after = h.slice(h.indexOf(mod) + mod.length);
     const tags = after.match(/<script\b[^>]*>/g) || [];
     ok(tags.length >= 25, f + ': skripti pēc moduļa');
     ok(tags.every(t => (/\sdefer\s/.test(t) || /\stype="text\/x-cz-lazy"/.test(t)) && /\ssrc="/.test(t)), f + ': visi nākamie skripti ir defer vai vēlā ielāde (B15) (izpildās pēc moduļa, tajā pašā secībā)');
     ok(!/<script>/.test(h), f + ': nav iekļautu (inline) klasisko skriptu, kas izpildītos ārpus secības');
-    ok(/app-gl\.js\?v=(15[1-9]|1[6-9]\d)/.test(h) && /signs-gl\.js\?v=150/.test(h), f + ': mainītie faili ar jaunu versiju');
   }
 });
 test('A07: trūkstošie attēli (MapLibre 6) un skaidra ziņa, ja karte neielādējas', () => {
@@ -2993,7 +2905,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     for (const f of HTML) {
       const h = fs.readFileSync(path.join(ROOT, f), 'utf8');
       const head = h.slice(0, h.indexOf('</head>'));
-      ok(/^<!doctype html>\n<html lang="lv">\n<head>\n  <meta charset="utf-8">\n  <!-- A10[^]*?-->\n  <meta http-equiv="Content-Security-Policy" content="[^"]+">\n  <meta name="referrer" content="strict-origin-when-cross-origin">\n  <script src="guard\.js\?v=151"><\/script>\n/.test(h),
+      ok(/^<!doctype html>\n<html lang="lv">\n<head>\n  <meta charset="utf-8">\n  <!-- A10[^]*?-->\n  <meta http-equiv="Content-Security-Policy" content="[^"]+">\n  <meta name="referrer" content="strict-origin-when-cross-origin">\n  <script src="guard\.js\?v=\d+"><\/script>\n/.test(h),
         f + ': <head> bez atribūtiem (Android lietotnes skripts nonāk pirms CSP), CSP, referrer, guard.js — pašā sākumā');
       const c = cspOf(h); ok(c, f + ': CSP');
       if (!c) continue;
@@ -3110,7 +3022,6 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const aj = fs.readFileSync(path.join(ROOT, 'admin.js'), 'utf8');
     ok(/admRpc\('cz_cleanup_status'\)/.test(aj) && /e\.status === 404 \? \{ missing: true \}/.test(aj), 'admin.js: stāvoklis, fails vēl nav palaists → paskaidrojums');
     ok(/'Vecu datu tīrīšana nestrādā: '/.test(aj) && /if \(clean && !\(adm\.cleanup && adm\.cleanup\.healthy\)\) box\.append\(clean\);/.test(aj), 'admin.js: brīdinājums paneļa augšā');
-    ok(/admin\.js\?v=1(5[2-9]|[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, 'admin.html'), 'utf8')), 'admin.html: jauna admin.js versija');
     const md = fs.readFileSync(path.join(ROOT, 'supabase', 'MIGRATIONS.md'), 'utf8');
     ok(/## Vecu datu tīrīšana un uzraudzība \(A11\)/.test(md) && /palaisti (visi )?1–(2[7-9]|[3-9]\d)/.test(md), 'MIGRATIONS.md');
   });
@@ -3155,7 +3066,6 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/h2\[tabindex="-1"\]:focus/.test(css), 'virsrakstam fokusa rāmis nav jārāda');
     const ms = fs.readFileSync(path.join(__dirname, 'map-smoke.js'), 'utf8');
     ok(/res\.a11y = \{\}/.test(ms) && /Tab izgāja no paneļa/.test(ms) && /piekrišana aizvērās ar Esc/.test(ms) && /Garāžas dialogs aizverot/.test(ms), 'kartes tests pārbauda ar tastatūru');
-    for (const f of ['index.html']) ok(/sheets\.js\?v=(153|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /style-gl\.css\?v=(15[3-9]|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': jaunas versijas');
   });
 }
 
@@ -3469,10 +3379,6 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/izņemot, kamēr ir aktīvs brauciens/.test(te), 'terms.html');
     const ui = fs.readFileSync(path.join(ROOT, 'rides-ui.js'), 'utf8');
     ok(/Otram brauciena dalībniekam paliek notikušā brauciena ieraksts bez tava vārda/.test(ui), 'dzēšanas apstiprinājuma teksts');
-    for (const f of ['index.html']) {
-      const h = fs.readFileSync(path.join(ROOT, f), 'utf8');
-      ok(/auth\.js\?v=(15[7-9]|1[6-9]\d)/.test(h) && /rides\.js\?v=(15[7-9]|1[6-9]\d)/.test(h) && /rides-ui\.js\?v=(15[7-9]|1[6-9]\d)/.test(h), f + ': v157+');
-    }
   });
 }
 
@@ -3565,7 +3471,6 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
       const h = fs.readFileSync(path.join(ROOT, f), 'utf8');
       ok(/<b>Rādīt mani citu kartē<\/b>/.test(h) && /<input type="checkbox" id="presenceShow" class="switch">/.test(h), f + ': slēdzis (bez checked)');
       ok(!/kad brauc un ir ieslēgts „Palīdzēt citiem”/.test(h) && /ieslēgts „Rādīt mani citu kartē”/.test(h), f + ': Garāžas teksts');
-      ok(/presence\.js\?v=158/.test(h) && /reports\.js\?v=158/.test(h) && /traffic-gl\.js\?v=(158|1[6-9]\d)/.test(h) && /garage\.js\?v=158/.test(h), f + ': v158');
     }
     const tr = fs.readFileSync(path.join(ROOT, 'traffic-gl.js'), 'utf8');
     ok(!/citi braucēji kartē redz/.test(tr) && !/presenceStop/.test(tr), 'ātruma dalīšana vairs nerāda tevi citiem');
@@ -3622,7 +3527,6 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/ridesCoarseRatings\(\[\.\.\.rides\.openList/.test(ui), 'vērtējumi no servera');
     ok(/Precīzu vietu, vārdu un piezīmi redz tikai šoferis, kura piedāvājumu pieņemsi/.test(ui), 'pasažierim paskaidrots formā');
     ok(/Kamēr brauciens gaida šoferi, citi pieteikušies lietotāji redz tikai aptuvenu vietu/.test(fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8')), 'privātuma politika');
-    for (const f of ['index.html']) ok(/rides\.js\?v=(159|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /rides-ui\.js\?v=(159|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': v159+');
   });
 }
 
@@ -3664,7 +3568,6 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     for (const f of ['index.html']) {
       const h = fs.readFileSync(path.join(ROOT, f), 'utf8');
       ok(/ne vairāk kā aptuvenās ceļa izmaksas \(~12 c\/km\)/.test(h), f + ': noteikumi lietotnē');
-      ok(/rides\.js\?v=1[6-9]\d/.test(h) && /rides-ui\.js\?v=1[6-9]\d/.test(h) && /auth\.js\?v=1[6-9]\d/.test(h), f + ': v160+');
     }
     const t = fs.readFileSync(path.join(ROOT, 'terms.html'), 'utf8');
     ok(/Kopbraucieni ir izdevumu dalīšana, ne peļņas pārvadājumi/.test(t) && /attālums × 1,3 × 12 c\/km, vismaz 2 €/.test(t), 'terms.html');
@@ -3690,7 +3593,6 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/routing\.openstreetmap\.de\/routed-car\//.test(S.CZ_SERVICES.route[1]), 'rezerve — FOSSGIS auto profils');
     const scripts = [...h.matchAll(/<script (?:defer |type="module" )src="([\w.-]+\.js)\?v=/g)].map(m => m[1]);
     eq(scripts[1], 'services.js', 'services.js tūlīt pēc netguard.js (pirms nav.js, places.js, app-gl.js)');
-    ok(/services\.js\?v=1[6-9]\d/.test(h), 'versija v161+');
     ok(/redirect\.js/.test(rd('index-gl.html')), 'index-gl.html — pāradresācija (B16)');
     ok(!/apikey|OPEN_METEO_KEY|sk_/.test(rd('services.js').replace(/\/\/.*$/gm, '')), 'services.js kodā nav atslēgu');
   });
@@ -3732,7 +3634,6 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   test('B04: fokusa slazds neskaita aizvērtas <details> saturu (saites „Datu avotos”)', () => {
     const sh = rd('sheets.js');
     ok(/function czShInClosedDetails\(el\)/.test(sh) && /&& !czShInClosedDetails\(el\)\);/.test(sh), 'filtrs');
-    ok(/sheets\.js\?v=1[6-9]\d/.test(rd('index.html')), 'jauna versija');
   });
   test('B04: weather funkcija — atslēga tikai no Secrets, nekur neatdota; ierobežojumi', () => {
     const w = rd('supabase/functions/weather/index.ts');
@@ -3765,7 +3666,6 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const m = rd('mapillary.js');
     const line = m.split('\n').find(l => /^const MLY_ICON_URL/.test(l));
     ok(/mapillary_sprite_source@[0-9a-f]{40}\/package_signs\/';$/.test(line) && !/@master/.test(line), 'piesaistīts commit');
-    ok(/mapillary\.js\?v=1[6-9]\d/.test(rd('index.html')), 'jauna versija');
   });
   test('B05: privātuma politika — visi ārējie karšu pakalpojumi, valstis; jauna versija', () => {
     const pr = rd('privacy.html');
@@ -3773,7 +3673,6 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
       ok(pr.includes(w), 'politikā: ' + w);
     ok(/Versija 2026-11-10/.test(pr) && /<p>2026-11-10: /.test(pr), 'versija + izmaiņu ieraksts');
     ok(/CZ_PRIVACY_VERSION = '2026-11-10[a-z]?'/.test(rd('auth.js')), 'auth.js → piekrišanas logs');
-    for (const f of ['index.html', 'admin.html']) ok(/auth\.js\?v=1[6-9]\d/.test(rd(f)) && !/auth\.js\?v=160/.test(rd(f)), f + ': auth.js jauna versija');
     // katrs CSP connect-src ārējais serveris ir minēts politikā (pēc nosaukuma vai adreses)
     const NAMES = { 'pkqusuoicxmwcgwsrdqy.supabase.co': 'Supabase', 'tiles.openfreemap.org': 'OpenFreeMap', 'tile.openstreetmap.org': 'OpenStreetMap',
       'overpass-api.de': 'overpass-api.de', 'graph.mapillary.com': 'Mapillary', 'tiles.mapillary.com': 'Mapillary', 'api.openstreetmap.org': 'OpenStreetMap API',
@@ -3904,7 +3803,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     for (const f of ['index.html', 'admin.html']) {
       const h = rd(f);
       ok(/script-src 'self' https:\/\/challenges\.cloudflare\.com;/.test(h) && /frame-src https:\/\/challenges\.cloudflare\.com;/.test(h), f + ': CSP');
-      ok(/captcha\.js\?v=1[6-9]\d/.test(h) && h.indexOf('captcha.js') < h.indexOf('auth.js?v='), f + ': captcha.js pirms auth.js');
+      ok(/captcha\.js\?v=/.test(h) && h.indexOf('captcha.js') < h.indexOf('auth.js?v='), f + ': captcha.js pirms auth.js');
     }
     const pr = rd('privacy.html');
     ok(/Cloudflare Turnstile/.test(pr) && /<b>Cloudflare<\/b> \(ASV\)/.test(pr) && /<b>180 dienas<\/b>/.test(pr), 'politika: Cloudflare un 180 dienas');
@@ -3968,8 +3867,6 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const pr = rd('privacy.html');
     ok(/Versija 2026-11-10c/.test(pr) && /<p>2026-11-10c: /.test(pr) && /CZ_PRIVACY_VERSION = '2026-11-10c'/.test(rd('auth.js')), 'jauna versija → piekrišanas logs');
     ok(/serveris <b>30 dienas<\/b> glabā, kurš konts par kuru radaru ziņoja/.test(pr) && /par radaru vai atzīmēja to kā nederīgu, — 30 dienas/.test(pr), '2. un 8. punkts');
-    for (const f of ['index.html']) ok(/app-gl\.js\?v=(16[5-9]|1[7-9]\d)/.test(rd(f)) && /auth\.js\?v=165/.test(rd(f)), f + ': v165+');
-    ok(/auth\.js\?v=165/.test(rd('admin.html')), 'admin.html: auth v165');
   });
 }
 
@@ -4054,7 +3951,9 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const i = y.indexOf('\n  deploy:\n');
     ok(i > 0, 'deploy darbs');
     const d = y.slice(i);
-    ok(/needs: \[js, sql, authors, map\]/.test(d), 'gaida visus testus');
+    const jobs = [...y.slice(y.indexOf('\njobs:\n')).matchAll(/^  ([\w-]+):$/gm)].map(m => m[1]).filter(j => j !== 'deploy');
+    const needs = ((/needs: \[([^\]]*)\]/.exec(d) || [])[1] || '').split(',').map(s => s.trim()).filter(Boolean);
+    eq(needs.slice().sort().join(','), jobs.slice().sort().join(','), 'gaida visus testus (arī jaunus darbus, piem. e2e — B17)');
     ok(/if: github\.ref == 'refs\/heads\/main' && github\.event_name != 'pull_request'/.test(d), 'tikai main');
     ok(/permissions:\n      contents: read\n      pages: write\n      id-token: write/.test(d) && /^permissions:\n  contents: read\n/m.test(y), 'atļaujas tikai deploy darbam');
     ok(/actions\/jekyll-build-pages@v1/.test(d) && /actions\/upload-pages-artifact@v3/.test(d) && /uses: actions\/deploy-pages@v4/.test(d), 'Jekyll + Pages');
@@ -4131,7 +4030,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   test('B12: errlog.js ielādējas pirmais pēc guard.js; SQL 36; admin cilne', () => {
     for (const f of ['index.html', 'admin.html']) {
       const h = rd(f);
-      ok(/<script src="guard\.js\?v=\d+"><\/script>\n  <script src="errlog\.js\?v=166"><\/script>/.test(h), f + ': errlog.js tūlīt pēc guard.js (bez defer)');
+      ok(/<script src="guard\.js\?v=\d+"><\/script>\n  <script src="errlog\.js\?v=\d+"><\/script>/.test(h), f + ': errlog.js tūlīt pēc guard.js (bez defer)');
     }
     const q = rd('supabase/client-errors.sql');
     ok(/^36 client-errors\.sql$/m.test(rd('supabase/ORDER.txt')) && /t:client-errors-test\.sql/.test(rd('tests/run-sql.sh')), 'ORDER.txt, SQL tests');
@@ -4539,6 +4438,63 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/declare var maplibregl/.test(rd('tools/check-js.d.ts')) && /declare function skinArtSvg/.test(rd('tools/check-js.d.ts')), 'globālie no ES moduļa / IIFE');
     const y = rd('.github/workflows/tests.yml');
     ok(/typescript@\d+\.\d+\.\d+/.test(y) && /node tools\/check-js\.mjs/.test(y), 'CI: koda pārbaude');
+  });
+}
+
+// ---------- B17 (audits 2): E2E ar īstiem Supabase servisiem; uzvedība, nevis teksts; versijas vienā vietā ----------
+{
+  const fs17 = require('fs'), path17 = require('path'), crypto17 = require('crypto');
+  const ROOT17 = path17.join(__dirname, '..');
+  const rd = f => fs17.readFileSync(path17.join(ROOT17, f), 'utf8');
+  const E = require('./e2e/stack.js');
+  test('B17: E2E steks — tikai lokāla datubāze, migrācijas pēc ORDER.txt, pareizi parakstīti JWT', () => {
+    for (const h of ['localhost', '127.0.0.1', '::1', '/tmp', '/var/run/postgresql', undefined]) ok(E.czE2eLocalHost(h), 'lokāls: ' + h);
+    for (const h of ['db.pkqusuoicxmwcgwsrdqy.supabase.co', 'aws-0-eu-west-1.pooler.supabase.com', '10.0.0.5', 'example.com']) ok(!E.czE2eLocalHost(h), 'atteikts: ' + h);
+    const order = E.czE2eOrder(rd('supabase/ORDER.txt'));
+    eq(order.length, rd('supabase/ORDER.txt').split('\n').filter(l => /^\d+ /.test(l)).length, 'visi ORDER.txt faili');
+    ok(order.every(f => fs17.existsSync(path17.join(ROOT17, 'supabase', f))), 'faili eksistē');
+    const tok = E.czE2eJwt({ role: 'anon' }, 'x'.repeat(40)), [h, p, s] = tok.split('.');
+    eq(JSON.parse(Buffer.from(p, 'base64url')).role, 'anon');
+    eq(s, crypto17.createHmac('sha256', 'x'.repeat(40)).update(h + '.' + p).digest('base64url'), 'HS256 paraksts');
+  });
+  test('B17: E2E — pārlūkā tikai publiskā (anon) atslēga; servisa atslēga un paroles tikai lokālai testa datubāzei', () => {
+    const flow = rd('tests/e2e/rides-flow.js'), stack = rd('tests/e2e/stack.js');
+    ok(flow.includes("anonKey: '${st.anonKey}'") && !/serviceKey/.test(flow), 'lietotnes konfigurācijā tikai anon atslēga');
+    ok(!/sb_secret_|sb_publishable_|supabase\.co/.test(flow + stack + rd('tests/e2e/bootstrap.sql')), 'nav īstu atslēgu un produkcijas adreses');
+    ok(/czE2eLocalHost\(pg\.host\)/.test(stack) && /drop database if exists \$\{DB\}/.test(stack), 'pārbauda adresi pirms datubāzes dzēšanas');
+  });
+  test('B17: CI darbs e2e — Auth un PostgREST fiksētas versijas ar SHA-256, vietne gaida E2E', () => {
+    const y = rd('.github/workflows/tests.yml');
+    const e = y.slice(y.indexOf('\n  e2e:\n'), y.indexOf('\n  deploy:\n'));
+    ok(/supabase\/auth\/releases\/download\/v\d+\.\d+\.\d+\//.test(e) && /PostgREST\/postgrest\/releases\/download\/v\d+\.\d+\.\d+\//.test(e), 'fiksētas versijas');
+    eq((e.match(/[0-9a-f]{64} {2}\S+" \| sha256sum -c -/g) || []).length, 2, 'abām programmām SHA-256 pārbaude');
+    ok(/node tests\/e2e\/rides-flow\.js/.test(e) && /image: postgres:16/.test(e), 'palaiž plūsmu pret PostgreSQL 16');
+  });
+  test('B17: versijas vienā vietā — katram lapas failam ir ?v= un fails eksistē; testi nepārbauda versiju numurus', () => {
+    for (const page of ['index.html', 'admin.html', 'privacy.html', 'terms.html', 'index-gl.html']) {
+      const h = rd(page);
+      const refs = [...h.matchAll(/(?:src|href)="(\.?\/?[\w./-]+\.(?:js|css))(\?v=[^"]*)?"/g)].filter(m => !/^(https?:)?\/\//.test(m[1]) && !m[1].startsWith('vendor/'));
+      ok(refs.length > 0, page + ': ir faili');
+      for (const m of refs) {
+        ok(m[2] && /^\?v=\w+$/.test(m[2]), page + ': ' + m[1] + ' ar ?v=');
+        ok(fs17.existsSync(path17.join(ROOT17, m[1].replace(/^\.\//, ''))), page + ': ' + m[1] + ' eksistē');
+      }
+      const seen = refs.map(m => m[1]);
+      eq(seen.length, new Set(seen).size, page + ': neviens fails divreiz');
+    }
+    // ?v= vērtību izvietojot nosaka tools/build.mjs (pēc satura) — testiem tā nav jāzina
+    const self = rd('tests/run.js');
+    ok(!new RegExp('\\\\\\?v=\\(?1[0-9\\[]').test(self), 'tests/run.js: nav pārbaužu, kas prasa konkrētu ?v= numuru');
+  });
+  test('B17: teksta pārbaudes nepalielinās (uzvedības testi: tests/e2e/, tests/*-test.sql)', () => {
+    const self = rd('tests/run.js');
+    const sqlText = self.split('.test(' + 'sql').length - 1;
+    const rx = (self.match(new RegExp('/[gimsuy]*\\.test\\(', 'g')) || []).length;
+    // Robežas — B17 (27.11.2026) stāvoklis: SQL faila teksta pārbaudes 133 → 50, visas regulārās izteiksmes 1268 → 1148, versiju numuri 48 → 0.
+    // Ja pārbaudi aizstāj ar uzvedības testu — samazini skaitli. Palielināt nedrīkst: jaunai SQL loģikai — scenārijs tests/*-test.sql.
+    ok(sqlText <= 50, 'SQL faila teksta pārbaudes: ' + sqlText + ' (≤ 50)');
+    ok(rx <= 1148, 'regulārās izteiksmes pret tekstu: ' + rx + ' (≤ 1148)');
+    for (const f of ['reports-test.sql', 'ratings-stats-test.sql', 'permissions-test.sql']) ok(rd('tests/run-sql.sh').includes('t:' + f), f + ' — CI');
   });
 }
 
