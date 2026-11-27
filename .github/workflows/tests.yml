@@ -36,6 +36,12 @@ jobs:
         with:
           node-version: 22
       - run: node tests/run.js
+      # B16: koda pārbaude — katras lapas skripti kā viens globālais tvērums (nedefinēti / divreiz deklarēti nosaukumi u.c.)
+      - name: Koda pārbaude (TypeScript)
+        if: runner.os == 'Linux'
+        run: |
+          npm install --no-save --no-package-lock typescript@6.0.3
+          node tools/check-js.mjs
 
   sql:
     name: Datubāzes testi (PostgreSQL 16)
