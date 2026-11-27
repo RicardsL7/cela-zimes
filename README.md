@@ -26,7 +26,7 @@ Galvenie faili: `app-gl.js` (karte, GPS, navigācija, brīdinājumi), `signs-gl.
 `roads-gl.js` (ceļu indekss), `alerts.js` / `reports.js` (brīdinājumi, ziņojumi), `rides.js` / `rides-ui.js` (kopbraucieni),
 `auth.js` (konts, piekrišanas), `traffic*.js` (sastrēgumi), `park*.js` / `parking.js` (stāvēšana), `garage.js` / `skins*.js`
 (Garāža), `admin.html` (īpašnieka statistika), `terms.html` / `privacy.html`.
-Vecā Leaflet versija (`app.js`, `basemap.js`, `roads.js`, `signlayer.js`, `style.css`) netiek lietota.
+`app-gl.js` kopā ar daļām `app-osm-gl.js`, `app-alerts-gl.js`, `app-reports-gl.js`, `app-places-gl.js`, `app-start.js` — sk. „Koda uzbūve (B16)”.
 
 ## Kā palaist savā datorā
 
