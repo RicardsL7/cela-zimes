@@ -610,7 +610,7 @@
   `syncConsent`). `auth.js` — vienlaicīgi izsaukumi apvienoti (+ `run.js` tests, kas bez labojuma neizdodas).
 - **SQL uzvedības tests atrada kļūdu:** viens konts, divreiz izsaucot `report_vote(…, 'gone')`, varēja viens pats paslēpt jebkuru
   ziņojumu (`no_streak`). Labojums `supabase/reports-2-vote-once.sql` (Nr. 37): tā pati balss no tā paša konta netiek skaitīta otrreiz.
-  **Produkcijā vēl nav palaists** (vajag īpašnieka atļauju).
+  Produkcijā palaists 27.11.2026 (ar īpašnieka atļauju); `status.sql` — VISS KĀRTĪBĀ.
 - **Jauni SQL scenāriji:** `reports-test.sql` (14), `ratings-stats-test.sql` (36), `permissions-test.sql` (20) — aizstāj SQL
   faila teksta pārbaudes `run.js` (133 → 50). Divi vecie teksta testi pārbaudīja jau aizstātu failu (coins-2 `presence_nearby`
   anon tiesības — A16 tās noņēma; reports.sql „2 dažādi vairs nav” — coins-1 to mainīja).
