@@ -66,6 +66,10 @@ STEPS=(
   # B12 (audits 2): lietotnes kļūdu pieraksts (palaižama atkārtoti)
   s:client-errors.sql s:client-errors.sql
   t:client-errors-test.sql
+  # B17 (audits 2): ziņojumu balss no viena konta skaitās vienreiz (palaižama atkārtoti)
+  s:reports-2-vote-once.sql s:reports-2-vote-once.sql
+  # B17: uzvedības scenāriji (agrāk — SQL teksta pārbaudes tests/run.js)
+  t:reports-test.sql t:ratings-stats-test.sql t:permissions-test.sql
 )
 
 fail=0; pass=0
