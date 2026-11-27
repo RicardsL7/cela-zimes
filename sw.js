@@ -9,13 +9,13 @@
 // Android lietotnē (Capacitor) netiek reģistrēts — tur lapu ielādē pati lietotne (pwa.js).
 // Avārijas izslēgšana: README → „Bezsaistes režīms (B14)”.
 
-const CZ_SW_VERSION = '168';
+const CZ_SW_VERSION = '169';
 const CZ_SW_SHELL = 'cz-shell-v1', CZ_SW_DATA = 'cz-data-v1', CZ_SW_TILES = 'cz-tiles-v1';
 const CZ_SW_KEEP = [CZ_SW_SHELL, CZ_SW_DATA, CZ_SW_TILES, 'cz-api-v1'];
 const CZ_SW_MAX = { [CZ_SW_DATA]: 600, [CZ_SW_TILES]: 4000 };
 const CZ_SW_DAY = 24 * 3600 * 1000;
 // Lapas, kuras sagatavo uzreiz (pārējais — kad pirmo reizi ielādēts)
-const CZ_SW_PAGES = ['./', './index.html', './index-gl.html', './vendor/maplibre-gl-6.15.0/maplibre-gl-worker.mjs',
+const CZ_SW_PAGES = ['./', './index.html', './vendor/maplibre-gl-6.15.0/maplibre-gl-worker.mjs',
   './data/osm/cameras.json', './data/osm/index.json', './manifest.webmanifest', './icons/icon-192.png'];
 // Nekad neaiztikt (vienmēr tikai tīkls)
 const CZ_SW_SKIP = /^\/(admin\.(html|js|css)|sw\.js|\.well-known\/)/;
@@ -175,7 +175,7 @@ async function czSwInstall(base) {
   const c = await czSw.caches.open(CZ_SW_SHELL);
   let html = '';
   try {
-    const r = await czSw.fetch(new Request(new URL('./index-gl.html', base).href, { cache: 'reload' }));
+    const r = await czSw.fetch(new Request(new URL('./index.html', base).href, { cache: 'reload' }));
     if (r.ok) html = await r.text();
   } catch { /* bez tīkla — tikai tas, kas ir */ }
   const want = new Set([...CZ_SW_PAGES, ...czSwAssets(html)].map(p => new URL(p, base).href));

@@ -15,7 +15,7 @@ Statiska lapa (HTML + JavaScript; izvietojot — saspiešana un versijas pēc sa
 
 | Daļa | Kas |
 |---|---|
-| Karte | MapLibre GL 6 no `vendor/` (ne CDN; `index.html` / `index-gl.html` — abi vienādi), OpenFreeMap vektoru flīzes |
+| Karte | MapLibre GL 6 no `vendor/` (ne CDN; lapa `index.html`; `index-gl.html` — tikai pāradresācija), OpenFreeMap vektoru flīzes |
 | Zīmes, ātrumi | OpenStreetMap (Overpass), Mapillary ielu foto (`mly-config.js` — publiskais klienta žetons) |
 | Meklēšana, maršruts | Photon / Nominatim, OSRM |
 | Konti, kopbraucieni, ziņojumi, sastrēgumi | Supabase: PostgreSQL ar RLS (`supabase/*.sql`), anonīmi konti + e-pasts / Google |
@@ -134,8 +134,7 @@ Savs serveris Latvijas datiem (OSRM + Photon + Overpass): Hetzner 8 vCPU / 16 GB
 2. Supabase → Edge Functions → Secrets: `OPEN_METEO_KEY` (nekad lapā, JS vai repozitorijā).
 3. Izvieto `supabase/functions/weather` ar **Verify JWT izslēgtu** (laikapstākļi vajadzīgi arī bez pieteikšanās).
    Tests: `deno run --allow-env --allow-read tests/weather-fn-test.ts`.
-4. `services.js`: `weather: 'https://pkqusuoicxmwcgwsrdqy.supabase.co/functions/v1/weather'`, jauna `?v=` versija
-   `index.html` un `index-gl.html`.
+4. `services.js`: `weather: 'https://pkqusuoicxmwcgwsrdqy.supabase.co/functions/v1/weather'` (versija — automātiski, B15).
 Bez atslēgas funkcija atbild 503 un uz bezmaksas API neiet (citādi visi lietotāji nāktu no vienas IP).
 
 ## Testi
@@ -143,11 +142,28 @@ Bez atslēgas funkcija atbild 503 un uz bezmaksas API neiet (citādi visi lietot
 GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi”). Lokāli:
 
 - **Lietotnes loģika** (Node.js ≥ 22.13, Linux / macOS / Windows): `node tests/run.js`
+- **Koda pārbaude** (TypeScript 6/7, `npm install --no-save typescript@6.0.3` vai globāli): `node tools/check-js.mjs` — sk. „Koda uzbūve (B16)”.
 - **Datubāze** (vajag lokālu PostgreSQL ≥ 15 un `psql`; **nekad pret Supabase**):
   `PGHOST=localhost PGUSER=postgres PGPASSWORD=… bash tests/run-sql.sh` — uzbūvē visu shēmu no `supabase/*.sql`,
   palaiž drošības scenārijus, pārbauda `supabase/status.sql` un veco failu aizsardzību.
 - **Karte un lapu drošības politika** (Playwright + Chromium): `node tests/map-smoke.js . /tmp/karte` — sk. faila sākumu.
 - **Bezsaistes režīms** (Playwright + Chromium): `node tests/offline-smoke.js . /tmp/bezsaiste` — sk. faila sākumu.
+
+## Koda uzbūve (B16)
+
+- **Viena lapa:** lietotne ir `index.html`. `index-gl.html` — tikai pāradresācija (`redirect.js`) uz `./` ar tiem pašiem
+  `?parametriem` un `#daļu` (vecām saitēm, grāmatzīmēm, pieteikšanās saitēm). Jaunas izmaiņas — tikai `index.html`.
+- **Mantotie faili dzēsti** (Leaflet laika `app.js`, `basemap.js`, `roads.js`, `signlayer.js`, `style.css`).
+- **`app-gl.js` daļās** (klasiski skripti, viens globālais tvērums — kods pārcelts bez izmaiņām), lapā šajā secībā:
+  `app-gl.js` (iestatījumi, zīmes, GPS, maršruts, saskarne, `init`) → `app-osm-gl.js` (Overpass, OSM šūnas, laika
+  ierobežojumi) → `app-alerts-gl.js` (brīdinājumu un radaru slānis) → `app-reports-gl.js` (ziņošana) →
+  `app-places-gl.js` (vietas tuvumā) → `app-start.js` (`init()`). Daļu augšējā līmeņa kods drīkst izmantot `app-gl.js`
+  nosaukumus; `app-gl.js` augšējā līmenī (ārpus funkcijām) daļu nosaukumus — ne. Testi lasa visu kopā (`CZ_APP_PARTS`).
+- **Koda pārbaude `tools/check-js.mjs`** (CI darbā „JS testi”, Linux): katras lapas skriptus tieši lapas secībā saliek
+  vienā failā un pārbauda ar TypeScript (`checkJs`) — **kļūda**: nedefinēts nosaukums, divreiz deklarēts globālais
+  nosaukums, lietots pirms deklarācijas, vienādas atslēgas objektā, nesasniedzams kods, `switch` bez `break`, sintakse;
+  **brīdinājums**: neizmantots nosaukums. ESLint vietā — tas neredz, ka 40 failiem ir kopīgs globālais tvērums.
+  Globālie no ES moduļa / IIFE — `tools/check-js.d.ts`. `typeof x !== 'undefined'` pārbaudīti nosaukumi — nav kļūda.
 
 ## Būvēšana un vēlā ielāde (B15)
 

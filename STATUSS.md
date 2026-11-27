@@ -586,3 +586,17 @@
 - **Nav pārbaudīts lokāli:** esbuild saspiešana (šeit nav pieejama) — to pārbauda CI ar tiem pašiem testiem būvētajai vietnei;
   ja tie neizdodas, vietne netiek izvietota.
 
+## B16 (audits 2) — grūti uzturams kods un mantotie faili (27.11.2026)
+
+- **Dzēsti** `app.js`, `basemap.js`, `roads.js`, `signlayer.js`, `style.css` (1 315 rindas, nekur neielādēti).
+- **`index-gl.html` → pāradresācija** (`redirect.js`: `location.replace('./' + ?parametri + #)`, bez JS — `<noscript>` meta
+  refresh); lietotnes lapa tikai `index.html`. `sw.js` v169: uzstādot lasa `index.html`; bez tīkla `/index-gl.html` → saglabātā lapa.
+- **`app-gl.js` (3 641 → 1 982 rindas) daļās:** `app-osm-gl.js` (586), `app-alerts-gl.js` (551), `app-reports-gl.js` (266),
+  `app-places-gl.js` (272), `app-start.js` (`init()`). Kods pārcelts bez izmaiņām (pārbaudīts: rindas sakrīt, izņemot galvenes).
+- **`tools/check-js.mjs` + `tools/check-js.d.ts` (jauni):** TypeScript pārbaude pa lapām (index.html, admin.html, sw.js);
+  CI — typescript 6.0.3. Šobrīd: 0 kļūdas, 12 brīdinājumi (neizmantoti nosaukumi — `VEHICLE_PROFILES`, `cachedRoute` u.c.;
+  atstāti, jo nekaitē). Pārbaudīts, ka tā atrod pārrakstītu nosaukumu, dubultu deklarāciju, dubultu atslēgu, switch bez break;
+  ja `tsc` nav vai konfigurācija kļūdaina — neizdodas (nevis „0 kļūdas”).
+- **Testi:** `run.js` (+4 B16; 45 vietas ar `index-gl.html` pārveidotas; app-gl.js teksta testi lasa visas daļas — `czAppSrc()`),
+  `map-smoke.js` (atver `index.html`; pāradresācija `index-gl.html?code=abc#tok=1` → `/?code=abc#tok=1`).
+
