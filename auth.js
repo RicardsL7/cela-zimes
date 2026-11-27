@@ -263,9 +263,17 @@ class CzAuth {
     const mark = `cz.consent.sent.${kind}`;
     const v = `${this.userId}|${version}|${accepted}`;
     try { if (this.storage.getItem(mark) === v) return; } catch { /* */ }
-    await this.token();
-    const r = await this.fetch(this.url + '/rest/v1/user_consents', { method: 'POST', headers: this._h({ Prefer: 'return=minimal' }), body: JSON.stringify({ kind, version, accepted }) });
-    if (r.ok) { try { this.storage.setItem(mark, v); } catch { /* */ } }
+    // B17: vienlaicīgi izsaukumi (konta izveide + piekrišanas ekrāns u.c.) — viens ieraksts serverī, ne divi
+    const key = mark + '|' + v;
+    if (!this._consentBusy) this._consentBusy = new Map();
+    if (this._consentBusy.has(key)) return this._consentBusy.get(key);
+    const job = (async () => {
+      await this.token();
+      const r = await this.fetch(this.url + '/rest/v1/user_consents', { method: 'POST', headers: this._h({ Prefer: 'return=minimal' }), body: JSON.stringify({ kind, version, accepted }) });
+      if (r.ok) { try { this.storage.setItem(mark, v); } catch { /* */ } }
+    })().finally(() => this._consentBusy.delete(key));
+    this._consentBusy.set(key, job);
+    return job;
   }
   async syncTermsConsent() {
     if (!czConsentOk(this.storage)) return;

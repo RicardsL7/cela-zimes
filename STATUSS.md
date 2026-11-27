@@ -600,3 +600,21 @@
 - **Testi:** `run.js` (+4 B16; 45 vietas ar `index-gl.html` pārveidotas; app-gl.js teksta testi lasa visas daļas — `czAppSrc()`),
   `map-smoke.js` (atver `index.html`; pāradresācija `index-gl.html?code=abc#tok=1` → `/?code=abc#tok=1`).
 
+## B17 (audits 2) — testi pārbauda uzvedību, ne tekstu (27.11.2026)
+
+- **E2E ar īstiem Supabase servisiem** (`tests/e2e/`): `stack.js` (PostgreSQL + Supabase Auth v2.199.0 + PostgREST v12.2.3 +
+  37 migrācijas, bez Docker), `bootstrap.sql` (lomas kā Supabase, pg_cron aizstājējs), `rides-flow.js` (26 soļi, 2 cilvēki caur
+  lietotnes pogām — sk. README „Uzvedības testi (B17)”). CI darbs `e2e` (fiksētas versijas + SHA-256); `deploy` gaida arī to.
+  Lokāli: viena nestabila reize (šoferis vēl nebija saņēmis GPS vietu) — tests tagad gaida GPS kā telefonā; pēc tam 7 reizes pēc kārtas zaļš (~40 s).
+- **E2E atrada kļūdu:** konta izveidē piekrišanas (noteikumi, privātums) serverī tika ierakstītas divreiz (divi vienlaicīgi
+  `syncConsent`). `auth.js` — vienlaicīgi izsaukumi apvienoti (+ `run.js` tests, kas bez labojuma neizdodas).
+- **SQL uzvedības tests atrada kļūdu:** viens konts, divreiz izsaucot `report_vote(…, 'gone')`, varēja viens pats paslēpt jebkuru
+  ziņojumu (`no_streak`). Labojums `supabase/reports-2-vote-once.sql` (Nr. 37): tā pati balss no tā paša konta netiek skaitīta otrreiz.
+  **Produkcijā vēl nav palaists** (vajag īpašnieka atļauju).
+- **Jauni SQL scenāriji:** `reports-test.sql` (14), `ratings-stats-test.sql` (36), `permissions-test.sql` (20) — aizstāj SQL
+  faila teksta pārbaudes `run.js` (133 → 50). Divi vecie teksta testi pārbaudīja jau aizstātu failu (coins-2 `presence_nearby`
+  anon tiesības — A16 tās noņēma; reports.sql „2 dažādi vairs nav” — coins-1 to mainīja).
+- **Versijas:** 48 pārbaudes ar konkrētiem `?v=` numuriem dzēstas (versiju nosaka būvēšana, B15); viena pārbaude — katram lapas
+  failam ir `?v=` un fails eksistē. B11 `deploy needs` tests — vairs ne konkrēts teksts, bet „visi darbi”.
+- **Nav pārbaudīts lokāli:** E2E uz būvētās (saspiestās) vietnes (esbuild šeit nav); E2E CI vidē pārbauda pirmais CI palaidiens.
+

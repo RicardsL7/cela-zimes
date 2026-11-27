@@ -148,6 +148,25 @@ GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi
   palaiž drošības scenārijus, pārbauda `supabase/status.sql` un veco failu aizsardzību.
 - **Karte un lapu drošības politika** (Playwright + Chromium): `node tests/map-smoke.js . /tmp/karte` — sk. faila sākumu.
 - **Bezsaistes režīms** (Playwright + Chromium): `node tests/offline-smoke.js . /tmp/bezsaiste` — sk. faila sākumu.
+- **E2E — kopbrauciens caur lietotni** (Playwright + Chromium + lokāls PostgreSQL + Supabase Auth un PostgREST programmas):
+  `PGHOST=localhost PGUSER=postgres PGPASSWORD=… CZ_E2E_BIN=<mape ar auth, postgrest> node tests/e2e/rides-flow.js` — sk. „Uzvedības testi (B17)”.
+
+## Uzvedības testi (B17)
+- **E2E ar īstiem Supabase servisiem, bez Docker** (`tests/e2e/stack.js`): lokāls PostgreSQL + Supabase Auth (GoTrue — tā pati
+  programma, ko lieto Supabase) + PostgREST + visas `supabase/*.sql` migrācijas pēc `ORDER.txt`. Datubāze `cz_e2e` tiek izveidota
+  un izdzēsta; tikai localhost (citu adresi atsaka). Atslēgas — tikai šim testam (nav īstu). CI darbs „E2E” lejupielādē fiksētas
+  versijas (Auth v2.199.0, PostgREST v12.2.3) un pārbauda SHA-256; vietne izvietojas tikai, ja arī E2E zaļš.
+- **`tests/e2e/rides-flow.js`** — divi cilvēki divos pārlūka logos, viss ar lietotnes pogām: piekrišana → anonīms konts → profils →
+  pieprasījums (galamērķis no meklēšanas) → šoferis redz tikai aptuveni → piedāvājums → pieņemšana → abi redz vārdu un tālruni →
+  čats abos virzienos → svešs konts neredz un nevar mainīt (RLS caur īsto REST API) → atcelšana → konta dzēšana (serverī dzēsts).
+  Arī: piekrišanas ierakstītas serverī vienreiz, nav lapas kļūdu un CSP pārkāpumu. **Nav:** kartes maksājumi (vajag Stripe atslēgas).
+- **SQL uzvedība, nevis faila teksts:** `tests/reports-test.sql` (ziņojumi), `tests/ratings-stats-test.sql` (vērtējumi, ziņošana par
+  braucienu, statistika, „Šobrīd palīdz”, maksājuma statuss), `tests/permissions-test.sql` (ko `anon` / `authenticated` /
+  `service_role` drīkst — nolasīts no pašas datubāzes; RLS visām tabulām; `search_path` visām SECURITY DEFINER funkcijām).
+  Tie pārbauda gala datubāzi — vēlāks fails var mainīt to, ko teica agrāks (tā tika atrasti 2 novecojuši teksta testi).
+- **Versijas vienā vietā:** `?v=` nosaka būvēšana (B15); `tests/run.js` pārbauda tikai, ka katram lapas failam ir `?v=` un fails
+  eksistē. Teksta pārbaudes `tests/run.js`: SQL faila teksts 133 → 50, versiju numuri 48 → 0; tests neļauj tām pieaugt —
+  jaunai SQL loģikai raksta scenāriju `tests/*-test.sql`, jaunai plūsmai — E2E.
 
 ## Koda uzbūve (B16)
 
