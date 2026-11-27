@@ -8,6 +8,9 @@ const vm = require('vm');
 // tāpēc rezultāts nav atkarīgs no operētājsistēmas. (.gitattributes arī liek LF, šis — drošībai.)
 const readRaw = fs.readFileSync;
 fs.readFileSync = function () { const r = readRaw.apply(fs, arguments); return typeof r === 'string' ? r.replace(/\r\n/g, '\n') : r; };
+// B16: app-gl.js sadalīts — lietotnes galvenais kods = app-gl.js + daļas (lapā tieši šajā secībā, viens globālais tvērums)
+const CZ_APP_PARTS = ['app-gl.js', 'app-osm-gl.js', 'app-alerts-gl.js', 'app-reports-gl.js', 'app-places-gl.js', 'app-start.js'];
+const czAppSrc = () => CZ_APP_PARTS.map(f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')).join('\n');
 
 const ctx = vm.createContext({ console, Intl, Date, Math, Map, Set, JSON, Number, String, Array, Object, isNaN, setTimeout, clearTimeout,
   signSvg: () => '<svg/>', encodeURIComponent, decodeURIComponent, escape, URLSearchParams, Buffer, Error, Promise });
@@ -449,12 +452,12 @@ test('K. Maršruta līnija: paliek tikai nenobrauktā daļa (arī līkumos), bez
 });
 
 test('v134: nobrauktā daļa — blāva līnija; griezums seko bultai arī pie vāja GPS', () => {
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   ok(/id: 'route-done-line'[\s\S]{0,200}'line-opacity': 0\.2\d/.test(app), 'blāva, caurspīdīga līnija');
   ok(app.indexOf("id: 'route-done-line'") < app.indexOf("id: 'route-casing'"), 'zem galvenā maršruta');
   ok(/routeDone\(route, along\)/.test(app), 'drawRoute zīmē arī nobraukto daļu');
   ok(/loc\.off <= ROUTE_CUT_M/.test(app) && /const ROUTE_CUT_M = 70;/.test(app), 'griezums arī tad, kad bulta nav piesaistīta');
-  for (const f of ['index.html', 'index-gl.html']) {
+  for (const f of ['index.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     ok(/nav\.js\?v=(134|1[4-9]\d)/.test(h) && /app-gl\.js\?v=1[3-9]\d/.test(h), f + ': v134');
   }
@@ -1141,7 +1144,7 @@ test('W. Kopbraucienu cena: griesti — ceļa izdevumu daļa (B03), ievade, komi
     eq(G('reportsToMigrate')(null, now).length, 0);
   });
   test('F10: lietotnē ziņojumi vairs netiek glabāti ierīcē un kļūdas nerāda statusa joslā aiz loga', () => {
-    const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+    const app = czAppSrc();
     const fnSrc = name => { const i = app.indexOf('function ' + name + '('); return app.slice(i, app.indexOf('\n}\n', i)); };
     ok(/alerts = new AlertStore\(null\)/.test(app), 'AlertStore bez lokālās krātuves');
     ok(!/setStatus/.test(fnSrc('reportAlert')), 'reportAlert neizmanto setStatus');
@@ -1188,7 +1191,7 @@ test('W. Kopbraucienu cena: griesti — ceļa izdevumu daļa (B03), ievade, komi
 // ---------- F15: dalīšanās ar ātrumu ----------
 {
   const tg = fs.readFileSync(path.join(__dirname, '..', 'traffic-gl.js'), 'utf8');
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'traffic-2-helpers.sql'), 'utf8');
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   test('F15: jautājums pirmajā navigācijā — vienreiz, „Nē” respektē, abas pogas vienādas', () => {
@@ -1287,7 +1290,7 @@ test('W. Kopbraucienu cena: griesti — ceļa izdevumu daļa (B03), ievade, komi
     const end = t.coords[t.coords.length - 1], q = P(400, 185);
     ok(Math.abs(end[0] - q[0]) < 1e-7 && Math.abs(end[1] - q[1]) < 1e-7, 'beidzas 585 m');
     eq(t.steps.length, 3); eq(t.steps[2].maneuver.type, 'arrive'); eq(t.steps[2]._start, t.coords.length - 1);
-    const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+    const app = czAppSrc();
     const i = app.indexOf('function barrierToEntry'), f = app.slice(i, app.indexOf('\n}\n', i));
     ok(/routeTruncate\(r, Math\.max\(0, bar\.along - 15\)\)/.test(f) && !/osrmFetch/.test(f), 'nogriež pašreizējo maršrutu');
   });
@@ -1305,7 +1308,7 @@ test('W. Kopbraucienu cena: griesti — ceļa izdevumu daļa (B03), ievade, komi
     eq(G('routeCheckParts')(R).length, 1, 'īss — viss');
   });
   test('F4: brīdinājums kartītē, nevis setStatus; rezultāts pārbaudīts pret aktuālo maršrutu', () => {
-    const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+    const app = czAppSrc();
     const i = app.indexOf('// ---------- F4:'), j = app.indexOf('async function selectDestination');
     ok(i > 0 && j > i, 'F4 kods atrasts');
     const f4 = app.slice(i, j);
@@ -1317,7 +1320,7 @@ test('W. Kopbraucienu cena: griesti — ceļa izdevumu daļa (B03), ievade, komi
     for (const fn of ['function cancelPreview', 'function endNav']) { const k = app.indexOf(fn); ok(/clearBarriers\(\)/.test(app.slice(k, app.indexOf('\n}\n', k))), fn + ' aizvāc marķierus'); }
     const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
     ok(/id="routeTraffic"[^\n]*\n\s*<div class="route-barrier" id="routeBarrier" hidden><\/div>/.test(html), '#routeBarrier pie #routeTraffic');
-    eq(html, fs.readFileSync(path.join(__dirname, '..', 'index-gl.html'), 'utf8'), 'index.html = index-gl.html');
+    ok(/redirect\.js/.test(fs.readFileSync(path.join(__dirname, '..', 'index-gl.html'), 'utf8')), 'index-gl.html — pāradresācija (B16)');
   });
 }
 
@@ -1400,7 +1403,7 @@ test('W. Kopbraucienu cena: griesti — ceļa izdevumu daļa (B03), ievade, komi
     eq(h.update(null, 8000, c.lat, c.lng), null, 'pēc 100 m');
   });
   test('F7: updateLimit strādā bez navigācijas, testa ātrums no iestatījumiem, notikumi', () => {
-    const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+    const app = czAppSrc();
     const fn = name => { const i = app.indexOf('function ' + name + '('); return app.slice(i, app.indexOf('\n}\n', i)); };
     const ul = fn('updateLimit'), rs = fn('resolveSpeedLimit');
     ok(/resolveSpeedLimit\(\)/.test(ul) && !/state\.nav\.active/.test(ul), 'updateLimit nav atkarīgs no navigācijas');
@@ -1418,7 +1421,7 @@ test('W. Kopbraucienu cena: griesti — ceļa izdevumu daļa (B03), ievade, komi
 // ---------- F9: ziņas nav paslēptas aiz atvērta loga ----------
 {
   const ui = fs.readFileSync(path.join(__dirname, '..', 'rides-ui.js'), 'utf8');
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   const fnOf = (src, name) => { const i = src.indexOf('function ' + name + '('); return i < 0 ? '' : src.slice(i, src.indexOf('\n}\n', i)); };
   test('F9: maksājumu kartītēs (connect / checkout) kļūdas kartītē, nevis setStatus', () => {
     const drv = fnOf(ui, 'ridesPayDriverCard'), pas = fnOf(ui, 'ridesPassengerPay');
@@ -1578,7 +1581,7 @@ test('F13: UI — kopsavilkums, vēsture, ziņas kartītē (nevis statusa joslā
 
 // ---------- F2: atrašanās vieta liegta — saprotama ziņa, instrukcijas, bez tehniskā teksta ----------
 {
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const fnOf = (src, name) => { const i = src.indexOf('function ' + name + '('); return i < 0 ? '' : src.slice(i, src.indexOf('\n}\n', i)); };
   test('F2: liegta atrašanās vieta → latviska ziņa, „Kā ieslēgt?”, ziņu nepārraksta; zīmju skaits tikai ar ?dev=1', () => {
@@ -1607,14 +1610,14 @@ test('F13: UI — kopsavilkums, vēsture, ziņas kartītē (nevis statusa joslā
     ok(/czToast\('Atrašanās vieta joprojām nav atļauta/.test(fnOf(app, 'gpsRetry')), '„Mēģināt vēlreiz” — ja joprojām liegts, czToast');
     ok(/id="gpsHelpBtn"[^>]*hidden>Kā ieslēgt\?/.test(html) && /id="gpsSheet" class="sheet/.test(html) && /id="gpsRetry"[^>]*>Mēģināt vēlreiz/.test(html), 'HTML: poga, logs');
     for (const d of ['android', 'ios', 'desktop']) ok(html.includes(`data-dev="${d}"`), 'instrukcija ' + d);
-    eq(html, fs.readFileSync(path.join(__dirname, '..', 'index-gl.html'), 'utf8'), 'index.html = index-gl.html');
+    ok(/redirect\.js/.test(fs.readFileSync(path.join(__dirname, '..', 'index-gl.html'), 'utf8')), 'index-gl.html — pāradresācija (B16)');
   });
 }
 
 // ---------- F3: meklēšanas rezultāti latviski ----------
 test('F3: Photon ar lang=default; Latvijā valsti nerāda, ārzemēs — latviski; drošības tabula', () => {
   const P = require('../places.js');
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   eq(P.PHOTON_LANG, 'default', 'lang=lv serveris neatbalsta (400)');
   ok(/&lang=\$\{PHOTON_LANG\}/.test(app) && /cachedJson\('photon-lv'/.test(app), 'meklēšanas pieprasījums ar lang + jauna kešatmiņa');
   ok(P.buildPhotonPlacesUrl('fuel', 56.95, 24.1, 5).includes('&lang=default'), 'vietas tuvumā arī latviski');
@@ -1635,7 +1638,7 @@ test('F3: Photon ar lang=default; Latvijā valsti nerāda, ārzemēs — latvisk
 
 // ---------- F5: pēc „Atcelt” meklēšanas lauks tukšs ----------
 test('F5: cancelPreview notīra lauku, paslēpj ×, aizver ieteikumus, nesāk jaunu meklēšanu', () => {
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   const i = app.indexOf('function cancelPreview('), fn = app.slice(i, app.indexOf('\n}\n', i));
   ok(/\$\('searchInput'\)\.value = ''; \$\('clearSearch'\)\.hidden = true; \$\('results'\)\.hidden = true;/.test(fn), 'lauks, ×, saraksts');
   ok(/clearTimeout\(searchTimer\); searchSeq\+\+; lastResults = \[\];/.test(fn), 'gaidošā / nepabeigtā meklēšana atcelta');
@@ -1647,7 +1650,7 @@ test('F5: cancelPreview notīra lauku, paslēpj ×, aizver ieteikumus, nesāk ja
 
 // ---------- F6: izstrādātāja iestatījumi paslēpti ----------
 test('F6: testa režīms un Mapillary atslēga tikai izstrādātājam (?dev=1 / 7 pieskārieni), saglabājas, izslēdzot testa režīms izslēgts', () => {
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const box = html.slice(html.indexOf('<div id="devBox"'), html.indexOf('Izslēgt izstrādātāja režīmu'));
   ok(/<div id="devBox" class="dev-box" hidden>/.test(html), 'bloks pēc noklusējuma paslēpts');
@@ -1808,7 +1811,7 @@ test('F18: kartes stila nosaukumi — name:lv / name, ceļu un māju numuri nesk
     ok(!L('house3d'), theme + ': bez 3D');
   }
   ok(JSON.stringify(b.LABEL_LV) === JSON.stringify(['coalesce', ['get', 'name:lv'], ['get', 'name'], ['get', 'name:latin'], ['get', 'name_en']]), 'secība name:lv → name → latin → en');
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   ok((app.match(/await loadBasemapStyle\(/g) || []).length >= 2 && /map\.setStyle\(bm\.style/.test(app), 'katra stila maiņa iet caur loadBasemapStyle → tuneStyle');
 });
 
@@ -1851,7 +1854,7 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
     ok(/clip-path="url\(#rwc\)"/.test(r) && r.includes('M24 40C24 20 36 10 50 10') && r.includes('#ffa53a') && r.includes('M31 48h38'), th + ': ceļa darbi — strādnieks ar oranžu ķiveri un brillēm');
     ok(/32 61/.test(r) && r.includes('cx="32" cy="28" r="23"') && r.includes('M29.8 48L32 61'), th + ': v140 — lielāks aplis, īsāka adata; smaile vietā');
   }
-  for (const f of ['index.html', 'index-gl.html']) ok(/alerts\.js\?v=14\d/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': alerts.js ≥ v140');
+  for (const f of ['index.html']) ok(/alerts\.js\?v=14\d/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': alerts.js ≥ v140');
   // v141: traffic lights half size — the traffic-light check must come BEFORE ['has', 'pin'] (alerts mode: all signs have pin)
   const sg141 = fs.readFileSync(path.join(__dirname, '..', 'signs-gl.js'), 'utf8');
   const sfn = new Function(sg141.slice(sg141.indexOf('const TRAFFIC_LIGHT_SCALE'), sg141.indexOf('\n}', sg141.indexOf('function signsIconSize')) + 2) + '; return signsIconSize;')();
@@ -1870,10 +1873,10 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
   eq(ev(e16, { icon: 'alert:police', pin: 1 }), 1, 'citas spraudas — nemainītas');
   eq(ev(e16, { icon: 'alert:traffic-light', rel: 'mine' }), 0.475, 'zīmju režīmā luksofors — uz pusi mazāks');
   eq(ev(e16, { icon: 'x', rel: 'mine' }), 0.95, 'citas zīmes — nemainītas');
-  const ap141 = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const ap141 = czAppSrc();
   const afn = new Function('const TRAFFIC_LIGHT_SCALE = 0.5;' + ap141.slice(ap141.indexOf('function alertIconSize'), ap141.indexOf('\n}', ap141.indexOf('function alertIconSize')) + 2) + '; return alertIconSize;')();
   eq(ev(afn(1)[6], { icon: 'alert:traffic-light' }), 0.5, 'alerts slānī luksofors arī uz pusi mazāks');
-  for (const f of ['index.html', 'index-gl.html']) {
+  for (const f of ['index.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     ok(/signs-gl\.js\?v=(14[1-9]|1[5-9]\d)/.test(h) && /app-gl\.js\?v=(14[1-9]|1[5-9]\d)/.test(h), f + ': v141');
     ok(/app-gl\.js\?v=(14[3-9]|1[5-9]\d)/.test(h), f + ': v143');
@@ -1885,13 +1888,13 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
     const sg145 = fs.readFileSync(path.join(__dirname, '..', 'signs-gl.js'), 'utf8');
     ok(/if \(this\.hideOnMap\) for \(let i = list\.length - 1; i >= 0; i--\) if \(this\.hideOnMap\(list\[i\]\.s\)\) list\.splice\(i, 1\);/.test(sg145) &&
        sg145.indexOf('this.hideOnMap(list[i].s)') < sg145.indexOf('src.setData({\n      type: \'FeatureCollection\',\n      features: list.map'), 'v145: paslēptās zīmes nenonāk kartes slānī (arī punktos)');
-    const ap145 = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+    const ap145 = czAppSrc();
     ok(/signs\.hideOnMap = s => alertTypeForSign\(s\) === 'restriction';/.test(ap145) && /signs\.hideOnMap = null;/.test(ap145), 'v145: brīdinājumu režīmā ierobežojumi kartē nerādās');
     ok(/t === 'restriction' \? describeRestriction/.test(ap145), 'v145: kartīte „pēc N m” ierobežojumu joprojām rāda');
   }
   {
     // v146: Android app (Capacitor) — native background GPS; in the browser nothing changes
-    const ap146 = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+    const ap146 = czAppSrc();
     const grab = name => ap146.slice(ap146.indexOf('function ' + name), ap146.indexOf('\n}', ap146.indexOf('function ' + name)) + 2);
     const nativeGeo = new Function('window', grab('nativeGeo') + '; return nativeGeo;');
     eq(nativeGeo(undefined)(), null, 'pārlūkā (nav Capacitor) — parastais GPS');
@@ -1915,7 +1918,7 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
     ok(/tag_name: android-test/.test(wf) && /files: out\/cela-zimes\.apk/.test(wf) && /assembleDebug/.test(wf), 'GitHub pats uzbūvē APK un ieliek to lapā android-test');
     const ps = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'scripts', 'patch-android.js'), 'utf8');
     ok(/FOREGROUND_SERVICE_LOCATION/.test(ps) && /POST_NOTIFICATIONS/.test(ps) && !/ACCESS_BACKGROUND_LOCATION/.test(ps), 'atļaujas: priekšplāna serviss ar atrašanās vietu, bez „vienmēr” atļaujas');
-    for (const f of ['index.html', 'index-gl.html'])
+    for (const f of ['index.html'])
       ok(/app-gl\.js\?v=(14[6-9]|1[5-9]\d)/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': v146');
   }
   // v142: icons ↔ dots — happens after about half the zoom-out, and the animation is twice as fast
@@ -1930,7 +1933,7 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
   A.setAlertTheme('dark'); const ud = A.alertDataUrl('jam'); A.setAlertTheme('light'); const ul = A.alertDataUrl('jam');
   ok(ud !== ul, 'kešatmiņa atsevišķi katram stilam');
   eq(A.ALERT_ICON_ANCHOR, 'bottom'); eq(JSON.stringify(A.ALERT_ICON_OFFSET), '[0,0.5]');
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8'), sg = fs.readFileSync(path.join(__dirname, '..', 'signs-gl.js'), 'utf8');
+  const app = czAppSrc(), sg = fs.readFileSync(path.join(__dirname, '..', 'signs-gl.js'), 'utf8');
   ok(!/bottom-left|-5\.5, 4\.75/.test(app + sg), 'vecais burbuļa enkurs vairs netiek lietots');
   ok((app.match(/setAlertTheme\(bm\.theme === 'dark'/g) || []).length === 2, 'zīmju stils mainās kopā ar kartes stilu (starts un maiņa)');
   ok(/normBasemap\(store\.get\('basemap'/.test(app), 'agrākā izvēle pārvēršas par tumšo / gaišo');
@@ -1944,10 +1947,10 @@ test('v121: divi kartes stili, zīmes pēc stila, spraudas smaile notikuma viet�
 
 // ---------- v122: viens apaļš ātruma rādītājs, iela apakšējā joslā, „Centrēt” ----------
 test('v122: apaļajā aplī mans ātrums (pārsniedzot — sarkans, pulsē), iela un „Centrēt” navigācijas joslā', () => {
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   const css = fs.readFileSync(path.join(__dirname, '..', 'style-gl.css'), 'utf8');
   const fn = name => { const i = app.indexOf('function ' + name + '('); return app.slice(i, app.indexOf('\n}\n', i)); };
-  for (const f of ['index.html', 'index-gl.html']) {
+  for (const f of ['index.html']) {
     const html = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     const bar = html.slice(html.indexOf('id="bottombar"'), html.indexOf('</footer>'));
     ok(!/speedBox|km\/h/.test(bar), f + ': apakšējā joslā ātruma vairs nav');
@@ -1976,10 +1979,10 @@ test('v122: apaļajā aplī mans ātrums (pārsniedzot — sarkans, pulsē), iel
 
 // ---------- v123: bez „GPS darbojas” joslas; „Es” → „Centrēt”, kad karte aizvilkta ----------
 test('v123: statusa josla tikai GPS problēmai; poga „Es” paslēpta, „Centrēt” parādās aizvelkot karti', () => {
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   const css = fs.readFileSync(path.join(__dirname, '..', 'style-gl.css'), 'utf8');
   const fn = name => { const i = app.indexOf('function ' + name + '('); return app.slice(i, app.indexOf('\n}\n', i)); };
-  for (const f of ['index.html', 'index-gl.html']) {
+  for (const f of ['index.html']) {
     const html = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     ok(/id="centerBtn"[^>]*hidden/.test(html), f + ': poga „Es” paslēpta');
     ok(/id="recenterPill"[^>]*hidden[\s\S]{0,600}Centrēt/.test(html), f + ': „Centrēt” poga (sākumā paslēpta)');
@@ -2090,7 +2093,7 @@ test('v124: Garāža — 8 tēli kā serverī, retums pēc cenas, kartīšu stā
   const pj = fs.readFileSync(path.join(__dirname, '..', 'presence.js'), 'utf8');
   ok(/rotate\(\$\{\(h \|\| 0\) - /.test(pj) && /map\.on\('rotate', presenceRotateAll\)/.test(pj), 'bultiņa griežas pēc virziena un kartes');
   ok(!/pr-fox[^\n]*rotate/.test(pj) && /PRESENCE_ICON_PX = 48/.test(pj), 'lapsa ~48 px netiek griezta');
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   ok(!/skin/i.test(app.slice(app.indexOf('function createMeMarker('), app.indexOf('\n}\n', app.indexOf('function createMeMarker(')))), 'pats redzi savu zaļo bultiņu');
 });
 
@@ -2112,7 +2115,7 @@ test('v124: citi braucēji — tikai ar „Palīdzēt citiem” (jaunā versija)
   ok(G('CZ_PRIVACY_VERSION') >= '2026-11-01', 'privātuma versija (v124 vai jaunāka)');
   const pr = fs.readFileSync(path.join(__dirname, '..', 'privacy.html'), 'utf8');
   ok(/Versija 2026-11-\d\db?/.test(pr) && /monētu atlikums/.test(pr) && /uzticamības rādītājs/.test(pr) && /Tava vieta citu kartē/.test(pr), 'privātuma politika');
-  for (const f of ['index.html', 'index-gl.html']) {
+  for (const f of ['index.html']) {
     const html = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     ok(/id="garageBtn"[\s\S]{0,700}Garāža[\s\S]{0,200}id="garageBal"/.test(html), f + ': poga „Garāža” ar atlikumu');
     ok(/id="garageSheet"/.test(html) && /id="garageGrid"/.test(html), f + ': Garāžas logs');
@@ -2121,7 +2124,7 @@ test('v124: citi braucēji — tikai ar „Palīdzēt citiem” (jaunā versija)
     for (const s of ['skins-art.js', 'skins.js', 'garage.js', 'presence.js']) ok(lz(s) > html.indexOf('app-gl.js'), f + ': ' + s);
     ok(lz('skins-art.js') < lz('skins.js') && lz('skins.js') < lz('garage.js') && lz('garage.js') < lz('presence.js'), f + ': secība');
   }
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   ok(/for \(const type of REPORT_PICKER\)/.test(app), 'izvēlē REPORT_PICKER');
   ok(/REPORT_PROMPT_MS = 7000/.test(app) && /mk\('JĀ', 'yes', 'yes'\); mk\('NĒ', 'no', 'no'\)/.test(app), 'JĀ / NĒ, 7 s');
   ok(/mock: !!state\.testMode/.test(app), 'testa režīmā — bez monētām');
@@ -2166,12 +2169,12 @@ test('v125: Garāža — 8 tēli × 10 dizaini (lapsām 8), „Mythic”, filtrs
   eq(vis(all, 'mine', { owned: ['chef', 'owl-fenikss'] }).map(s => s.id).join(), 'chef,owl-fenikss', '„Mani”');
   const css = fs.readFileSync(path.join(__dirname, '..', 'style-gl.css'), 'utf8');
   ok(/\.gr-card\.rar-mythic/.test(css) && /\.gr-chip\.on/.test(css), 'CSS');
-  for (const f of ['index.html', 'index-gl.html']) ok(/id="garageChars"/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': filtrs');
+  for (const f of ['index.html']) ok(/id="garageChars"/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')), f + ': filtrs');
 });
 
 
 test('v131: iestatījumi — Braukšana / Sastrēgumi / Izskats / Konts un privātums / Par lietotni, 1 pieskāriens, bottom sheet', () => {
-  for (const f of ['index.html', 'index-gl.html']) {
+  for (const f of ['index.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     const set = h.slice(h.indexOf('id="settings"'), h.indexOf('</section>', h.indexOf('id="settings"')));
     const groups = ['Braukšana', 'Sastrēgumi', 'Izskats', 'Konts un privātums', 'Par lietotni'];
@@ -2193,7 +2196,7 @@ test('v131: iestatījumi — Braukšana / Sastrēgumi / Izskats / Konts un priv�
     ok(/<a id="call112" class="call-112" href="tel:112" hidden>/.test(h) && /Zvanīt 112/.test(h) && /places\.js\?v=(133|1[4-9]\d)/.test(h), f + ': v133 — poga „Zvanīt 112”');
     ok(!/[A-Za-z]{4,} (settings|Settings)/.test(set.replace(/<[^>]+>/g, '')), f + ': bez angļu teksta');
   }
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   ok(/\$\('call112'\)\.hidden = catId !== 'crisis'/.test(app), 'v133: 112 rāda tikai ārkārtas kategorijā');
   ok(!/toggleSigns|fabMore/.test(app) && /setBtn\.classList\.toggle\('dot', !state\.signsOn\)/.test(app), 'v132: sarkanais punkts uz iestatījumu pogas, kad brīdinājumi izslēgti');
   ok(/segmentize\(sel\); segmentize\(\$\('markerAnim'\)\);/.test(app), 'kartes stils un animācija — segmentu pogas');
@@ -2230,7 +2233,7 @@ test('v127: nobraucot no maršruta — pārrēķina no manas vietas uz priekšu 
   await req({ lat: 56.95, lng: 24.1 }, { lat: 56.96, lng: 24.1 });
   ok(!/bearings/.test(urls[1]), 'bez virziena — parasts maršruts');
   delete ctx.fetch;
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   const rr = app.slice(app.indexOf('async function reroute('), app.indexOf('// Testa režīmā: simulēts brauciens'));
   ok(/requestRoute\(state\.me, state\.nav\.dest, \{ bearing:/.test(rr) && !/cachedRoute/.test(rr), 'pārrēķins ar virzienu, bez kešatmiņas');
   ok(/isOffRoute\(p\.loc\.off, state\.me\.accuracy, hd, state\.me\.speedKmh\)/.test(app) && /REROUTE_GAP_MS = 8000/.test(app), 'nobraukšanas pārbaude, ik 8 s');
@@ -2238,7 +2241,7 @@ test('v127: nobraucot no maršruta — pārrēķina no manas vietas uz priekšu 
 
 
 test('v128: 50 → 70 bez 70 zīmes datos — OSM maxspeed uzvar atmiņu; aptuvens ierobežojums nekrāso sarkanu', () => {
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   const fn = app.slice(app.indexOf('function resolveSpeedLimit('), app.indexOf('const speedHold'));
   ok(/speedMemoOsm\.limit = explicitOsm \? explicitOsm\.limit : null/.test(fn), 'atceras OSM vērtību zīmes vietā');
   ok(/if \(!\(explicitOsm && explicitOsm\.limit !== speedMemoOsm\.limit\)\) sign = mem\.limit;/.test(fn), 'OSM mainījies → zīmes atmiņu neizmanto');
@@ -2256,7 +2259,7 @@ test('v128: 50 → 70 bez 70 zīmes datos — OSM maxspeed uzvar atmiņu; aptuve
 
 
 test('v129: spidometrs — aplis līdz atļautajam, sarkanā svītra pārsniedzot, zīme blakus, stāvot 0', () => {
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   const src = app.slice(app.indexOf('function renderSpeedo('), app.indexOf('// ---------- Laika ierobežojumi'));
   const els = {}; const mk = id => els[id] || (els[id] = { id, textContent: '', hidden: false, title: '', attrs: {}, cls: new Set(),
     setAttribute(k, v) { this.attrs[k] = v; }, classList: { toggle: (c, on) => { const e = els[id]; on ? e.cls.add(c) : e.cls.delete(c); },
@@ -2274,7 +2277,7 @@ test('v129: spidometrs — aplis līdz atļautajam, sarkanā svītra pārsniedzo
   ok(/\.limit-badge\.parked \.speedo-limit \{ opacity: 0/.test(css) && /\.speedo-limit, \.speedo-ring \{ transition: opacity/.test(css), 'v130: maiga pāreja');
   render(null, null, false); eq(els.speedValue.textContent, '–'); eq(els.limitSign.hidden, true, 'nezināms ierobežojums — zīmes nav');
   render(45, { limit: 50, approx: true }, false); ok(els.limitSign.cls.has('approx'), 'minēts — pelēka zīme');
-  for (const f of ['index.html', 'index-gl.html']) {
+  for (const f of ['index.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     ok(/id="limitSign"/.test(h) && /id="speedoArc"/.test(h) && /id="speedoOver"/.test(h), f + ': aplis un zīme');
   }
@@ -2336,7 +2339,7 @@ test('F19: ride-pay „sync” — tikai īpašniekam, pa daļām; admin.html po
 
 // ---------- F20: „Ziņot” — pareizs iemesls, kāpēc nav atrašanās vietas ----------
 test('F20: getLocationState un „Ziņot” logs — liegts / meklē / nav pieejams, pogas pelēkas', () => {
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const rep = fs.readFileSync(path.join(__dirname, '..', 'reports.js'), 'utf8');
   ok(/function getLocationState\(\)/.test(app) && /return 'denied'/.test(app) && /return 'unavailable'/.test(app) && /return 'searching'/.test(app), 'viens stāvoklis visai lietotnei');
@@ -2354,13 +2357,13 @@ test('F20: getLocationState un „Ziņot” logs — liegts / meklē / nav pieej
 
 // ---------- F21: iestatījumi latviski ----------
 test('F21: „Marķieru animācija” — nosaukumi latviski, vērtības nemainītas', () => {
-  for (const f of ['index.html', 'index-gl.html']) {
+  for (const f of ['index.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     ok(h.includes('<option value="pop">Uzlēciens</option>') && h.includes('<option value="morph">Pārveidošanās</option>'), f + ': latviski, vērtības pop / morph');
     const set = h.slice(h.indexOf('id="settings"'), h.indexOf('id="devBox"'));
     ok(!/Elegant|Morph</.test(set), f + ': nav angļu nosaukumu');
   }
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   ok(/store\.get\('markerAnim', 'pop'\)/.test(app) && /\bpop: \{ ms:/.test(app) && /\bmorph: \{ ms:/.test(app), 'saglabātās vērtības der kā līdz šim');
 });
 
@@ -2369,7 +2372,7 @@ test('F22: „Elektroauto uzlāde” — nav „EV”, id un OSM vaicājums nema
   const pl = fs.readFileSync(path.join(__dirname, '..', 'places.js'), 'utf8');
   ok(/\{ id: 'ev', +label: 'Elektroauto uzlāde', +color: '#0c8599', q: \['nwr\["amenity"="charging_station"\]'\]/.test(pl), 'teksts mainīts, id ev un vaicājums tie paši');
   ok(/"ev": \["amenity:charging_station"\]/.test(pl), 'Photon birkas nemainītas');
-  for (const f of ['places.js', 'app-gl.js', 'index.html', 'index-gl.html'])
+  for (const f of ['places.js', 'app-gl.js', 'app-places-gl.js', 'index.html'])
     ok(!/(label|title|textContent|aria-label)[^\n]*\bEV\b/.test(fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/\/\/.*$/gm, '')), f + ': nav „EV” redzamos tekstos');
 });
 
@@ -2430,7 +2433,7 @@ test('F24: placeDisplayName / isGenericName — name:lv, īsti nosaukumi, katego
   eq(m[0].name, 'Stāvvieta · Rīgas satiksme', 'papildinājums fonā — tā pati funkcija');
   const pl = fs.readFileSync(path.join(__dirname, '..', 'places.js'), 'utf8');
   ok(!/t\.name \|\| t\.brand|p\.name \|\| c\.label/.test(pl), 'vecā nosaukumu izvēle izņemta');
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   ok(/isGenericName\(p\.name, p\.cat\) \? \{ name: placeLabelOne\(p\.cat\) \}/.test(app), 'vecā kešatmiņa — rādot, ne mainot');
 });
 
@@ -2538,7 +2541,7 @@ test('A02: SQL labojums un lietotnes pogas', () => {
   ok(/b\.disabled = true/.test(rr) && /catch \(e\)/.test(rr) && /rideErrorText\(e\)/.test(rr) && /finally/.test(rr), 'pogas atslēdz, kļūdu parāda, sarakstu atjauno');
   ok(/ridesRespond\(e\.currentTarget, o\.id, 'accepted'\)|ridesRespond\([^)]*'accepted'\)/.test(ui) && /ridesRespond\([^)]*'declined'\)/.test(ui), 'abas pogas izmanto ridesRespond');
   ok(/cancelOffer\(o\.id\);[\s\S]{0,200}catch \(err\)[\s\S]{0,80}rideErrorText\(err\)/.test(ui), '„Atcelt” kļūda neiestrēgst');
-  for (const f of ['index.html', 'index-gl.html']) {
+  for (const f of ['index.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     ok(/rides\.js\?v=(14[7-9]|1[5-9]\d)/.test(h) && /rides-ui\.js\?v=(14[7-9]|1[5-9]\d)/.test(h), f + ': rides v147+');
   }
@@ -2592,7 +2595,7 @@ test('A03: SQL labojums un lietotnes pogas', () => {
   const cc = ui.slice(ui.indexOf('function ridesConfirmCancel'), ui.indexOf('function ridesDriveView'));
   ok(/catch \(err\)[\s\S]{0,60}rideErrorText\(err\)/.test(cc) && /finally \{ ridesRefresh\(true\); \}/.test(cc), 'pasažiera „Jā, atcelt” kļūda neiestrēgst');
   ok(/if \(st !== 'onboard'\) acts\.append/.test(ui), '„Atcelt” paslēpts ceļā (abām lomām)');
-  for (const f of ['index.html', 'index-gl.html']) {
+  for (const f of ['index.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     ok(/rides\.js\?v=(14[89]|1[5-9]\d)/.test(h) && /rides-ui\.js\?v=(14[89]|1[5-9]\d)/.test(h), f + ': rides v148+');
   }
@@ -2808,7 +2811,7 @@ test('A03: SQL labojums un lietotnes pogas', () => {
     const ui = fs.readFileSync(path.join(__dirname, '..', 'rides-ui.js'), 'utf8');
     ok(/const amount = rideRefundInfo\(p, o\.price_cents\)\.remaining/.test(ui), 'pēc daļējas — poga atmaksā atlikumu');
     ok(/else if \(r && r\.pending && !r\.already\)/.test(ui), 'automātiskā atmaksa apstrādē — atsevišķa ziņa');
-    for (const f of ['index.html', 'index-gl.html']) {
+    for (const f of ['index.html']) {
       const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
       ok(/rides\.js\?v=(149|1[5-9]\d)/.test(h) && /rides-ui\.js\?v=(149|1[5-9]\d)/.test(h), f + ': rides v149+');
     }
@@ -2841,7 +2844,7 @@ test('A06: noteikumi un privātuma politika — sniedzējs, kontakts, nekas nav 
 
 // ---------- A07 (audits 07.11.2026): MapLibre 6.15.0 (XSS labojums GHSA-jrc7-96c5-q579, ≥ 6.4.1) ----------
 test('A07: MapLibre 6.15.0 — ES modulis pirms visiem skriptiem, pārējie defer', () => {
-  for (const f of ['index.html', 'index-gl.html']) {
+  for (const f of ['index.html']) {
     const h = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     // A10: MapLibre no vendor/ (nevis unpkg) — modulis maplibre-load.js
     ok(!/maplibre-gl@\d/.test(h) && !/maplibre-gl-[45]\./.test(h), f + ': vecā MapLibre / CDN izņemta');
@@ -2862,7 +2865,7 @@ test('A07: MapLibre 6.15.0 — ES modulis pirms visiem skriptiem, pārējie defe
   }
 });
 test('A07: trūkstošie attēli (MapLibre 6) un skaidra ziņa, ja karte neielādējas', () => {
-  const app = fs.readFileSync(path.join(__dirname, '..', 'app-gl.js'), 'utf8');
+  const app = czAppSrc();
   ok(/if \(typeof map\.setMissingStyleImageResolver === 'function'\) map\.setMissingStyleImageResolver\(resolveImage\);\s*else map\.on\('styleimagemissing', e => \{ resolveImage\(e\.id\); \}\);/.test(app), 'resolver (6) ar rezervi (4/5)');
   ok(/if \(typeof maplibregl === 'undefined' \|\| !maplibregl\.Map\)/.test(app), 'modulis neielādējās → ziņa');
   ok(/zoomLevelsToOverscale: undefined,/.test(app), 'ceļu flīzes kā MapLibre 4 (bez sadalīšanas virs maxzoom)');
@@ -2990,7 +2993,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
       const c = cspOf(h); ok(c, f + ': CSP');
       if (!c) continue;
       // B07: lapām ar pieteikšanos — tikai Cloudflare Turnstile (CAPTCHA) skripts un rāmis, nekas cits
-      const CAP = ['index.html', 'index-gl.html', 'admin.html'].includes(f) ? ' https://challenges.cloudflare.com' : '';
+      const CAP = ['index.html', 'admin.html'].includes(f) ? ' https://challenges.cloudflare.com' : '';
       eq((c['script-src'] || []).join(' '), "'self'" + CAP, f + ": script-src tikai 'self' (+ Turnstile) (bez unsafe-inline / unsafe-eval / CDN)");
       eq((c['default-src'] || []).join(' '), "'self'", f + ': default-src');
       for (const [k, v] of [['object-src', "'none'"], ['base-uri', "'self'"], ['form-action', "'self'"], ['frame-src', CAP ? CAP.trim() : "'none'"]]) eq((c[k] || []).join(' '), v, f + ': ' + k);
@@ -3029,7 +3032,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(sb && allowed.has(sb), 'Supabase projekts (rides-config.js) ir connect-src');
     const adm = cspOf(fs.readFileSync(path.join(ROOT, 'admin.html'), 'utf8'));
     ok((adm['connect-src'] || []).includes('https://' + sb), 'admin.html: Supabase');
-    eq(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'), fs.readFileSync(path.join(ROOT, 'index-gl.html'), 'utf8'), 'index.html un index-gl.html vienādi');
+    ok(/redirect\.js/.test(fs.readFileSync(path.join(ROOT, 'index-gl.html'), 'utf8')), 'index-gl.html — pāradresācija (B16)');
     eq((c['worker-src'] || []).join(' '), "'self'", "kartes worker tikai no savas lapas (worker-src 'self')");
   });
   test('A10: MapLibre vendor/ faili sakrīt ar vendor/vendor.lock (SHA-256), versija tā pati, kas lapā', () => {
@@ -3147,7 +3150,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/h2\[tabindex="-1"\]:focus/.test(css), 'virsrakstam fokusa rāmis nav jārāda');
     const ms = fs.readFileSync(path.join(__dirname, 'map-smoke.js'), 'utf8');
     ok(/res\.a11y = \{\}/.test(ms) && /Tab izgāja no paneļa/.test(ms) && /piekrišana aizvērās ar Esc/.test(ms) && /Garāžas dialogs aizverot/.test(ms), 'kartes tests pārbauda ar tastatūru');
-    for (const f of ['index.html', 'index-gl.html']) ok(/sheets\.js\?v=(153|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /style-gl\.css\?v=(15[3-9]|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': jaunas versijas');
+    for (const f of ['index.html']) ok(/sheets\.js\?v=(153|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /style-gl\.css\?v=(15[3-9]|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': jaunas versijas');
   });
 }
 
@@ -3222,11 +3225,11 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     eq(ng.CZ_NET_POLICY['nominatim.openstreetmap.org'].conc, 1, 'Nominatim — viens vienlaikus');
     const scripts = [...h.matchAll(/<script (?:defer |type="module" )src="([\w.-]+\.js)\?v=/g)].map(m => m[1]);
     eq(scripts[0], 'netguard.js', 'pirmais pēc guard.js (pirms MapLibre un cache.js)');
-    eq(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'), fs.readFileSync(path.join(ROOT, 'index-gl.html'), 'utf8'), 'index = index-gl');
+    ok(/redirect\.js/.test(fs.readFileSync(path.join(ROOT, 'index-gl.html'), 'utf8')), 'index-gl.html — pāradresācija (B16)');
     ok(/id="netStats"/.test(h), 'tabula iestatījumos (?dev=1)');
   });
   test('A13: Overpass vairs nejautā abiem serveriem reizē; fona cilnē laikapstākļus un „Kopā” nepieprasa', () => {
-    const a = fs.readFileSync(path.join(ROOT, 'app-gl.js'), 'utf8');
+    const a = czAppSrc();
     const fo = a.slice(a.indexOf('function fetchOverpass('), a.indexOf('// ---------- OSM dati pa šūnām'));
     ok(/const OVERPASS_HEDGE_MS = 4000;/.test(a) && /hedge = setTimeout\(start, OVERPASS_HEDGE_MS\)/.test(fo) && !/OVERPASS_URLS\.map\(async/.test(fo), 'rezerves serveris tikai pēc 4 s vai kļūdas');
     ok(/overpassOrder\(OVERPASS_URLS\)/.test(fo) && /czNetHealth\(new URL\(u\)\.hostname\)/.test(a) && !/czNet\.health/.test(a), 'vispirms veselākais serveris (B04: czNetHealth, ne aizsegtais czNet.health)');
@@ -3236,7 +3239,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/if \(enter\) \{ try \{ items = await searchNominatim\(q\)/.test(rs), 'Nominatim tikai pēc „Meklēt” (noteikumi aizliedz autocomplete)');
     const r = fs.readFileSync(path.join(ROOT, 'rides-ui.js'), 'utf8');
     ok(/const idleHidden = document\.hidden && !trip;/.test(r) && /idleHidden \? 60000/.test(r) && /ridesSchedule\(300\)/.test(r), '„Kopā”: fonā bez brauciena — nepieprasa, atgriežoties uzreiz; aktīvā braucienā — turpina');
-    for (const [f, re] of [['presence.js', /document\.hidden( \|\| presence\.polling)?\) return/], ['traffic-gl.js', /if \(!document\.hidden\) trRefresh\(true\)/], ['app-gl.js', /if \(!document\.hidden\) loadReports\(true\)/]])
+    for (const [f, re] of [['presence.js', /document\.hidden( \|\| presence\.polling)?\) return/], ['traffic-gl.js', /if \(!document\.hidden\) trRefresh\(true\)/], ['app-reports-gl.js', /if \(!document\.hidden\) loadReports\(true\)/]])
       ok(re.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': fona cilnē neaptaujā');
     const ms = fs.readFileSync(path.join(__dirname, 'map-smoke.js'), 'utf8');
     ok(/__czNetWrapped/.test(ms), 'kartes tests pārbauda, ka netguard ir ieslēgts');
@@ -3461,7 +3464,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/izņemot, kamēr ir aktīvs brauciens/.test(te), 'terms.html');
     const ui = fs.readFileSync(path.join(ROOT, 'rides-ui.js'), 'utf8');
     ok(/Otram brauciena dalībniekam paliek notikušā brauciena ieraksts bez tava vārda/.test(ui), 'dzēšanas apstiprinājuma teksts');
-    for (const f of ['index.html', 'index-gl.html']) {
+    for (const f of ['index.html']) {
       const h = fs.readFileSync(path.join(ROOT, f), 'utf8');
       ok(/auth\.js\?v=(15[7-9]|1[6-9]\d)/.test(h) && /rides\.js\?v=(15[7-9]|1[6-9]\d)/.test(h) && /rides-ui\.js\?v=(15[7-9]|1[6-9]\d)/.test(h), f + ': v157+');
     }
@@ -3553,7 +3556,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(r.ok === false && r.reason === 'no_account', 'bez konta — pieprasījums netiek sūtīts');
   });
   test('A16: teksti — iestatījumi, Garāža, ātruma dalīšana, privātuma politika', () => {
-    for (const f of ['index.html', 'index-gl.html']) {
+    for (const f of ['index.html']) {
       const h = fs.readFileSync(path.join(ROOT, f), 'utf8');
       ok(/<b>Rādīt mani citu kartē<\/b>/.test(h) && /<input type="checkbox" id="presenceShow" class="switch">/.test(h), f + ': slēdzis (bez checked)');
       ok(!/kad brauc un ir ieslēgts „Palīdzēt citiem”/.test(h) && /ieslēgts „Rādīt mani citu kartē”/.test(h), f + ': Garāžas teksts');
@@ -3614,7 +3617,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/ridesCoarseRatings\(\[\.\.\.rides\.openList/.test(ui), 'vērtējumi no servera');
     ok(/Precīzu vietu, vārdu un piezīmi redz tikai šoferis, kura piedāvājumu pieņemsi/.test(ui), 'pasažierim paskaidrots formā');
     ok(/Kamēr brauciens gaida šoferi, citi pieteikušies lietotāji redz tikai aptuvenu vietu/.test(fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8')), 'privātuma politika');
-    for (const f of ['index.html', 'index-gl.html']) ok(/rides\.js\?v=(159|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /rides-ui\.js\?v=(159|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': v159+');
+    for (const f of ['index.html']) ok(/rides\.js\?v=(159|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /rides-ui\.js\?v=(159|1[6-9]\d)/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ': v159+');
   });
 }
 
@@ -3653,7 +3656,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/Ceļa izdevumu daļa \(neobligāti, līdz \$\{rideMoney\(cap\)\}\)/.test(ui), 'cenas lauks');
     ok(/kopbrauciens nav peļņas pārvadājums/.test(ui) && /Summa pārsniedz ceļa izmaksas/.test(ui), 'paziņojumi');
     ok(!/līdz 300 €/.test(ui), 'vairs nav 300 €');
-    for (const f of ['index.html', 'index-gl.html']) {
+    for (const f of ['index.html']) {
       const h = fs.readFileSync(path.join(ROOT, f), 'utf8');
       ok(/ne vairāk kā aptuvenās ceļa izmaksas \(~12 c\/km\)/.test(h), f + ': noteikumi lietotnē');
       ok(/rides\.js\?v=1[6-9]\d/.test(h) && /rides-ui\.js\?v=1[6-9]\d/.test(h) && /auth\.js\?v=1[6-9]\d/.test(h), f + ': v160+');
@@ -3683,13 +3686,13 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const scripts = [...h.matchAll(/<script (?:defer |type="module" )src="([\w.-]+\.js)\?v=/g)].map(m => m[1]);
     eq(scripts[1], 'services.js', 'services.js tūlīt pēc netguard.js (pirms nav.js, places.js, app-gl.js)');
     ok(/services\.js\?v=1[6-9]\d/.test(h), 'versija v161+');
-    eq(h, rd('index-gl.html'), 'index = index-gl');
+    ok(/redirect\.js/.test(rd('index-gl.html')), 'index-gl.html — pāradresācija (B16)');
     ok(!/apikey|OPEN_METEO_KEY|sk_/.test(rd('services.js').replace(/\/\/.*$/gm, '')), 'services.js kodā nav atslēgu');
   });
   test('B04: kodā vairs nav ierakstītu maršruta / meklēšanas / laikapstākļu adrešu (ielādētajos failos)', () => {
     const hard = /https:\/\/(router\.project-osrm\.org|routing\.openstreetmap\.de|photon\.komoot\.io|nominatim\.openstreetmap\.org|api\.open-meteo\.com)/;
     for (const f of ['nav.js', 'park-gl.js', 'places.js', 'app-gl.js', 'rides-ui.js']) ok(!hard.test(rd(f).replace(/^\s*\/\/.*$/gm, '')), f + ': adrese tikai services.js');
-    const a = rd('app-gl.js');
+    const a = czAppSrc();
     ok(/CZ_SERVICES\.weather \+ '\?latitude='/.test(a) && /czServiceIsOwn\(url\) \? \{ headers: \{ apikey: RIDES_CONFIG\.anonKey/.test(a), 'laikapstākļi: adrese no services.js; mūsu funkcijai — publiskā atslēga');
     eq((a.match(/const WEATHER_FIELDS = '([^']+)'/) || [])[1], (rd('supabase/functions/weather/index.ts').match(/const WEATHER_FIELDS = '([^']+)'/) || [])[1], 'tie paši lauki lietotnē un funkcijā');
   });
@@ -3744,11 +3747,11 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   const rd = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
   test('B05: maps.mail.ru nekur kodā, CSP un netguard; Overpass — tikai ES serveris no services.js', () => {
     const code = f => rd(f).replace(/^\s*\/\/.*$/gm, '').replace(/\/\/ B05.*$/gm, '');
-    for (const f of ['app-gl.js', 'app.js', 'netguard.js', 'index.html', 'index-gl.html', 'admin.html', 'tools/build-osm.mjs', 'services.js'])
+    for (const f of ['app-gl.js', 'app-osm-gl.js', 'netguard.js', 'index.html', 'admin.html', 'tools/build-osm.mjs', 'services.js'])
       ok(!/mail\.ru/.test(code(f)), f + ': bez mail.ru');
     const S = require('../services.js');
     eq(JSON.stringify(S.CZ_SERVICES.overpass), JSON.stringify(['https://overpass-api.de/api/interpreter']), 'tikai overpass-api.de');
-    ok(/^const OVERPASS_URLS = CZ_SERVICES\.overpass;$/m.test(rd('app-gl.js')), 'app-gl.js ņem no services.js');
+    ok(/^const OVERPASS_URLS = CZ_SERVICES\.overpass;$/m.test(czAppSrc()), 'app-gl.js ņem no services.js');
     const csp = (rd('index.html').match(/connect-src ([^;]+);/) || [])[1];
     for (const u of S.CZ_SERVICES.overpass) ok(csp.includes('https://' + S.czServiceHost(u)), 'CSP: ' + u);
     ok(!/mail\.ru/.test(rd('tools/build-osm.mjs').split('\n').find(l => /^const URLS/.test(l)).replace(/;\s+\/\/.*$/, '')), 'nakts dati bez mail.ru');
@@ -3765,7 +3768,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
       ok(pr.includes(w), 'politikā: ' + w);
     ok(/Versija 2026-11-10/.test(pr) && /<p>2026-11-10: /.test(pr), 'versija + izmaiņu ieraksts');
     ok(/CZ_PRIVACY_VERSION = '2026-11-10[a-z]?'/.test(rd('auth.js')), 'auth.js → piekrišanas logs');
-    for (const f of ['index.html', 'index-gl.html', 'admin.html']) ok(/auth\.js\?v=1[6-9]\d/.test(rd(f)) && !/auth\.js\?v=160/.test(rd(f)), f + ': auth.js jauna versija');
+    for (const f of ['index.html', 'admin.html']) ok(/auth\.js\?v=1[6-9]\d/.test(rd(f)) && !/auth\.js\?v=160/.test(rd(f)), f + ': auth.js jauna versija');
     // katrs CSP connect-src ārējais serveris ir minēts politikā (pēc nosaukuma vai adreses)
     const NAMES = { 'pkqusuoicxmwcgwsrdqy.supabase.co': 'Supabase', 'tiles.openfreemap.org': 'OpenFreeMap', 'tile.openstreetmap.org': 'OpenStreetMap',
       'overpass-api.de': 'overpass-api.de', 'graph.mapillary.com': 'Mapillary', 'tiles.mapillary.com': 'Mapillary', 'api.openstreetmap.org': 'OpenStreetMap API',
@@ -3893,7 +3896,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     } finally { delete global.window; }
   });
   test('B07: CSP — tikai Turnstile; privātuma politika 2026-11-10b', () => {
-    for (const f of ['index.html', 'index-gl.html', 'admin.html']) {
+    for (const f of ['index.html', 'admin.html']) {
       const h = rd(f);
       ok(/script-src 'self' https:\/\/challenges\.cloudflare\.com;/.test(h) && /frame-src https:\/\/challenges\.cloudflare\.com;/.test(h), f + ': CSP');
       ok(/captcha\.js\?v=1[6-9]\d/.test(h) && h.indexOf('captcha.js') < h.indexOf('auth.js?v='), f + ': captcha.js pirms auth.js');
@@ -3932,7 +3935,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/t:radar-votes-test\.sql/.test(rd('tests/run-sql.sh')), 'SQL tests');
   });
   test('B08: lietotne — saraksts bez konta, ziņojums un „nav radara” ar kontu (neredzami, bez CAPTCHA loga)', async () => {
-    const app = rd('app-gl.js');
+    const app = czAppSrc();
     const a = app.indexOf('const radarShared'), b = app.indexOf('// Mapillary pārbauda līdz 50');
     ok(a > 0 && b > a, 'radaru bloks atrasts');
     ok(/radarRpc\('radar_list'\)/.test(app) && /radarRpc\('radar_report', \{ items \}, \{ account: true \}\)/.test(app)
@@ -3960,7 +3963,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const pr = rd('privacy.html');
     ok(/Versija 2026-11-10c/.test(pr) && /<p>2026-11-10c: /.test(pr) && /CZ_PRIVACY_VERSION = '2026-11-10c'/.test(rd('auth.js')), 'jauna versija → piekrišanas logs');
     ok(/serveris <b>30 dienas<\/b> glabā, kurš konts par kuru radaru ziņoja/.test(pr) && /par radaru vai atzīmēja to kā nederīgu, — 30 dienas/.test(pr), '2. un 8. punkts');
-    for (const f of ['index.html', 'index-gl.html']) ok(/app-gl\.js\?v=(16[5-9]|1[7-9]\d)/.test(rd(f)) && /auth\.js\?v=165/.test(rd(f)), f + ': v165+');
+    for (const f of ['index.html']) ok(/app-gl\.js\?v=(16[5-9]|1[7-9]\d)/.test(rd(f)) && /auth\.js\?v=165/.test(rd(f)), f + ': v165+');
     ok(/auth\.js\?v=165/.test(rd('admin.html')), 'admin.html: auth v165');
   });
 }
@@ -4121,7 +4124,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(true, 'fetch kļūda netiek izmesta');
   });
   test('B12: errlog.js ielādējas pirmais pēc guard.js; SQL 36; admin cilne', () => {
-    for (const f of ['index.html', 'index-gl.html', 'admin.html']) {
+    for (const f of ['index.html', 'admin.html']) {
       const h = rd(f);
       ok(/<script src="guard\.js\?v=\d+"><\/script>\n  <script src="errlog\.js\?v=166"><\/script>/.test(h), f + ': errlog.js tūlīt pēc guard.js (bez defer)');
     }
@@ -4210,8 +4213,8 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   });
   test('B14: sw.js — lapas resursi no HTML; lapas atslēga bez parametriem', () => {
     const { czSwAssets, czSwPageKey } = loadSw();
-    const a = czSwAssets(rd('index-gl.html'));
-    ok(a.includes('./app-gl.js?v=' + /app-gl\.js\?v=(\d+)/.exec(rd('index-gl.html'))[1]), 'app-gl.js');
+    const a = czSwAssets(rd('index.html'));
+    ok(a.includes('./app-gl.js?v=' + /app-gl\.js\?v=(\d+)/.exec(rd('index.html'))[1]), 'app-gl.js');
     ok(a.includes('./manifest.webmanifest') && a.some(x => /^\.\/style-gl\.css\?v=/.test(x)) && a.some(x => /maplibre-gl\.css$/.test(x)), 'manifests, stili');
     ok(!a.some(x => /^\.\/(https?:|\/\/)|fonts\.googleapis|\.html/.test(x)), 'nav ārējo / html');
     ok(a.length >= 40, 'faili: ' + a.length);
@@ -4264,7 +4267,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const sw = loadSw();
     const c = fakeCaches(); sw.czSw.caches = c;
     const html = '<link href="style-gl.css?v=2"><script src="app-gl.js?v=9"></script><script src="https://x.test/a.js"></script><a href="privacy.html">';
-    sw.czSw.fetch = async req => { const u = req.url || req; return u.endsWith('/index-gl.html') ? resp(html) : u.includes('icon-192') ? resp('x', 404) : resp('f:' + u); };
+    sw.czSw.fetch = async req => { const u = req.url || req; return u.endsWith('/index.html') ? resp(html) : u.includes('icon-192') ? resp('x', 404) : resp('f:' + u); };
     const shell = await c.open('cz-shell-v1');
     await shell.put(O + '/app-gl.js?v=8', resp('old'));
     await shell.put(O + '/skins/x.svg', resp('keep'));
@@ -4274,7 +4277,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     await (await c.open('cits')).put(O + '/y', resp('y'));
     await sw.czSwInstall(O + '/');
     const keys = [...c.store.get('cz-shell-v1').keys()];
-    ok(keys.includes(O + '/app-gl.js?v=9') && keys.includes(O + '/style-gl.css?v=2') && keys.includes(O + '/index.html') && keys.includes(O + '/index-gl.html'), 'jaunie faili un lapa');
+    ok(keys.includes(O + '/app-gl.js?v=9') && keys.includes(O + '/style-gl.css?v=2') && keys.includes(O + '/index.html') && !keys.includes(O + '/index-gl.html'), 'jaunie faili un lapa (B16: index-gl.html — tikai pāradresācija)');
     ok(!keys.includes(O + '/app-gl.js?v=8'), 'vecā versija dzēsta');
     ok(keys.includes(O + '/skins/x.svg'), 'bezversijas fails paliek');
     ok(!keys.some(k => k.includes('x.test') || k.includes('privacy')), 'nav ārēju / citu lapu');
@@ -4326,7 +4329,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
       ok(b.slice(1, 4).toString() === 'PNG' && i.sizes === wdt + 'x' + hgt, i.src + ' ' + wdt + 'x' + hgt);
     }
     ok(m.icons.some(i => i.purpose === 'maskable'), 'maskable ikona');
-    for (const f of ['index.html', 'index-gl.html']) {
+    for (const f of ['index.html']) {
       const h = rd(f);
       ok(/<link rel="manifest" href="manifest\.webmanifest">/.test(h) && /<script defer src="pwa\.js\?v=\d+"><\/script>/.test(h)
         && /apple-touch-icon\.png/.test(h), f + ': manifests un pwa.js');
@@ -4373,19 +4376,19 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     eq(b.czBuildCheckNames('function longName() {}\nconst other = 1;', 'function longName(){}const o=1;').join(','), 'other', 'pazudis nosaukums atrasts');
     eq(b.czBuildCheckNames('function f$x() {}', 'function f$x(){}').length, 0, '$ nosaukumos');
     eq(b.czBuildTopNames(rd('skins-art.js')).length, 0, 'skins-art.js (ģenerēts IIFE)');
-    ok(b.czBuildTopNames(rd('app-gl.js')).includes('czToast') && b.czBuildTopNames(rd('lazy.js')).includes('czLazyStart'), 'app-gl.js, lazy.js');
+    ok(b.czBuildTopNames(czAppSrc()).includes('czToast') && b.czBuildTopNames(rd('lazy.js')).includes('czLazyStart'), 'app-gl.js, lazy.js');
   });
   test('B15: tools/build.mjs — būvē kopiju bez saspiešanas (lokāli); repozitorija faili netiek mainīti', async () => {
     const b = await B();
     const dir = fs15.mkdtempSync(path15.join(os15.tmpdir(), 'czb-'));
     for (const f of fs15.readdirSync(ROOT15)) if (/\.(html|js|mjs|css)$/.test(f)) fs15.copyFileSync(path15.join(ROOT15, f), path15.join(dir, f));
-    const before = rd('index-gl.html');
+    const before = rd('index.html');
     const r = await b.czBuild(dir, { log: () => {} });
-    const h = fs15.readFileSync(path15.join(dir, 'index-gl.html'), 'utf8');
+    const h = fs15.readFileSync(path15.join(dir, 'index.html'), 'utf8');
     ok(!/\?v=\d{2,3}"/.test(h) && /app-gl\.js\?v=[0-9a-f]{10}"/.test(h) && /type="text\/x-cz-lazy" src="rides-ui\.js\?v=[0-9a-f]{10}"/.test(h), 'visas versijas pēc satura');
-    eq(fs15.readFileSync(path15.join(dir, 'index.html'), 'utf8'), h, 'index.html = index-gl.html');
+    ok(/redirect\.js\?v=[0-9a-f]{10}"/.test(fs15.readFileSync(path15.join(dir, 'index-gl.html'), 'utf8')), 'index-gl.html (pāradresācija) — arī versija pēc satura');
     ok(r.files.includes('admin.js') && r.files.includes('legal.css') && r.pages.length >= 5, 'arī admin, privātuma lapas');
-    eq(rd('index-gl.html'), before, 'repozitorijā nekas nav mainīts');
+    eq(rd('index.html'), before, 'repozitorijā nekas nav mainīts');
     fs15.rmSync(dir, { recursive: true, force: true });
   });
   test('B15: tools/build.mjs --minify (aizstājējs esbuild vietā) — ES modulis, sintakse, pazudis nosaukums', async () => {
@@ -4438,7 +4441,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(L.CZ_LAZY.failed.has('parking.js'), 'neielādējies fails atzīmēts');
   });
   test('B15: lapas — vēlās ielādes faili, lazy.js pirms app-gl.js, app-gl.js sāk ielādi; CI būvē un testē būvēto', () => {
-    for (const f of ['index.html', 'index-gl.html']) {
+    for (const f of ['index.html']) {
       const h = rd(f);
       for (const s of ['parking.js', 'park-gl.js', 'park-dest-gl.js', 'rides.js', 'rides-ui.js', 'skins-art.js', 'skins.js', 'garage.js', 'presence.js']) {
         ok(new RegExp('<script type="text/x-cz-lazy" src="' + s.replace('.', '\\.') + '\\?v=\\d+"').test(h) && !new RegExp('<script defer src="' + s.replace('.', '\\.')).test(h), f + ': ' + s + ' — vēlāk');
@@ -4446,7 +4449,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
       ok(/data-init="ridesInit"/.test(h) && /data-init="garageInit"/.test(h) && /data-init="presenceInit"/.test(h), f + ': init funkcijas');
       ok(h.indexOf('lazy.js?v=') > 0 && h.indexOf('lazy.js?v=') < h.indexOf('app-gl.js?v='), f + ': lazy.js pirms app-gl.js');
     }
-    ok(/if \(typeof czLazyStart === 'function'\) czLazyStart\(\);/.test(rd('app-gl.js')), 'app-gl.js init() beigās');
+    ok(/if \(typeof czLazyStart === 'function'\) czLazyStart\(\);/.test(czAppSrc()), 'app-gl.js init() beigās');
     const y = rd('.github/workflows/tests.yml');
     ok(/esbuild@\d+\.\d+\.\d+/.test(y) && /git archive HEAD \| tar -x -C "\$RUNNER_TEMP\/site"/.test(y) && /node tools\/build\.mjs "\$RUNNER_TEMP\/site" --minify/.test(y), 'CI: būvē');
     ok(/node tests\/map-smoke\.js "\$RUNNER_TEMP\/site"/.test(y) && /node tests\/offline-smoke\.js "\$RUNNER_TEMP\/site"/.test(y), 'CI: testē būvēto');
@@ -4461,19 +4464,76 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const open = async n => { if (!store.has(n)) store.set(n, new Map()); const m = store.get(n); const key = k => (typeof k === 'string' ? k : k.url);
       return { put: async (k, r) => m.set(key(k), r), match: async k => m.get(key(k)), keys: async () => [...m.keys()].map(url => ({ url })), delete: async k => m.delete(key(k)) }; };
     sw.czSw.caches = { open, keys: async () => [...store.keys()], delete: async n => store.delete(n) };
-    sw.czSw.fetch = async req => { const u = req.url || req; fetched.push(u); return new Response(u.endsWith('/index-gl.html') ? '<script src="a.js?v=1"></script>' : 'x'); };
+    sw.czSw.fetch = async req => { const u = req.url || req; fetched.push(u); return new Response(u.endsWith('/index.html') ? '<script src="a.js?v=1"></script>' : 'x'); };
     await (await open('cz-shell-v1')).put('https://o.test/a.js?v=1', new Response('old'));
     await (await open('cz-shell-v1')).put('https://o.test/vendor/maplibre-gl-6.15.0/maplibre-gl-worker.mjs', new Response('old'));
     await sw.czSwInstall('https://o.test/');
     ok(!fetched.includes('https://o.test/a.js?v=1') && !fetched.some(u => u.includes('maplibre-gl-worker')), 'esošie netiek ielādēti');
-    ok(fetched.includes('https://o.test/index-gl.html') && fetched.includes('https://o.test/data/osm/cameras.json'), 'lapa un dati — vienmēr');
+    ok(fetched.includes('https://o.test/index.html') && fetched.includes('https://o.test/data/osm/cameras.json'), 'lapa un dati — vienmēr');
     // ierīce bez tīkla (navigator.onLine === false) — saglabātais uzreiz, tīklam neprasa
     fetched.length = 0; sw.czSw.offline = () => true;
     await (await open('cz-data-v1')).put('https://o.test/data/osm/index.json', new Response('cached'));
     eq(await (await sw.czSwHandle({ url: 'https://o.test/data/osm/index.json', mode: 'cors', method: 'GET' }, 'https://o.test')).text(), 'cached', 'dati bez tīkla');
-    eq(await (await sw.czSwHandle({ url: 'https://o.test/', mode: 'navigate', method: 'GET' }, 'https://o.test')).text(), 'x', 'lapa bez tīkla');
+    eq(await (await sw.czSwHandle({ url: 'https://o.test/', mode: 'navigate', method: 'GET' }, 'https://o.test')).text(), '<script src="a.js?v=1"></script>', 'lapa bez tīkla');
     eq(fetched.length, 0, 'tīklam neprasa');
     sw.czSw.offline = () => false;
+  });
+}
+
+// ---------- B16 (audits 2): mantotie faili, viena lapa, app-gl.js daļās, koda pārbaude ----------
+{
+  const fs16 = require('fs'), path16 = require('path');
+  const ROOT16 = path16.join(__dirname, '..');
+  const rd = f => fs16.readFileSync(path16.join(ROOT16, f), 'utf8');
+  const C = () => import(require('url').pathToFileURL(path16.join(ROOT16, 'tools', 'check-js.mjs')).href);
+  test('B16: mantotie faili dzēsti un nekur nav minēti', () => {
+    for (const f of ['app.js', 'basemap.js', 'roads.js', 'signlayer.js', 'style.css']) ok(!fs16.existsSync(path16.join(ROOT16, f)), f + ' dzēsts');
+    for (const f of fs16.readdirSync(ROOT16).filter(n => /\.html$/.test(n)))
+      ok(!/["'\/](app|basemap|roads|signlayer)\.js|style\.css/.test(rd(f)), f + ': nav atsauču uz mantotajiem failiem');
+  });
+  test('B16: viena lietotnes lapa — index-gl.html tikai pāradresē (saglabā ?parametrus un #)', () => {
+    const h = rd('index-gl.html');
+    ok(/<script src="redirect\.js\?v=\d+"><\/script>/.test(h) && /<link rel="canonical" href="\.\/">/.test(h) && !/app-gl\.js|maplibre/.test(h), 'pāradresācijas lapa');
+    ok(/<noscript><meta http-equiv="refresh" content="0; url=\.\/"><\/noscript>/.test(h), 'bez JavaScript — arī');
+    delete require.cache[require.resolve('../redirect.js')];
+    const { czRedirectTarget: t } = require('../redirect.js');
+    eq(t({ pathname: '/index-gl.html', search: '?code=abc', hash: '#access_token=x' }), '/?code=abc#access_token=x', 'parametri un # saglabāti');
+    eq(t({ pathname: '/index-gl.html', search: '', hash: '' }), '/', 'bez parametriem');
+    ok(/location\.replace\(/.test(rd('redirect.js')), 'aizstāj vēsturē');
+    const sw = rd('sw.js');
+    ok(!/'\.\/index-gl\.html'/.test(sw) && /new URL\('\.\/index\.html', base\)/.test(sw), 'sw.js — galvenā lapa ir index.html');
+    ok(/index-gl\.html\?code=abc#tok=1/.test(rd('tests/map-smoke.js')), 'kartes tests pārbauda pāradresāciju pārlūkā');
+  });
+  test('B16: app-gl.js daļās — lapā secībā, app-start.js pēdējais (init), kods nav mainīts', () => {
+    const h = rd('index.html');
+    const order = [...h.matchAll(/<script defer src="(app-[\w-]+\.js)\?v=\d+"><\/script>/g)].map(m => m[1]).filter(f => f !== 'app-native.js');
+    eq(order.join(','), CZ_APP_PARTS.join(','), 'secība lapā = CZ_APP_PARTS');
+    ok(h.indexOf('app-start.js') < h.indexOf('traffic-gl.js'), 'init() pirms traffic-gl.js — kā agrāk');
+    eq(rd('app-start.js').replace(/^\/\/.*\n/gm, '').trim(), 'init();', 'app-start.js tikai izsauc init()');
+    ok(!/^init\(\);$/m.test(rd('app-gl.js')) && /^async function init\(\)/m.test(rd('app-gl.js')), 'app-gl.js definē init, bet neizsauc');
+    for (const f of CZ_APP_PARTS.slice(1, -1)) {
+      const src = rd(f);
+      ok(/B16 \(audits 2\): pārcelts no app-gl\.js bez izmaiņām/.test(src), f + ': galvene');
+      ok(rd('app-gl.js').split('\n').length < 2100 && src.split('\n').length < 700, f + ': izmērs');
+    }
+  });
+  test('B16: tools/check-js.mjs — skripti no lapas, sasaiste, rindu karte, typeof aizsardzība', async () => {
+    const c = await C();
+    eq(c.czCheckScripts('<script src="guard.js?v=1"></script><script type="module" src="m.js?v=1"></script><script defer src="a.js?v=2"></script>' +
+      '<script type="text/x-cz-lazy" src="./l.js?v=3"></script><script src="https://x.test/e.js"></script>').join(','), 'guard.js,a.js,l.js', 'klasiskie skripti secībā');
+    const files = { 'a.js': 'const x = 1;\nfunction f() {}\nif (typeof module !== "undefined") module.exports = { f };\n', 'b.js': 'f();\n' };
+    const b = c.czCheckBundle(['a.js', 'b.js'], f => files[f]);
+    ok(!/module\.exports/.test(b.text) && /globalThis\.__czExports/.test(b.text), 'module.exports — lai TypeScript neuzskata par moduli');
+    const lines = b.text.split('\n');
+    const at = c.czCheckLocate(b.map, lines.indexOf('f();') + 1);
+    eq(at.file + ':' + at.line, 'b.js:1', 'rindu karte');
+    const parsed = c.czCheckParse(`index.bundle.js(${lines.indexOf('f();') + 1},1): error TS2304: Cannot find name 'f'.\nother.js(1,1): error TS1: x\n`, b.map, 'index.bundle.js');
+    ok(parsed.length === 1 && parsed[0].file === 'b.js' && parsed[0].code === 'TS2304', 'izvades parsēšana');
+    ok(c.czCheckGuarded("a = typeof state !== 'undefined' && state.me", 'state') && !c.czCheckGuarded('state.me', 'state'), 'typeof aizsardzība');
+    for (const k of ['TS2304', 'TS2552', 'TS2451', 'TS2448', 'TS1117', 'TS7027', 'TS7029']) ok(c.CZ_CHECK_FAIL.has(k), k + ' — kļūda');
+    ok(/declare var maplibregl/.test(rd('tools/check-js.d.ts')) && /declare function skinArtSvg/.test(rd('tools/check-js.d.ts')), 'globālie no ES moduļa / IIFE');
+    const y = rd('.github/workflows/tests.yml');
+    ok(/typescript@\d+\.\d+\.\d+/.test(y) && /node tools\/check-js\.mjs/.test(y), 'CI: koda pārbaude');
   });
 }
 

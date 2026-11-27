@@ -1,4 +1,4 @@
-// A07: kartes dūmu tests (Playwright, Chromium). Atver index-gl.html no šīs mapes (MapLibre — no vendor/, A10),
+// A07: kartes dūmu tests (Playwright, Chromium). Atver index.html no šīs mapes (MapLibre — no vendor/, A10),
 // vienkāršu pamatkartes stilu (ar ļaunprātīgu attribution — XSS pārbaudei), pārējais tīkls bloķēts. Pārbauda kartes
 // izveidi, slāņus, kameru, markerus, popup, maršrutu, brīdinājumu ikonas, stila maiņu un ka attribution XSS neizpildās.
 // A10: lapas drošības politika (CSP meta tags) ir spēkā — neviens CSP pārkāpums nedrīkst rasties; kartes worker no tās
@@ -40,7 +40,7 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
   const routeAll = async route => {   // A10: ctx — arī pārējām lapām; A12: arī kontekstam bez piekrišanas
     const u = new URL(route.request().url());
     if (u.hostname === 'app.test') {
-      const f = path.join(ROOT, decodeURIComponent(u.pathname === '/' ? '/index-gl.html' : u.pathname));
+      const f = path.join(ROOT, decodeURIComponent(u.pathname === '/' ? '/index.html' : u.pathname));
       served.add(u.pathname);
       if (fs.existsSync(f) && fs.statSync(f).isFile()) return route.fulfill({ status: 200, body: fs.readFileSync(f), headers: { 'content-type': mime(f) } });
       net.add('404 ' + u.pathname);
@@ -52,7 +52,7 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
     return route.fulfill({ status: 503, body: '', headers: { 'access-control-allow-origin': '*' } });
   };
   await ctx.route('**/*', routeAll);
-  await page.goto('https://app.test/index-gl.html');
+  await page.goto('https://app.test/index.html');
   const res = {};
   try {
     await page.waitForFunction(() => typeof map !== 'undefined' && map && map.isStyleLoaded && map.isStyleLoaded(), null, { timeout: 30000 });
@@ -173,7 +173,7 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
     await ctx2.route('**/*', routeAll);
     const pg = await ctx2.newPage(); const errs = [];
     pg.on('pageerror', e => errs.push(String(e && e.message || e).slice(0, 200)));
-    await pg.goto('https://app.test/index-gl.html'); await pg.waitForTimeout(2500);
+    await pg.goto('https://app.test/index.html'); await pg.waitForTimeout(2500);
     const g = () => pg.evaluate(() => ({ open: !document.getElementById('consentGate').hidden, inside: document.getElementById('consentGate').contains(document.activeElement),
       active: document.activeElement && (document.activeElement.id || document.activeElement.tagName), mapInert: document.getElementById('map').inert }));
     const c = { start: await g() };
@@ -193,7 +193,7 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
     });
     const pg = await ctx3.newPage(); const errs = [];
     pg.on('pageerror', e => errs.push(String(e && e.message || e).slice(0, 200)));
-    await pg.goto('https://app.test/index-gl.html');
+    await pg.goto('https://app.test/index.html');
     await pg.waitForFunction(() => typeof CZ_LAZY !== 'undefined' && CZ_LAZY.started, null, { timeout: 20000 }).catch(() => {});
     const before = await pg.evaluate(() => ({ loaded: CZ_LAZY.done.has('rides-ui.js'), open: !document.getElementById('ridesSheet').hidden }));
     await pg.click('#ridesBtn');
@@ -202,6 +202,12 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
     const after = await pg.evaluate(() => ({ loaded: CZ_LAZY.done.has('rides-ui.js'), open: !document.getElementById('ridesSheet').hidden }));
     res.lazyEarly = { before, pending, after, errs };
     await ctx3.close(); }
+  // B16: index-gl.html — tikai pāradresācija uz galveno lapu, saglabājot ?parametrus un #daļu (pieteikšanās saite u.c.)
+  { const pg = await ctx.newPage();
+    await pg.goto('https://app.test/index-gl.html?code=abc#tok=1');
+    await pg.waitForURL(u => !/index-gl/.test(String(u)), { timeout: 10000 }).catch(() => {});
+    res.redirect = { url: pg.url(), app: await pg.evaluate(() => !!document.getElementById('map')).catch(() => false) };
+    await pg.close(); }
   res.pages = {};
   for (const p of ['admin.html', 'privacy.html', 'terms.html']) {
     const pg = await ctx.newPage(); const errs = [];
@@ -263,6 +269,8 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
   if (!C.accepted || C.accepted.open || C.accepted.mapInert) bad.push('piekrišana pēc „Piekrītu”: ' + JSON.stringify(C.accepted));
   if (C.errs && C.errs.length) bad.push('piekrišanas lapā kļūda: ' + C.errs[0]);
   for (const n of net) if (/^404 /.test(n) && !/favicon/.test(n)) bad.push('trūkst faila: ' + n.slice(4));
+  // B16
+  if (!res.redirect || res.redirect.url !== 'https://app.test/?code=abc#tok=1' || !res.redirect.app) bad.push('index-gl.html pāradresācija: ' + JSON.stringify(res.redirect));
   // B15
   const LZ = res.lazy || {};
   if (!LZ.queue || LZ.queue.length < 9 || LZ.done.length !== LZ.queue.length || LZ.failed.length) bad.push('vēlā ielāde: ' + JSON.stringify(LZ));
