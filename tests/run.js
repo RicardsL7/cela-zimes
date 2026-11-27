@@ -2889,7 +2889,7 @@ test('A08: LF rindu beigas, GitHub Actions (Linux + Windows, datubāze, karte)',
   eq(fs.readFileSync(tmp, 'utf8'), 'a\nb\n', 'CRLF → LF'); require('fs').unlinkSync(tmp);
   const wf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'tests.yml'), 'utf8');
   ok(/pull_request:/.test(wf) && /branches: \[main\]/.test(wf), 'katrai izmaiņai main un pull request');
-  ok(/os: \[ubuntu-latest, windows-latest\]/.test(wf) && /- run: node tests\/run\.js/.test(wf), 'JS testi Linux un Windows');
+  ok(/os: \[ubuntu-24\.04, windows-latest\]/.test(wf) && /- run: node tests\/run\.js/.test(wf), 'JS testi Linux un Windows');
   ok(/image: postgres:16/.test(wf) && /- run: bash tests\/run-sql\.sh/.test(wf), 'datubāzes testi');
   ok(/node tests\/map-smoke\.js \. /.test(wf) && /bash tools\/vendor\.sh --check/.test(wf), 'kartes tests ar lietotnes MapLibre (vendor/, A10)');
   ok(/permissions:\s*\n\s*contents: read/.test(wf) && !/secrets\./.test(wf), 'tikai lasīšanas tiesības, bez slepenajām atslēgām');
@@ -2964,6 +2964,11 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/VISS KĀRTĪBĀ/.test(st), 'skaidrs rezultāts');
     const sup = fs.readFileSync(path.join(__dirname, 'sql', 'supabase-stub.sql'), 'utf8');
     ok(/alter default privileges in schema public grant all on functions to anon, authenticated, service_role;/.test(sup), 'testu datubāzē funkciju tiesības kā Supabase');
+  });
+  test('CI: testu darbi uz fiksēta Ubuntu (ne ubuntu-latest) — Playwright un pg_dump atbilst', () => {
+    const y = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'tests.yml'), 'utf8');
+    ok(!/ubuntu-latest/.test(y), 'tests.yml: nav ubuntu-latest');
+    ok((y.match(/runs-on: ubuntu-24\.04/g) || []).length >= 4 && /os: \[ubuntu-24\.04, windows-latest\]/.test(y), 'tests.yml: ubuntu-24.04');
   });
   test('A09: dokumentācija — MIGRATIONS.md un jauns README', () => {
     const md = fs.readFileSync(path.join(SUP, 'MIGRATIONS.md'), 'utf8');
