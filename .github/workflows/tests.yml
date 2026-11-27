@@ -5,6 +5,7 @@
 #   js   — node tests/run.js uz Linux UN Windows (rindu beigas / ceļi nedrīkst ietekmēt rezultātu)
 #   sql  — visa datubāzes shēma (supabase/*.sql) tīrā PostgreSQL 16 + drošības scenāriji A01–A04 (tests/run-sql.sh)
 #   map  — kartes dūmu tests ar MapLibre no vendor/ (tests/map-smoke.js, Chromium); A10: arī lapu drošības politika (CSP)
+#   e2e  — B17: kopbrauciens caur lietotni (2 cilvēki) pret lokālu Supabase Auth + PostgREST + visām migrācijām
 # Neizmanto nekādas slepenās atslēgas un nesaskaras ar Supabase / Stripe produkciju.
 # Linux — fiksēts ubuntu-24.04 (27.11.2026 GitHub noklusētais Linux kļuva 26.04: Playwright 1.56 to neatbalsta, datubāzes kopijas rīks 18 ≠ PostgreSQL 16).
 name: Testi
@@ -131,9 +132,51 @@ jobs:
             ${{ runner.temp }}/offline-site.json
           if-no-files-found: ignore
 
+  # B17 (audits 2): kopbrauciena plūsma caur īsto lietotni pret īstiem Supabase servisiem (Auth = GoTrue, PostgREST) un
+  # visām migrācijām — bez Docker un bez īstām atslēgām (tests/e2e/stack.js). Programmas — fiksētas versijas ar SHA-256.
+  e2e:
+    name: E2E — kopbrauciens caur lietotni (Auth + PostgREST + PostgreSQL 16)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      CZ_E2E_BIN: ${{ runner.temp }}/e2e-bin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Supabase Auth un PostgREST (fiksētas versijas, pārbaudīts SHA-256)
+        run: |
+          mkdir -p "$CZ_E2E_BIN" && cd "$CZ_E2E_BIN"
+          curl -fsSL -o auth.tar.gz https://github.com/supabase/auth/releases/download/v2.199.0/auth-v2.199.0-x86.tar.gz
+          echo "caf7471bab439765aa7ce82d929a71546d2265b22cb3854949138e5c3011856f  auth.tar.gz" | sha256sum -c -
+          curl -fsSL -o postgrest.tar.xz https://github.com/PostgREST/postgrest/releases/download/v12.2.3/postgrest-v12.2.3-linux-static-x64.tar.xz
+          echo "9f71269e61ac3a940281e93ff415760f5957e430e475ba4c3889f3ede7d5527c  postgrest.tar.xz" | sha256sum -c -
+          tar -xzf auth.tar.gz && tar -xJf postgrest.tar.xz
+          ./auth version || true
+          ./postgrest --version
+      - name: Playwright + Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.0
+          npx playwright install --with-deps chromium
+      - run: node tests/e2e/rides-flow.js
+
   deploy:
     name: Vietne (GitHub Pages) — tikai pēc zaļiem testiem (B11)
-    needs: [js, sql, authors, map]
+    needs: [js, sql, authors, map, e2e]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
