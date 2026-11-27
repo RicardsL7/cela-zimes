@@ -6,6 +6,7 @@
 #   sql  — visa datubāzes shēma (supabase/*.sql) tīrā PostgreSQL 16 + drošības scenāriji A01–A04 (tests/run-sql.sh)
 #   map  — kartes dūmu tests ar MapLibre no vendor/ (tests/map-smoke.js, Chromium); A10: arī lapu drošības politika (CSP)
 # Neizmanto nekādas slepenās atslēgas un nesaskaras ar Supabase / Stripe produkciju.
+# Linux — fiksēts ubuntu-24.04 (27.11.2026 GitHub noklusētais Linux kļuva 26.04: Playwright 1.56 to neatbalsta, datubāzes kopijas rīks 18 ≠ PostgreSQL 16).
 name: Testi
 
 on:
@@ -27,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-24.04, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
@@ -45,7 +46,7 @@ jobs:
 
   sql:
     name: Datubāzes testi (PostgreSQL 16)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     services:
       postgres:
@@ -68,7 +69,7 @@ jobs:
 
   authors:
     name: Commit autori bez personīga e-pasta (B06)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -82,7 +83,7 @@ jobs:
 
   map:
     name: Kartes dūmu tests (MapLibre)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -134,7 +135,7 @@ jobs:
     name: Vietne (GitHub Pages) — tikai pēc zaļiem testiem (B11)
     needs: [js, sql, authors, map]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
