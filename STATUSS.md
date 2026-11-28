@@ -618,3 +618,17 @@
   failam ir `?v=` un fails eksistē. B11 `deploy needs` tests — vairs ne konkrēts teksts, bet „visi darbi”.
 - **Nav pārbaudīts lokāli:** E2E uz būvētās (saspiestās) vietnes (esbuild šeit nav); E2E CI vidē pārbauda pirmais CI palaidiens.
 
+## B18 (audits 2) — kartes maksājumi Stripe testa režīmā (28.11.2026)
+
+- **`PAYMENTS-TEST.md` (jauns):** 12 soļi ar īstu Stripe testa režīmu (Connect konts, 4242, 3-D Secure, atcelšana → automātiska
+  atmaksa, šofera atmaksa, daļēja atmaksa panelī, noraidīta karte, „Resend” webhook, strīds `…0259`, divas cilnes), webhook
+  notikumu saraksts, rezultātu tabula un `PAY_LIVE` priekšnosacījumi.
+- **`stripe-webhook`:** strīdi `charge.dispute.created/updated/closed/funds_withdrawn/funds_reinstated` — brauciena ID no
+  maksājuma, `stripe_events` (`dispute_needs_response`, `dispute_closed_lost` …) un žurnālā (termiņš); statuss nemainās.
+  Agrāk strīdi tika ignorēti — īpašnieks par tiem uzzinātu tikai no Stripe e-pasta.
+- **`tools/pay-check.sql`, `tools/pay-recent.sql` (jauni, tikai lasa):** problēmu pārbaude un pēdējie maksājumi ar webhook
+  notikumiem; `run-sql.sh` tos palaiž tikai lasīšanas transakcijā.
+- **Testi:** `run.js` — visa webhook programma ar viltotu Stripe / datubāzi (5 jauni; F19 teksta tests aizstāts; teksta
+  pārbaudes 1148 → 1136); `run-sql.sh` +2. `deno check` abām funkcijām (Stripe bibliotēka — tipu aizstājējs, jo npm šeit nav).
+- **Jādara īpašniekam:** izvietot `stripe-webhook`, Stripe webhook pievienot strīdu notikumus, veikt `PAYMENTS-TEST.md` soļus.
+

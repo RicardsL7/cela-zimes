@@ -151,6 +151,17 @@ GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi
 - **E2E — kopbrauciens caur lietotni** (Playwright + Chromium + lokāls PostgreSQL + Supabase Auth un PostgREST programmas):
   `PGHOST=localhost PGUSER=postgres PGPASSWORD=… CZ_E2E_BIN=<mape ar auth, postgrest> node tests/e2e/rides-flow.js` — sk. „Uzvedības testi (B17)”.
 
+## Kartes maksājumu pārbaude (B18)
+- **Stripe testa režīmā no sākuma līdz beigām** — soļi, gaidāmais rezultāts un rezultātu tabula: [`PAYMENTS-TEST.md`](PAYMENTS-TEST.md)
+  (šofera Connect konts, samaksa, atcelšana ar automātisko atmaksu, šofera atmaksa, daļēja atmaksa, noraidīta karte, webhook
+  atkārtojums, strīds, divas cilnes). Kartes datus ievada tikai īpašnieks. Pirms `PAY_LIVE` — visi soļi izdevušies.
+- **Pārbaude datubāzē (tikai lasa):** `tools/pay-check.sql` (problēmas — jābūt 0; strīdi; gaidošas atmaksas) un
+  `tools/pay-recent.sql` (pēdējie 20 maksājumi ar webhook notikumiem). `tests/run-sql.sh` tos palaiž tikai lasīšanas režīmā.
+- **Strīdi (chargeback):** `stripe-webhook` pieraksta `charge.dispute.*` (`stripe_events.result` = `dispute_…`); maksājuma
+  statuss nemainās. „Destination charge” strīdu sedz lietotnes Stripe konts — atbildēt Stripe panelī līdz termiņam.
+- **Testi:** `tests/run.js` palaiž visu `stripe-webhook/index.ts` ar viltotu Stripe un datubāzi (paraksts, samaksa, atkārtojums,
+  pilna / daļēja / gaidoša atmaksa, strīdi).
+
 ## Uzvedības testi (B17)
 - **E2E ar īstiem Supabase servisiem, bez Docker** (`tests/e2e/stack.js`): lokāls PostgreSQL + Supabase Auth (GoTrue — tā pati
   programma, ko lieto Supabase) + PostgREST + visas `supabase/*.sql` migrācijas pēc `ORDER.txt`. Datubāze `cz_e2e` tiek izveidota
