@@ -16,7 +16,8 @@
 // Notikumi: checkout.session.completed (ja payment_status = paid), checkout.session.async_payment_succeeded → „paid”;
 // charge.refunded, refund.created / refund.updated / refund.failed, charge.refund.updated → atmaksas stāvoklis (A05: refundState —
 // „refunded” tikai, kad visa summa atdota; daļēja vai vēl gaidoša atmaksa — tikai žurnālā); async_payment_failed / expired — lietotnē
-// tāda statusa nav, tikai žurnālā. Pārējie — 200 un ignorē.
+// tāda statusa nav, tikai žurnālā. B18: strīdi (charge.dispute.*) — brauciena ID no maksājuma, ieraksts stripe_events
+// (result „dispute_…”) un žurnālā; maksājuma statuss nemainās (strīdu var arī uzvarēt). Pārējie — 200 un ignorē.
 // Statusu raksta ride_payment_mark (tikai service_role, tikai uz priekšu — „refunded” nekad nekļūst atpakaļ par „paid”).
 // Pirms rakstīšanas maksājuma stāvokli vēlreiz nolasa no Stripe (notikumu secība un atkārtojumi nav svarīgi).
 // Atkārtots notikums (tas pats event.id, tabula stripe_events) — neko nedara.
@@ -89,6 +90,19 @@ function refundState(amount: number, refunds: RfRefund[]): RefundState {
 // Stripe Idempotency-Key atmaksai: vienāds vienlaicīgiem klikšķiem, jauns pēc katras izmaiņas (daļēja atmaksa vai neizdevusies)
 const refundKey = (oid: string, st: RefundState) => `refund-${oid}-${st.refunded}-${st.failed}`;
 // </refund-state>
+
+// <dispute> — B18: strīds (chargeback). „Destination charge” strīdu sedz PLATFORMAS konts (lietotnes īpašnieks) — Stripe
+// to automātiski NEatprasa no šofera. Īpašniekam jāatbild Stripe panelī līdz termiņam (evidence_details.due_by).
+// Rezultāts stripe_events tabulai (≤ 40 zīmes): dispute_<statuss> jaunam / mainītam, dispute_closed_<won|lost|…> slēgtam,
+// dispute_funds_withdrawn / dispute_funds_reinstated naudas kustībai.
+type DisputeObj = { status?: string | null; reason?: string | null; amount?: number | null };
+function disputeResult(type: string, d: DisputeObj | null): string {
+  const st = String(d?.status ?? '').toLowerCase().replace(/[^a-z_]/g, '').slice(0, 24) || 'unknown';
+  const ev = String(type).replace(/^charge\.dispute\./, '');
+  const r = ev === 'closed' ? 'closed_' + st : (ev === 'funds_withdrawn' || ev === 'funds_reinstated') ? ev : st;
+  return ('dispute_' + r).slice(0, 40);
+}
+// </dispute>
 
 // Maksājuma stāvoklis no Stripe (atmaksas — tā pati refundState kā ride-pay)
 type PayInfo = { ok: boolean; paid: boolean; amount: number | null; rs: RefundState };
@@ -184,6 +198,21 @@ Deno.serve(async (req) => {
         }
         if (!UUID.test(oid)) { oid = null; result = 'not_ride'; break; }
         result = await syncOffer(oid);
+        break;
+      }
+      case 'charge.dispute.created':
+      case 'charge.dispute.updated':
+      case 'charge.dispute.closed':
+      case 'charge.dispute.funds_withdrawn':
+      case 'charge.dispute.funds_reinstated': {
+        // B18: strīds — brauciena ID no maksājuma (payment_intent.metadata.offer_id); statuss datubāzē nemainās
+        const piId = typeof obj.payment_intent === 'string' ? obj.payment_intent : obj.payment_intent?.id;
+        if (piId) {
+          const pi = await stripe('payment_intents/' + piId);
+          oid = UUID.test(String(pi.metadata?.offer_id ?? '')) ? String(pi.metadata.offer_id) : null;
+        }
+        result = oid ? disputeResult(event.type, obj) : 'not_ride';
+        console.warn('STRĪDS', event.type, oid, obj.status, obj.reason, obj.amount, obj.evidence_details?.due_by ?? null);
         break;
       }
     }
