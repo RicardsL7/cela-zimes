@@ -681,3 +681,15 @@
 - **Nav pārbaudīts:** krievu tulkojumu kvalitāte (vērts, lai izlasa dzimtās valodas runātājs); garu tekstu izkārtojums
   šauros ekrānos visās panelēs; tulkoto juridisko tekstu atbilstība (jurists).
 - **Netulkots:** admin lapa, Supabase e-pasta vēstules, Android bezsaistes lapa.
+
+## B21 (audits 2) — pārāk mazi pieskāriena laukumi (28.11.2026)
+
+- **„Kā ieslēgt?”** (statusa josla, ja atrašanās vieta liegta): 74 × 22 → 90 × 46 px; **kartes atsauču saites**
+  (© OpenStreetMap, OpenFreeMap, Mapillary): 12 → 34 px augstas. Ar `padding` + negatīvu `margin` — teksts un izkārtojums
+  tieši tādi paši kā agrāk (pārbaudīts ekrānuzņēmumā).
+- Pārbaudīta visa lietotne (galvenais skats, iestatījumi, „Kopā”, „Garāža”, ziņošana, vietas, stāvēšana, ar un bez
+  atrašanās vietas): citu laukumu < 24 × 24 nav. Divi `select` iestatījumos ir paslēpti (tos aizstāj 44 px pogas).
+  Saites teikumu vidū („Par lietotni”) — WCAG izņēmums.
+- **Tests:** kartes dūmu tests mēra visus redzamos laukumus (galvenais skats ar atvērtām kartes atsaucēm, iestatījumi,
+  bez atrašanās vietas atļaujas — statusa josla un ziņošanas logs); ar veco CSS tas ir sarkans (pārbaudīts).
+

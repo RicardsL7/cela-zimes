@@ -222,6 +222,50 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
     const fr = pg.frames().find(fr => /app\.test\/privacy\.html/.test(fr.url()));
     res.framed = fr ? await fr.evaluate(() => getComputedStyle(document.documentElement).display) : 'rāmis nav atrasts';
     await pg.close(); }
+  // B21: pieskāriena laukumi ≥ 24 × 24 (WCAG 2.5.8) — redzamās pogas, saites, ievades; izņēmums — saite teikuma vidū
+  // (WCAG to atļauj) un paslēptie <select> (tos aizstāj pogas). Galvenais skats, kartes atsauces (atvērtas), iestatījumi;
+  // bez atrašanās vietas atļaujas — „Kā ieslēgt?” statusa joslā un ziņošanas logā.
+  const smallTargets = pg => pg.evaluate(() => {
+    const out = [];
+    for (const e of document.querySelectorAll('a[href],button,input:not([type=hidden]),select,summary,[role=button]')) {
+      const b = e.getBoundingClientRect(), cs = getComputedStyle(e);
+      if (!b.width || !b.height || cs.visibility === 'hidden' || e.closest('[hidden],[inert]')) continue;
+      if (e.getAttribute('aria-hidden') === 'true' && e.tabIndex < 0) continue;
+      if (b.bottom < 0 || b.top > innerHeight || b.right < 0 || b.left > innerWidth) continue;
+      const par = e.parentElement, own = (e.textContent || '').trim().length;
+      if (cs.display === 'inline' && par && (par.textContent || '').trim().length > own + 15) continue;   // saite teikumā
+      if (b.width < 24 || b.height < 24) out.push((e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + [...e.classList].join('.')) + ' „' + (e.textContent || e.getAttribute('aria-label') || '').trim().slice(0, 24) + '” ' + Math.round(b.width) + '×' + Math.round(b.height));
+    }
+    return out;
+  });
+  res.targets = {};
+  await page.evaluate(() => { const d = document.querySelector('.maplibregl-ctrl-attrib'); if (d) d.open = true; });
+  await page.waitForTimeout(300);
+  res.targets.attribLinks = await page.evaluate(() => [...document.querySelectorAll('.maplibregl-ctrl-attrib a')].map(a => Math.round(a.getBoundingClientRect().height)));
+  res.targets.main = await smallTargets(page);
+  await page.evaluate(() => { const d = document.querySelector('.maplibregl-ctrl-attrib'); if (d) d.open = false; });
+  await page.click('#settingsBtn'); await page.waitForTimeout(500);
+  res.targets.settings = [];
+  for (let i = 0; i < 8; i++) {
+    res.targets.settings.push(...await smallTargets(page));
+    await page.evaluate(() => { const s = document.getElementById('settings'); s.scrollTop += 500; document.querySelectorAll('#settings details').forEach(d => { d.open = true; }); });
+    await page.waitForTimeout(150);
+  }
+  res.targets.settings = [...new Set(res.targets.settings)];
+  await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+  { const ctx5 = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } });   // bez atrašanās vietas atļaujas
+    await ctx5.addInitScript(v => { try { localStorage.setItem('cz.consent', JSON.stringify({ terms: v.terms, privacy: v.privacy, at: 'x' })); localStorage.setItem('cz.lang', 'lv'); } catch (e) {} }, consentV);
+    await ctx5.route('**/*', routeAll);
+    const pg = await ctx5.newPage();
+    await pg.goto('https://app.test/index.html');
+    await pg.waitForSelector('#gpsHelpBtn:not([hidden])', { timeout: 20000 }).catch(() => {});
+    const help = await pg.evaluate(() => { const b = document.getElementById('gpsHelpBtn').getBoundingClientRect(), t = document.getElementById('statusText').getBoundingClientRect();
+      return { w: Math.round(b.width), h: Math.round(b.height), shown: !document.getElementById('gpsHelpBtn').hidden, gap: Math.round(b.top - t.bottom) }; });
+    const main = await smallTargets(pg);
+    await pg.click('#reportBtn').catch(() => {}); await pg.waitForTimeout(800);
+    const report = await smallTargets(pg);
+    res.targets.noGps = { help, main, report };
+    await ctx5.close(); }
   // B20: valodas — jauns lietotājs ar angļu pārlūku: izvēles logs (virs piekrišanas, iepriekš atzīmēta „English”);
   // „Русский” → lapa pārlādējas krieviski; piekrišana, iestatījumi, „Kopā”, „Garāža” — bez latviešu teksta; ?lang=en.
   { const ctx4 = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 420, height: 860 }, locale: 'en-US',
@@ -327,6 +371,13 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
   if (!E.before || E.before.loaded || E.before.open || !E.pending || !E.pending.pending || E.pending.open || !E.after || !E.after.loaded || !E.after.open)
     bad.push('„Kopā” pirms ielādes: ' + JSON.stringify(E));
   if (E.errs && E.errs.length) bad.push('vēlā ielāde (lēns tīkls): ' + E.errs[0]);
+  // B21
+  const TG = res.targets || {};
+  if (!TG.attribLinks || !TG.attribLinks.length || TG.attribLinks.some(h => h < 24)) bad.push('kartes atsauču saites < 24 px: ' + JSON.stringify(TG.attribLinks));
+  for (const k of ['main', 'settings']) if (!TG[k] || TG[k].length) bad.push('mazi pieskāriena laukumi (' + k + '): ' + JSON.stringify(TG[k]));
+  const NG = TG.noGps || {};
+  if (!NG.help || !NG.help.shown || NG.help.h < 24 || NG.help.w < 24) bad.push('„Kā ieslēgt?”: ' + JSON.stringify(NG.help));
+  for (const k of ['main', 'report']) if (!NG[k] || NG[k].length) bad.push('mazi pieskāriena laukumi (bez GPS, ' + k + '): ' + JSON.stringify(NG[k]));
   // B20
   const I = res.i18n || {};
   if (!I.first || !I.first.gate || I.first.pressed !== 'en' || I.first.lang !== 'en' || I.first.focus !== 'en' || !I.first.above || I.first.consentTitle !== 'Welcome to Ceļa Zīmes')

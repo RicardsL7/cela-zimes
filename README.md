@@ -151,6 +151,13 @@ GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi
 - **E2E — kopbrauciens caur lietotni** (Playwright + Chromium + lokāls PostgreSQL + Supabase Auth un PostgREST programmas):
   `PGHOST=localhost PGUSER=postgres PGPASSWORD=… CZ_E2E_BIN=<mape ar auth, postgrest> node tests/e2e/rides-flow.js` — sk. „Uzvedības testi (B17)”.
 
+## Pieskāriena laukumi (B21)
+- Katrai pogai, saitei un ievades laukam lietotnē — vismaz **24 × 24 px** (WCAG 2.2, 2.5.8); svarīgākās pogas — 44 px.
+  Izņēmums (WCAG to atļauj): saite teikuma vidū. Mazam tekstam laukumu palielina ar `padding` un negatīvu `margin`
+  (izskats nemainās): „Kā ieslēgt?” statusa joslā, kartes atsauču saites.
+- Kartes dūmu tests mēra visus redzamos laukumus galvenajā skatā, kartes atsaucēs, iestatījumos un bez atrašanās vietas
+  atļaujas (statusa josla, ziņošanas logs) — mazāks par 24 × 24 → CI sarkans.
+
 ## Valodas (B20)
 - **Latviešu (pamata), angļu, krievu.** Pirmajā atvēršanā — izvēles logs (iepriekš atzīmēta pārlūka valoda; pirms
   noteikumu piekrišanas); vēlāk — Iestatījumi → Valoda; saite ar `?lang=en` / `?lang=ru`. Citām valodām — „Cita valoda”:

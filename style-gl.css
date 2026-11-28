@@ -377,6 +377,8 @@ h2[tabindex="-1"]:focus, .gr-dlg-t[tabindex="-1"]:focus { outline: none; }
 .sign-photo-cap { margin-top: 4px; font-size: 11px; font-weight: 500; color: var(--muted); }
 .maplibregl-popup-tip { border-top-color: var(--panel) !important; border-bottom-color: var(--panel) !important; }
 .maplibregl-ctrl-attrib { font-size: 10px; }
+/* B21: kartes atsauču saites — pieskāriena laukums ≥ 24 px augsts, burti un rinda tie paši */
+.maplibregl-ctrl-attrib a { display: inline-block; padding: 7px 3px; margin: -7px -3px; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
@@ -907,6 +909,8 @@ html.navigating .alt-bubble { display: none; }
 
 /* ---- F2: atrašanās vieta liegta ---- */
 .status-act { display: block; padding: 2px 0 0; font-size: 14px; text-decoration: underline; text-underline-offset: 2px; }
+/* B21: pieskāriena laukums ≥ 44 px augsts (WCAG 2.5.8 — vismaz 24 × 24), teksta vieta nemainās (padding + negatīva atkāpe) */
+.status-act { min-height: 44px; padding: 13px 16px 13px 0; margin: -11px 0 -13px; text-align: left; }
 .status-act[hidden] { display: none; }
 .status.gps-off .status-text { color: var(--fg); font-weight: 600; }
 .gps-lead { margin: 4px 0 12px; color: var(--muted); font-size: 15px; }
