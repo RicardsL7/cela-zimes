@@ -632,5 +632,6 @@
   pārbaudes 1148 → 1136); `run-sql.sh` +2. `deno check` abām funkcijām (Stripe bibliotēka — tipu aizstājējs, jo npm šeit nav).
 - **Izvietots 28.11.2026:** `stripe-webhook` (Supabase panelī; kods sakrīt ar repozitoriju — SHA-256 `c41ea7e2252412f8…`;
   „Verify JWT” izslēgts kā līdz šim).
-- **Jādara īpašniekam:** Stripe webhook pievienot strīdu notikumus, veikt `PAYMENTS-TEST.md` soļus.
+- **28.11.2026:** īpašnieks Stripe testa webhook pievienoja 5 strīdu notikumus (kopā 14).
+- **Atlikts līdz lietotnes palaišanai:** `PAYMENTS-TEST.md` 12 soļi ar diviem paša testa kontiem. Bez tiem `PAY_LIVE` neieslēgt.
 

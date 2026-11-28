@@ -47,7 +47,7 @@ Rezultātu ieraksta tabulā zemāk (datums, kas izdevās, kas ne). Ja kāds soli
 
 | Datums | Soļi | Rezultāts | Piezīmes |
 |---|---|---|---|
-| — | — | vēl nav veikts | |
+| 28.11.2026 | 0.2 | strīdu notikumi pievienoti Stripe testa webhook (kopā 14) | soļi 1–12 atlikti līdz lietotnes palaišanai |
 
 ## Pirms īstiem maksājumiem (`PAY_LIVE=yes`)
 
