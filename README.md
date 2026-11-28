@@ -20,7 +20,7 @@ Statiska lapa (HTML + JavaScript; izvietojot — saspiešana un versijas pēc sa
 | Meklēšana, maršruts | Photon / Nominatim, OSRM |
 | Konti, kopbraucieni, ziņojumi, sastrēgumi | Supabase: PostgreSQL ar RLS (`supabase/*.sql`), anonīmi konti + e-pasts / Google |
 | Maksājumi | Stripe Connect; servera funkcijas `supabase/functions/ride-pay` un `stripe-webhook` |
-| Android | `mobile/` — Capacitor apvalks ap growlab.cc ar fona GPS; APK būvē un emulatorā pārbauda GitHub Actions (`android.yml`); paraksts, Play, ierīču tests — [`mobile/README.md`](mobile/README.md) |
+| Android | `mobile/` — Capacitor apvalks ap growlab.cc ar fona GPS; APK būvē un emulatorā pārbauda GitHub Actions (`android.yml`); parakstīts laidiens (atslēgas pārbaude, atjaunināšanas tests emulatorā — B19), Play, telefona tests ar rezultātu tabulu — [`mobile/README.md`](mobile/README.md) |
 
 Galvenie faili: `app-gl.js` (karte, GPS, navigācija, brīdinājumi), `signs-gl.js` / `signs.js` (zīmes), `nav.js` (maršruts),
 `roads-gl.js` (ceļu indekss), `alerts.js` / `reports.js` (brīdinājumi, ziņojumi), `rides.js` / `rides-ui.js` (kopbraucieni),

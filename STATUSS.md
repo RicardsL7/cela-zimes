@@ -635,3 +635,26 @@
 - **28.11.2026:** īpašnieks Stripe testa webhook pievienoja 5 strīdu notikumus (kopā 14).
 - **Atlikts līdz lietotnes palaišanai:** `PAYMENTS-TEST.md` 12 soļi ar diviem paša testa kontiem. Bez tiem `PAY_LIVE` neieslēgt.
 
+## B19 (audits 2) — Android parakstītais laidiens: pārbaudes, lai pirmais laidiens izdodas (28.11.2026)
+
+- **Kas bija:** A14 cauruļvads gatavs, bet nekad nav palaists ar atslēgu; nepareizs GitHub Secrets → neskaidra Gradle kļūda;
+  parakstītais APK emulatorā netika pārbaudīts (testēja tikai testa APK); neviens nepārbaudīja, vai jaunā versija
+  atjauninās virs iepriekšējās; Android darbplūsmas uz `ubuntu-latest` (tagad 26.04 — tā pati problēma kā testiem).
+- **`mobile/scripts/signing-check.sh` (jauns):** pirms būvēšanas pārbauda atslēgu — nav faila / nepilns base64 / nav atslēgas
+  fails / nepareiza parole / nepareizs alias (parāda esošos) / PKCS12 ar atšķirīgu atslēgas paroli / JKS nepareiza
+  atslēgas parole / nav privātā atslēga / derīgums beidzies → kļūda latviski; derīgums < 22.10.2033 → Play brīdinājums.
+  Paroles neizdrukā; atslēgas fails 600. `ANDROID_KEY_ALIAS` (celazimes) un `ANDROID_KEY_PASSWORD` (= faila parole) vairs nav obligāti.
+- **`mobile/scripts/verify-release.sh` (jauns):** pēc būvēšanas — APK paraksts derīgs (v2), parakstītājs viens un tieši mūsu
+  sertifikāts (tas pats SHA-256, kas assetlinks.json), nav debuggable, pakotne, versionCode; AAB — paraksts un sertifikāts.
+  assetlinks.json SHA-256 tagad nāk no pārbaudītā faila (darbplūsmā vairs nav `keytool -storepass`).
+- **`mobile/scripts/release-test.sh` (jauns), darbs „device”:** parakstītais laidiens emulatorā — uzinstalē iepriekšējo
+  publicēto APK, jauno virsū (cits paraksts → „PARAKSTS ATŠĶIRAS”, mazāks versionCode → kļūda), palaišana bez avārijām,
+  App Links stāvoklis (informācijai). Publicē tikai pēc abiem ierīces testiem.
+- **Visas darbplūsmas** — `ubuntu-24.04` (android, android-lock, monitor, osm-data, vendor; tests jau bija).
+- **`mobile/README.md`:** soli pa solim (Windows keytool ceļš, `-storetype PKCS12`, viena parole, rezerves kopija,
+  tabula ar 2 obligātiem + 2 neobligātiem Secrets), telefona tests 10 soļos ar rezultātu tabulu, Play prasības jauniem
+  personīgajiem kontiem (12 testētāji 14 dienas).
+- **Testi:** `run.js` +6 (263/263) — visi trīs skripti palaisti ar viltotiem `keytool` / `apksigner` / `aapt` / `adb` (14 +
+  7 + 6 gadījumi); regulāro izteiksmju skaits nepalielinājās.
+- **Nav pārbaudīts:** īsta atslēga GitHub Actions (to izveido tikai īpašnieks), īsts telefons, Play konts.
+- **Jādara īpašniekam:** `mobile/README.md` 1.–6. solis (atslēga, 2 Secrets, Run workflow), telefona tests, vēlāk Play konts.
