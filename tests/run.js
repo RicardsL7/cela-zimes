@@ -2251,19 +2251,11 @@ test('Coins: SQL — report types config, validated confirmations, daily cap, at
 });
 
 // ---------- F19: Stripe webhook + „Sinhronizēt ar Stripe” ----------
-test('F19: stripe-webhook — paraksts, notikumi, idempotence, tikai uz priekšu', () => {
+test('F19: stripe-webhook — apstrādā maksājuma, atmaksas un (B18) strīdu notikumus (uzvedība — B18 testi)', () => {
   const wh = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'stripe-webhook', 'index.ts'), 'utf8');
-  ok(/const body = await req\.text\(\);/.test(wh) && !/req\.json\(\)/.test(wh), 'ķermenis kā teksts');
-  ok(/webhooks\.constructEventAsync\(body, sig, WHSEC, undefined, cryptoProvider\)/.test(wh) && /Stripe\.createSubtleCryptoProvider\(\)/.test(wh), 'Stripe paraksta pārbaude');
-  ok(/catch \{\s*return json\(\{ error: 'Nederīgs paraksts' \}, 400\);/.test(wh), 'nederīgs paraksts → 400');
-  ok(wh.indexOf('constructEventAsync') < wh.indexOf("sdb(`stripe_events?id=eq."), 'nekas netiek lasīts/rakstīts pirms paraksta');
-  for (const e of ['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'checkout.session.async_payment_failed', 'checkout.session.expired', 'charge.refunded'])
+  for (const e of ['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'checkout.session.async_payment_failed', 'checkout.session.expired',
+    'charge.refunded', 'refund.updated', 'refund.failed', 'charge.dispute.created', 'charge.dispute.closed'])
     ok(wh.includes(`'${e}'`), e);
-  ok(/obj\.payment_status === 'paid' \? await syncOffer/.test(wh), 'paid tikai, ja payment_status = paid');
-  ok(/if \(rs\.full\) \{/.test(wh) && /daļēja atmaksa — netiek atzīmēta kā pilna/.test(wh), 'daļēja atmaksa netiek atzīmēta (A05: refundState)');
-  ok(/rpc\/ride_payment_mark/.test(wh) && /p_user_id: passenger/.test(wh), 'raksta caur ride_payment_mark (service_role)');
-  ok(/seen\?\.length\) return json\(\{ received: true, duplicate: true \}\)/.test(wh), 'atkārtots notikums neko nedara');
-  ok(!/json\([^)]*(SRK|WHSEC|SK)\b/.test(wh), 'atslēgas atbildē nenonāk');
 });
 test('F19: ride-pay „sync” — tikai īpašniekam, pa daļām; admin.html poga ar ziņu pie pogas', () => {
   const rp = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', 'ride-pay', 'index.ts'), 'utf8');
@@ -4490,11 +4482,115 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const self = rd('tests/run.js');
     const sqlText = self.split('.test(' + 'sql').length - 1;
     const rx = (self.match(new RegExp('/[gimsuy]*\\.test\\(', 'g')) || []).length;
-    // Robežas — B17 (27.11.2026) stāvoklis: SQL faila teksta pārbaudes 133 → 50, visas regulārās izteiksmes 1268 → 1148, versiju numuri 48 → 0.
+    // Robežas — B17 (27.11.2026) stāvoklis: SQL faila teksta pārbaudes 133 → 50, visas regulārās izteiksmes 1268 → 1148 (B18: 1136), versiju numuri 48 → 0.
     // Ja pārbaudi aizstāj ar uzvedības testu — samazini skaitli. Palielināt nedrīkst: jaunai SQL loģikai — scenārijs tests/*-test.sql.
     ok(sqlText <= 50, 'SQL faila teksta pārbaudes: ' + sqlText + ' (≤ 50)');
-    ok(rx <= 1148, 'regulārās izteiksmes pret tekstu: ' + rx + ' (≤ 1148)');
+    ok(rx <= 1136, 'regulārās izteiksmes pret tekstu: ' + rx + ' (≤ 1136)');
     for (const f of ['reports-test.sql', 'ratings-stats-test.sql', 'permissions-test.sql']) ok(rd('tests/run-sql.sh').includes('t:' + f), f + ' — CI');
+  });
+}
+
+// ---------- B18 (audits 2): stripe-webhook kā vesela programma — viltots Stripe un datubāze, īstā loģika ----------
+{
+  const fs18 = require('fs'), path18 = require('path');
+  const WH18 = path18.join(__dirname, '..', 'supabase', 'functions', 'stripe-webhook', 'index.ts');
+  const OID = '11111111-2222-4333-8444-555555555555', PAS = 'aaaaaaaa-0000-4000-8000-00000000000a', DRV = 'dddddddd-0000-4000-8000-00000000000d';
+  // Ielādē stripe-webhook/index.ts (bez izmaiņām, izņemot Stripe bibliotēkas importu) ar viltotu Deno, fetch un Stripe
+  function loadWebhook(state) {
+    const strip = require('module').stripTypeScriptTypes;
+    if (typeof strip !== 'function') throw new Error('vajag Node 22.13+ (module.stripTypeScriptTypes)');
+    let src = fs18.readFileSync(WH18, 'utf8');
+    const imp = "import Stripe from 'npm:stripe@17.7.0';";
+    if (!src.includes(imp)) throw new Error('nav Stripe importa');
+    src = strip(src.replace(imp, ''), { mode: 'strip' });
+    const env = { STRIPE_SECRET_KEY: 'sk_test_x', STRIPE_WEBHOOK_SECRET: 'whsec_x', SUPABASE_URL: 'https://db.test', SUPABASE_SERVICE_ROLE_KEY: 'sb_secret_x', ...(state.env || {}) };
+    let handler = null;
+    const Deno = { env: { get: k => env[k] }, serve: h => { handler = h; } };
+    // Stripe bibliotēka: paraksts „derīgs” tikai, ja galvenē „ok” (īstā pārbaude — Stripe SDK; šeit pārbauda, ka bez tās nekas nenotiek)
+    const Stripe = function () { this.webhooks = { constructEventAsync: async (body, sig, secret) => {
+      if (sig !== 'ok' || secret !== 'whsec_x') throw new Error('bad sig'); return JSON.parse(body); } }; };
+    Stripe.createFetchHttpClient = () => null; Stripe.createSubtleCryptoProvider = () => null;
+    const calls = state.calls = [];
+    const fetch = async (url, init = {}) => {
+      const u = String(url), body = init.body ? JSON.parse(init.body) : null;
+      calls.push({ url: u, method: init.method || 'GET', body, headers: init.headers || {} });
+      const reply = (code, j) => new Response(j === undefined ? '' : JSON.stringify(j), { status: code });
+      if (u.startsWith('https://api.stripe.com/v1/')) {
+        const k = u.slice(26).split('?')[0];
+        return k in state.stripe ? reply(200, state.stripe[k]) : reply(404, { error: { message: 'nav' } });
+      }
+      if (u.startsWith('https://db.test/rest/v1/stripe_events?id=eq.')) return reply(200, state.seen ? [{ id: 'x' }] : []);
+      if (u.startsWith('https://db.test/rest/v1/stripe_events')) { state.events.push(body); return reply(201); }
+      if (u.startsWith('https://db.test/rest/v1/ride_payments?')) return reply(200, state.row ? [state.row] : []);
+      if (u.startsWith('https://db.test/rest/v1/rpc/ride_payment_mark')) { state.marks.push(body); return reply(200, true); }
+      return reply(500, { error: 'neparedzēts ' + u });
+    };
+    new Function('Deno', 'Stripe', 'fetch', src)(Deno, Stripe, fetch);
+    return async (event, sig = 'ok') => {
+      const res = await handler(new Request('https://fn.test/', { method: 'POST', headers: { 'stripe-signature': sig }, body: JSON.stringify(event) }));
+      return { status: res.status, body: await res.json() };
+    };
+  }
+  const base = (o = {}) => ({ events: [], marks: [], seen: false, stripe: {},
+    row: { session_id: 'cs_1', status: 'created', offer: { driver_id: DRV, request: { user_id: PAS } } }, ...o });
+  const session = (paid, refunds = []) => ({ id: 'cs_1', metadata: { offer_id: OID }, payment_status: paid ? 'paid' : 'unpaid', amount_total: 500,
+    payment_intent: { id: 'pi_1', latest_charge: { id: 'ch_1', amount: 500, refunds: { data: refunds, has_more: false } } } });
+
+  test('B18: webhook — nederīgs paraksts → 400, nekas netiek lasīts vai rakstīts', async () => {
+    const st = base(); const send = loadWebhook(st);
+    const r = await send({ id: 'evt_1', type: 'checkout.session.completed', data: { object: {} } }, 'bad');
+    eq(r.status, 400); eq(st.calls.length, 0, 'ne Stripe, ne datubāze');
+    const r2 = await (loadWebhook(base({ env: { STRIPE_WEBHOOK_SECRET: '' } })))({ id: 'e', type: 'x', data: { object: {} } });
+    eq(r2.status, 500, 'bez iestatījumiem — 500 (Stripe atkārtos)');
+    ok(!JSON.stringify(r2.body).includes('whsec') && !JSON.stringify(r2.body).includes('sk_test'), 'atslēgas atbildē nenonāk');
+  });
+  test('B18: webhook — samaksāts → „paid” (stāvoklis no Stripe, ne no notikuma); nesamaksāts — nē; atkārtots notikums — nekas', async () => {
+    let st = base({ stripe: { 'checkout/sessions/cs_1': session(true) } }); let send = loadWebhook(st);
+    let r = await send({ id: 'evt_2', type: 'checkout.session.completed', data: { object: { id: 'cs_1', payment_status: 'paid', metadata: { offer_id: OID } } } });
+    eq(r.body.result, 'paid'); eq(st.marks.length, 1); eq(st.marks[0].p_status, 'paid'); eq(st.marks[0].p_user_id, PAS, 'pasažiera vārdā');
+    eq(st.events[0].id, 'evt_2'); eq(st.events[0].offer_id, OID, 'notikums pierakstīts');
+    st = base({ stripe: { 'checkout/sessions/cs_1': session(false) } }); send = loadWebhook(st);
+    r = await send({ id: 'evt_3', type: 'checkout.session.completed', data: { object: { id: 'cs_1', payment_status: 'paid', metadata: { offer_id: OID } } } });
+    eq(st.marks.length, 0, 'notikums saka „paid”, Stripe — nē → neraksta');
+    st = base({ seen: true, stripe: { 'checkout/sessions/cs_1': session(true) } }); send = loadWebhook(st);
+    r = await send({ id: 'evt_2', type: 'checkout.session.completed', data: { object: { id: 'cs_1', payment_status: 'paid', metadata: { offer_id: OID } } } });
+    ok(r.body.duplicate === true && st.marks.length === 0 && st.events.length === 0, 'atkārtots (Stripe „Resend”) — nekas');
+  });
+  test('B18: webhook — atmaksa: pilna → „refunded”, daļēja vai gaidoša — paliek „paid”', async () => {
+    const ev = { id: 'evt_4', type: 'charge.refunded', data: { object: { id: 'ch_1', metadata: { offer_id: OID }, payment_intent: 'pi_1' } } };
+    let st = base({ row: { ...base().row, status: 'paid' }, stripe: { 'checkout/sessions/cs_1': session(true, [{ id: 're_1', amount: 200, status: 'succeeded', created: 1 }]) } });
+    let r = await loadWebhook(st)(ev);
+    eq(r.body.result, 'partial'); eq(st.marks.length, 0, 'daļēja — neraksta');
+    st = base({ row: { ...base().row, status: 'paid' }, stripe: { 'checkout/sessions/cs_1': session(true, [{ id: 're_2', amount: 500, status: 'pending', created: 1 }]) } });
+    r = await loadWebhook(st)(ev); eq(r.body.result, 'pending'); eq(st.marks.length, 0, 'gaidoša — neraksta');
+    st = base({ row: { ...base().row, status: 'paid' }, stripe: { 'checkout/sessions/cs_1': session(true, [{ id: 're_3', amount: 500, status: 'succeeded', created: 2, metadata: { cz_reason: 'cancelled_before_pickup' } }]) } });
+    r = await loadWebhook(st)(ev);
+    eq(r.body.result, 'refunded'); eq(st.marks[0].p_status, 'refunded'); eq(st.marks[0].p_refund_id, 're_3'); eq(st.marks[0].p_reason, 'cancelled_before_pickup'); eq(st.marks[0].p_cents, 500);
+  });
+  test('B18: PAYMENTS-TEST.md — Stripe webhook notikumu saraksts sakrīt ar kodu; pārbaudes vaicājumi eksistē', () => {
+    const src = fs18.readFileSync(WH18, 'utf8');
+    const sw = src.slice(src.indexOf('switch (event.type)'));
+    const evs = [...sw.matchAll(/case '([a-z_.]+)':/g)].map(m => m[1]);
+    const doc = fs18.readFileSync(path18.join(__dirname, '..', 'PAYMENTS-TEST.md'), 'utf8');
+    const listed = [...doc.slice(doc.indexOf('Developers → Webhooks'), doc.indexOf('3. Izvietota')).matchAll(/`([a-z_.]+\.[a-z_.]+)`/g)].map(m => m[1]);
+    ok(evs.length >= 14, 'notikumi kodā: ' + evs.length);
+    eq(listed.slice().sort().join(','), evs.slice().sort().join(','), 'dokumentā tieši tie notikumi, ko apstrādā webhook');
+    for (const f of ['tools/pay-check.sql', 'tools/pay-recent.sql']) ok(fs18.existsSync(path18.join(__dirname, '..', f)) && doc.includes(f), f);
+  });
+  test('B18: webhook — strīds (chargeback): brauciena ID no maksājuma, pierakstīts; maksājuma statuss nemainās', async () => {
+    const pi = { 'payment_intents/pi_1': { id: 'pi_1', metadata: { offer_id: OID } }, 'payment_intents/pi_9': { id: 'pi_9', metadata: {} } };
+    const cases = [['charge.dispute.created', 'needs_response', 'dispute_needs_response'], ['charge.dispute.updated', 'under_review', 'dispute_under_review'],
+      ['charge.dispute.closed', 'lost', 'dispute_closed_lost'], ['charge.dispute.closed', 'won', 'dispute_closed_won'],
+      ['charge.dispute.funds_withdrawn', 'needs_response', 'dispute_funds_withdrawn'], ['charge.dispute.funds_reinstated', 'won', 'dispute_funds_reinstated']];
+    for (const [type, status, want] of cases) {
+      const st = base({ stripe: pi });
+      const r = await loadWebhook(st)({ id: 'evt_d', type, data: { object: { id: 'dp_1', payment_intent: 'pi_1', status, reason: 'fraudulent', amount: 500 } } });
+      eq(r.status, 200, type); eq(r.body.result, want, type + ' ' + status);
+      eq(st.events[0].offer_id, OID, 'brauciens atrasts'); eq(st.marks.length, 0, 'statuss netiek mainīts');
+    }
+    const st = base({ stripe: pi });
+    const r = await loadWebhook(st)({ id: 'evt_e', type: 'charge.dispute.created', data: { object: { id: 'dp_2', payment_intent: 'pi_9', status: 'needs_response' } } });
+    eq(r.body.result, 'not_ride', 'cits Stripe maksājums (nav brauciens)');
   });
 }
 

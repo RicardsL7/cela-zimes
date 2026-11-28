@@ -153,6 +153,13 @@ for f in $(grep -lE "cz_migrations where seq > [0-9]+\)" supabase/*.sql); do   #
   else bad_ "aizsardzība: $(basename "$f") NEatteicās" "$out"; fi
 done
 out=$(status_check ok) && ok_ "status.sql pēc atteikumiem: nekas nav mainījies" || bad_ "status.sql pēc atteikumiem" "$out"
+# B18 (audits 2): maksājumu pārbaudes vaicājumi — darbojas uz gala shēmas un TIKAI LASA (tikai lasīšanas transakcijā)
+for f in tools/pay-check.sql tools/pay-recent.sql; do
+  if out=$(PGOPTIONS='-c default_transaction_read_only=on' psql -X -q -At -v ON_ERROR_STOP=1 -f "$f" 2>&1); then
+    if [ "$f" = tools/pay-check.sql ] && [ "$(grep -c '|' <<<"$out")" -ne 8 ]; then bad_ "B18: $f — nav 8 pārbaudes rindu" "$out"
+    else ok_ "B18: $f — darbojas, tikai lasa"; fi
+  else bad_ "B18: $f" "$out"; fi
+done
 # B13 (audits 2): atjaunošanas mēģinājums — kopija (pg_dump) → jauna datubāze → status.sql un rindu skaits sakrīt;
 # pazaudēti pg_cron darbi → tools/restore-cron.sql tos atjauno (lokāli pg_cron aizstājējs — bez „create extension”)
 psql -X -q -v ON_ERROR_STOP=1 -c "insert into auth.users (id) values ('00000000-0000-0000-0000-0000000b1301')" \
