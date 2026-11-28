@@ -4751,7 +4751,7 @@ exit 0
     eq(legalHref('https://x/privacy.html', 'en'), 'https://x/privacy.html', 'svešas adreses netiek mainītas');
   });
   test('B20: vārdnīcas pilnas — katram lietotnes tekstam angļu un krievu tulkojums (vai i18n-skip.json)', async () => {
-    const ex = await import(path20.join(ROOT20, 'tools', 'i18n-extract.mjs'));
+    const ex = await import(require('url').pathToFileURL(path20.join(ROOT20, 'tools', 'i18n-extract.mjs')).href);
     const all = ex.czI18nExtract(ROOT20);
     const en = dict20('en'), ru = dict20('ru');
     const miss = all.filter(s => !(s in en) || !(s in ru));
@@ -4776,7 +4776,7 @@ exit 0
     ok(new Set(skip).size === skip.length && skip.length < 300, 'i18n-skip.json bez dublikātiem');
   });
   test('B20: teksta izvilkšana — komentāri un regulārās izteiksmes izlaistas, ${…} un + → {*}, HTML pa gabaliem', async () => {
-    const { czI18nJsStrings, czI18nHtmlParts, czI18nLooksLv } = await import(path20.join(ROOT20, 'tools', 'i18n-extract.mjs'));
+    const { czI18nJsStrings, czI18nHtmlParts, czI18nLooksLv } = await import(require('url').pathToFileURL(path20.join(ROOT20, 'tools', 'i18n-extract.mjs')).href);
     const s = czI18nJsStrings("// 'Komentārs'\nconst a = /'nav'/g; /* 'Arī ne' */ el.textContent = `Atmaksāts ${eur(x, 'Iekšā')}`; b = 'Bultas krāsa: ' + c; d = x / 2 + 'Ātri';");
     ok(!s.includes('Komentārs') && !s.includes('nav') && !s.includes('Arī ne'), 'komentāri un regex: ' + JSON.stringify(s));
     ok(s.includes('Atmaksāts {*}') && s.includes('Iekšā'), '${…} un virknes tajā: ' + JSON.stringify(s));
