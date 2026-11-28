@@ -74,12 +74,18 @@ function step(name, ok, detail = '') {
   const click = (p, text) => body(p).getByRole('button', { name: text, exact: true }).first().click();
   const ok = async (name, fn) => { try { const r = await fn(); step(name, r !== false, r === false ? 'false' : ''); return true; } catch (e) { step(name, false, e && e.message || e); return false; } };
   const userId = p => p.evaluate(() => rides.store.id);
+  // B20: pirmajā atvēršanā — valodas izvēle (pārlūks latviski → „Latviešu” jau atzīmēta)
+  const pickLv = async p => {
+    await p.locator('#langGate .lang-opt[data-lang="lv"][aria-pressed="true"]').click({ timeout: T });
+    await p.locator('#langGate').waitFor({ state: 'detached', timeout: T });
+  };
   const q = s => st.sql(s).trim();
 
   try {
     // ---------- Pasažieris ----------
     const P = await person('pasažieris', 56.9500, 24.1100);
-    await ok('piekrišanas ekrāns pirmajā atvēršanā → „Piekrītu”', async () => {
+    await ok('valodas izvēle pirmajā atvēršanā → „Latviešu”, tad piekrišanas ekrāns → „Piekrītu”', async () => {
+      await pickLv(P);
       await P.locator('#consentGate').waitFor({ state: 'visible', timeout: T });
       await P.locator('#consentGate button[data-act="accept"]').click();
       await P.locator('#consentGate').waitFor({ state: 'hidden', timeout: T });
@@ -109,6 +115,7 @@ function step(name, ok, detail = '') {
     // ---------- Šoferis (~1 km attālumā) ----------
     const D = await person('šoferis', 56.9560, 24.1250);
     await ok('šoferis: piekrišana, „Kopā” → „Es braucu”, profils ar auto', async () => {
+      await pickLv(D);
       await D.locator('#consentGate button[data-act="accept"]').click({ timeout: T });
       await ready(D);
       await D.locator('#ridesBtn').click();
@@ -160,6 +167,7 @@ function step(name, ok, detail = '') {
 
     // ---------- Svešs konts (RLS caur īsto REST API) ----------
     const I = await person('svešais', 57.10, 24.50);
+    await pickLv(I);
     await I.locator('#consentGate button[data-act="accept"]').click({ timeout: T });
     await I.waitForFunction(() => typeof czAuthGet === 'function' && czAuthGet(), null, { timeout: T });
     const spy = await I.evaluate(async () => {
