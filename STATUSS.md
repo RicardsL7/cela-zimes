@@ -630,5 +630,7 @@
   notikumiem; `run-sql.sh` tos palaiž tikai lasīšanas transakcijā.
 - **Testi:** `run.js` — visa webhook programma ar viltotu Stripe / datubāzi (5 jauni; F19 teksta tests aizstāts; teksta
   pārbaudes 1148 → 1136); `run-sql.sh` +2. `deno check` abām funkcijām (Stripe bibliotēka — tipu aizstājējs, jo npm šeit nav).
-- **Jādara īpašniekam:** izvietot `stripe-webhook`, Stripe webhook pievienot strīdu notikumus, veikt `PAYMENTS-TEST.md` soļus.
+- **Izvietots 28.11.2026:** `stripe-webhook` (Supabase panelī; kods sakrīt ar repozitoriju — SHA-256 `c41ea7e2252412f8…`;
+  „Verify JWT” izslēgts kā līdz šim).
+- **Jādara īpašniekam:** Stripe webhook pievienot strīdu notikumus, veikt `PAYMENTS-TEST.md` soļus.
 

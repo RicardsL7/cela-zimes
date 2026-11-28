@@ -21,7 +21,7 @@ to neaizstāj: īstā Stripe uzvedas citādi (paraksti, Connect, atmaksas, strī
    `checkout.session.expired`, `charge.refunded`, `charge.refund.updated`, `refund.created`, `refund.updated`, `refund.failed`,
    `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `charge.dispute.funds_withdrawn`,
    `charge.dispute.funds_reinstated`.
-3. Izvietota jaunākā `stripe-webhook` (B18 — strīdu notikumi).
+3. Izvietota jaunākā `stripe-webhook` (B18 — strīdu notikumi) — izdarīts 28.11.2026.
 
 ## 1.–12. Soļi
 
