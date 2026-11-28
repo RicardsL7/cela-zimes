@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- A10: drošības politika (CSP) — kā privacy.html. B20: tulkojums angļu valodā; noteicošā ir latviešu versija (privacy.html). -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'; upgrade-insecure-requests">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <script src="guard.js?v=151"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy policy — Ceļa Zīmes</title>
+  <link rel="stylesheet" href="legal.css?v=93">
+</head>
+<body>
+<main class="legal">
+  <p class="back"><a href="./">← Back to the app</a></p>
+  <p class="langs"><a href="privacy.html" lang="lv">Latviešu</a> · <b>English</b> · <a href="privacy-ru.html" lang="ru">Русский</a></p>
+  <p class="tr-note">This is an English translation provided for convenience. The legally binding version is the <a href="privacy.html" lang="lv">Latvian original</a>.</p>
+  <h1>Privacy policy</h1>
+  <p class="ver">Version 2026-11-10c · Ceļa Zīmes</p>
+
+  <h2>1. Who processes the data</h2>
+  <p>Controller: <b>Ričards Liepa</b>, a private individual, Latvia. Contact about data: <a href="mailto:support.travel24@gmail.com">support.travel24@gmail.com</a>.</p>
+
+  <h2>2. Use without an account</h2>
+  <p>The map, road signs, speed cameras, search, routes, navigation, the parking check and places nearby can be used without an account.</p>
+  <ul>
+    <li><b>Location</b> is used on your device (the arrow on the map, speed, warnings). The app does not store it on its server.</li>
+    <li>To show the map and calculate a route, the device contacts external services directly, which receive your IP address and the content of the request:
+      map images — OpenFreeMap; search — Photon (komoot) and Nominatim (OpenStreetMap), which receive the text you type;
+      routes — the OSRM demo server (project-osrm.org) and, if it does not respond, FOSSGIS (routing.openstreetmap.de), which receive the start and destination coordinates;
+      road signs — Mapillary (Meta), which receives the visible map area; sign images — jsDelivr (cdn.jsdelivr.net);
+      street data, places and opening hours — Overpass (overpass-api.de) and the OpenStreetMap API, which receive the visible map area;
+      weather — Open-Meteo, which receives an approximate location (~100 m); fonts — Google Fonts. Where these services are located — section 7.</li>
+    <li><b>On the device</b> (in the browser's storage) settings, the list of seen speed cameras and a cache are kept — including the app's files and viewed parts of the map, so the app can open without internet. You can delete them in the browser settings (site data).</li>
+    <li><b>Error reports:</b> if a program error occurs in the app, a technical report is sent to the server — the error text (without emails, codes, URL parameters and coordinates), file name and line, app version and browser name. It contains no account, location or other information about you, and the server does not link it to an IP address. Only the app owner sees the reports; they are kept for 30 days (section 8). Legal basis — legitimate interests: finding and fixing errors.</li>
+    <li>When the device finds a speed camera sign on the map, its Mapillary number and coordinates are sent to the shared speed camera list; if the sign no longer exists in Mapillary, the device marks it as invalid. The speed camera list itself contains no information about you. So that one account cannot “vote” for a speed camera many times, an anonymous account is needed for this (if there isn't one yet, the app creates it invisibly — section 3), and the server keeps for <b>30 days</b> which account reported which speed camera (section 8). Legal basis — legitimate interests: a reliable speed camera list for all users.</li>
+  </ul>
+
+  <h2>3. Account (shared rides “Together”)</h2>
+  <p>An account is created only when you open “Together”, report an event on the road, turn on speed sharing yourself or the device reports a found speed camera (section 2). At first it is anonymous (without an email). If you choose to save it, your email or Google account is linked.</p>
+  <ul>
+    <li><b>Account data:</b> account ID, email or Google identity (if linked), consent to the terms of use and privacy policy (version and time).</li>
+    <li><b>Profile:</b> name, phone, car description (if provided). The name and car are seen only by the other party of a ride: a passenger sees the drivers who offered them a ride; a driver sees the passenger who accepted their offer. Other users do not see your profile. The phone number is seen only by the person the ride is agreed with.</li>
+    <li><b>Rides:</b> from where and to where (address and coordinates), time, number of people, note, price, offers and their status, chat messages. While a ride is waiting for a driver, other signed-in users see only an approximate location (~1 km, name of the settlement), time, number of people and your average rating — without your name, address, note and account ID. Only the driver whose offer you accept sees the exact location, address, note and name.</li>
+    <li><b>Location during a ride:</b> once a ride is agreed, the driver's and the passenger's last location is sent to the other ride participant. The last location is kept with the ride.</li>
+    <li>Technical data for security: the server may log the IP address and sign-in time.</li>
+    <li><b>“Not a robot” check (Cloudflare Turnstile):</b> when creating an account or requesting an email link, the app may load a Cloudflare check. Cloudflare receives the IP address and technical browser data to tell a person from an automated program; the app only receives a one-time confirmation code. The check is not loaded at other times. Legal basis — legitimate interests: protecting the service from fake accounts.</li>
+    <li><b>Statistics (“My statistics”):</b> only the <b>number</b> of your actions is kept with the account — how many road reports were sent and confirmed, how many traffic measurements were sent, how many speed cameras were found. No places or times. The app's overall statistics (seen only by the app owner) contain only totals without user data.</li>
+  </ul>
+  <p>Purpose: providing the shared ride service (performance of a contract). Legal basis for the consent register — a legal obligation to prove consent.</p>
+
+  <h2>4. Card payments</h2>
+  <p>Payments are processed by <b>Stripe</b> (Stripe Payments Europe, Ltd.) as an independent controller. Only Stripe sees card details. The driver's identity and bank account details are collected by Stripe during setup. The app stores only the Stripe account number (acct_…), the payment session number and — if money was refunded — the refund number, amount, time and reason. The app currently works in test mode — no real money is charged.</p>
+
+  <h2>5. Reports about events on the road</h2>
+  <p>When you report an event (police, accident, pothole etc.), the server stores the event type, the location on the road, the direction of travel, the time and your account ID. Other users see the event on the map but <b>do not see who reported it</b>. If you mark “still there” / “no longer there”, the mark is stored with your account ID (so that everyone can mark only once). The account ID is needed to limit fake reports (up to 10 per hour) and so that you can delete your report. Purpose: warning other drivers (legitimate interests — road safety).</p>
+  <p><b>Confirmations and coins.</b> When, while driving, you answer “YES” / “NO” to the question whether an event is still there, your current location, speed, direction of travel and GPS accuracy are sent with the answer. The server uses them only to check that you are really driving past (against cheating with a fake location) and keeps them with the answer until the report is deleted. The account stores the coin balance, today's earnings, the purchased and chosen Garage avatars, a list of coin movements, a trust score (how often your answers match others' answers) and the last checked location with time (to recognise impossible “jumps”). The trust score affects only coins and how many confirmations your reports need; others do not see it. Purpose: fair rewards for helping others (contract — the app's terms of use).</p>
+
+  <h2>6. Speed sharing for the traffic map (voluntary)</h2>
+  <p>Only if you turn it on: your driving speed per street segment is sent (~segment cell, direction, road class, time). The measurements contain <b>no</b> account ID, name or route; the first and last 400 m are not sent. Measurements are kept for 28 days. To limit abuse, the number of measurements sent and the time of the last sending are kept with the account for 1 day (from this the app shows only the total — “Helping now: N drivers”). You can withdraw at any time in Settings.</p>
+  <p><b>Your location on others' map (a separate, voluntary choice “Show me on others' map”, off by default).</b> Only if you turn it on and only while you drive (from 15 km/h): no more than once every 30 seconds, your approximate location (rounded to ~150 m), direction of travel and chosen Garage avatar are updated on the server. The point appears to others only after ~1 minute of continuous driving (the start of the trip is not shown). It is seen only by <b>signed-in users who are driving nearby at that moment (within 15 km)</b> — without your name or account ID. When you stop or turn it off, the point is deleted immediately; otherwise it disappears after 2 minutes and is deleted after 10 minutes. No history is kept. Speed sharing for the traffic map does not turn this on.</p>
+  <p><b>Seeing other drivers.</b> You see other drivers on the map only while driving. So that the server can select those nearby and check that you are really driving (against tracking with fake locations), while you drive the app sends your location and speed about every 20 seconds; the server stores the location rounded to ~50 m and the trip's starting point — only for this check, shows it to no one and deletes it as soon as you stop, or no later than after 10 minutes. Without an account, other drivers are not shown. Purpose: safer and clearer driving (contract — the app's terms of use).</p>
+
+  <h2>7. Where data is stored and who processes it</h2>
+  <ul>
+    <li><b>Supabase</b> — database and accounts, servers in Ireland (EU).</li>
+    <li><b>GitHub Pages</b> — hosting of the app's pages (may log IP addresses).</li>
+    <li><b>Stripe</b> — payments (see section 4).</li>
+    <li>Emails (sign-in links) are sent by Supabase.</li>
+    <li><b>Cloudflare</b> (USA) — the “not a robot” check (section 3), under the EU-US Data Privacy Framework.</li>
+  </ul>
+  <p><b>Map services (section 2) and countries.</b> The device sends requests to them directly, and they process them as independent controllers under their own terms:</p>
+  <ul>
+    <li>EU: OSRM demo and FOSSGIS routing, Overpass (FOSSGIS e.V., Germany), Photon (komoot, Germany), jsDelivr (Poland; uses international content delivery networks for delivery);</li>
+    <li>countries with an EU adequacy decision: Nominatim and the OpenStreetMap API (OpenStreetMap Foundation, United Kingdom), Open-Meteo (Switzerland);</li>
+    <li>USA: Mapillary (Meta Platforms), Google Fonts (Google), GitHub Pages (GitHub) — according to the providers' information, under the EU-US Data Privacy Framework;</li>
+    <li>OpenFreeMap (map images) — an independent non-profit project; map image requests contain only the map area.</li>
+  </ul>
+  <p>The app does not use servers in Russia.</p>
+  <p>Data is not sold and is not used for advertising.</p>
+
+  <h2>8. How long</h2>
+  <ul>
+    <li>An <b>anonymous account</b> (without a linked email or Google) that has not connected to the server for <b>180 days</b> is deleted automatically — the same as when you delete the account yourself (see section 9; coins and avatars are lost). Accounts with an email or Google are not deleted automatically. If you have an active ride, an unfinished payment or a driver payment account, the anonymous account is not deleted.</li>
+    <li>Account, profile, ride, chat and consent data — until the account is deleted. The minimal record of a completed ride for the other participant (see section 9) — until the other participant also deletes their account.</li>
+    <li>Event reports and marks — until they expire (police 45 min, pothole 3 days etc.) and another 2 days, then they are deleted; when the account is deleted — immediately.</li>
+    <li>Speed measurements — 28 days; the record of the number of measurements — 1 day.</li>
+    <li>Your location on others' map — until you stop or 10 minutes after the last update. The location used to show you others (~50 m) — until you stop or 10 minutes.</li>
+    <li>Coins, avatars, coin movements and the trust score — until the account is deleted. Confirmation check data (location, speed, direction) — together with the report (until it expires and another 2 days).</li>
+    <li>Number of actions (“My statistics”) — until the account is deleted; deleted together with it.</li>
+    <li>The record of which account reported a speed camera or marked it as invalid — 30 days after the last report; when the account is deleted — immediately.</li>
+    <li>Stripe payment records — according to Stripe and accounting requirements (they remain with Stripe after the account is deleted).</li>
+    <li>Error reports (section 2) — 30 days.</li>
+  </ul>
+
+  <h2>9. Your rights</h2>
+  <p>You have the right to access your data, correct it (the “Together” profile), delete it (<b>“Together” → Account → Delete account</b> or “Account and data” in Settings), restrict processing and object, and to receive your data. Write to <a href="mailto:support.travel24@gmail.com">support.travel24@gmail.com</a>. You can file a complaint with the Data State Inspectorate of Latvia (www.dvi.gov.lv).</p>
+  <p>When you delete your account, the account and all related data in sections 3 and 5 are deleted; a driver's Stripe account is closed. Anonymous speed measurements (which cannot be linked to you) and Stripe payment records remain.</p>
+  <p><b>What remains for the other ride participant.</b> A ride is also the other person's (driver's or passenger's) transaction, and a ride paid by card needs a link to the Stripe payment (for refunds and disputes). Therefore, for a completed (agreed) ride the other person keeps a minimal record <b>without your account ID, name, phone and car</b>: date and time, number of people, price, payment status and session number, route rounded to ~1 km (without address and note). Your chat messages, last location and ratings about you are deleted; the stars of ratings you gave remain without a comment and without your identity. Rides nobody had accepted are deleted completely; if the other participant has also already deleted their account, the ride is deleted completely. Legal basis — the other participant's legitimate interests and performance of a contract (payments, refunds).</p>
+  <p>While there is an active (agreed, not yet finished) ride, an open payment page or an unfinished refund, the account cannot be deleted — first the ride must be finished or cancelled. This protects the other person and your money.</p>
+
+  <h2>10. Changes</h2>
+  <p>If the policy changes significantly, the app shows this and asks you to accept the new version.</p>
+  <p>2026-11-08: clarified what remains for the other ride participant after account deletion and when the account temporarily cannot be deleted (sections 9 and 8).</p>
+  <p>2026-11-08b: your location on others' map — a separate choice (off by default), ~150 m, seen only by signed-in users driving nearby; described seeing other drivers (sections 6 and 8).</p>
+  <p>2026-11-10: full list of external map services and their countries (sections 2 and 7); FOSSGIS backup routing server; the Russia-based Overpass server is no longer used.</p>
+  <p>2026-11-10b: the “not a robot” check (Cloudflare Turnstile) when creating an account or requesting an email link (sections 3 and 7); anonymous accounts unused for 180 days are deleted automatically (section 8).</p>
+  <p>2026-11-10c: speed cameras can only be reported with an (anonymous) account; the record of which account reported which speed camera is kept for 30 days (sections 2, 3 and 8).</p>
+  <p>2026-11-10 (clarification, no new consent — visibility reduced): the shared ride profile (name, car) is seen only by the other party of a ride, not by all users (section 3).</p>
+  <p>2026-11-11 (clarification, no new consent): technical error reports without personal data, 30 days (sections 2 and 8).</p>
+</main>
+</body>
+</html>

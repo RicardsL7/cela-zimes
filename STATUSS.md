@@ -658,3 +658,26 @@
   7 + 6 gadījumi); regulāro izteiksmju skaits nepalielinājās.
 - **Nav pārbaudīts:** īsta atslēga GitHub Actions (to izveido tikai īpašnieks), īsts telefons, Play konts.
 - **Jādara īpašniekam:** `mobile/README.md` 1.–6. solis (atslēga, 2 Secrets, Run workflow), telefona tests, vēlāk Play konts.
+
+## B20 (audits 2) — valodas: latviešu, angļu, krievu (28.11.2026)
+
+- **Lēmums (īpašnieks):** „visas valodas” → iebūvētas latviešu, angļu un krievu; citām — angļu versija + pārlūka tulkotājs;
+  jaunu iebūvētu valodu var pievienot ar vienu vārdnīcas failu.
+- **`i18n.js` (jauns, `<head>`):** valoda — `?lang=` → saglabātā (`cz.lang`) → pārlūka valoda (latviešu, ja tā sarakstā;
+  krievu, ja pirmā; citādi angļu); vārdnīcu ielādē tikai vajadzīgo (latviešu lietotājiem nekas papildus); tulko tekstu un
+  `title` / `aria-label` / `placeholder` / `alt`, arī vēlāk pievienoto (MutationObserver); `{*}` — mainīgie (iekšā arī
+  tulko, piem. tēla vārdu); pārlūka logi (`confirm`); saites uz privātuma politiku / noteikumiem → tulkojums;
+  `<html lang>`. Pirmā atvēršana — valodas logs virs piekrišanas loga (fokuss tajā, Tab riņķo).
+- **`i18n-en.js`, `i18n-ru.js` (1380 teksti), `i18n-skip.json` (211 — kods, ne teksts):** visi lietotnes teksti — JS,
+  `index.html`, servera kļūdas (SQL `raise exception`, Edge Functions). `tools/i18n-extract.mjs` — izvilkšana (bez
+  komentāriem un regulārajām izteiksmēm; `${…}` un `'teksts: ' + x` → `{*}`; HTML pa gabaliem).
+- **Iestatījumi → Valoda** (latviešu / English / Русский; mainot — pārlādē).
+- **`privacy-en/ru.html`, `terms-en/ru.html`:** pilni tulkojumi ar piezīmi, ka noteicošā ir latviešu versija; latviešu
+  lapās — saites uz tulkojumiem.
+- **Testi:** `run.js` +6 (269/269) — izvēle, tulkotājs, vārdnīcu pilnība un mainīgo skaits, izvilkšana, `index.html`,
+  tulkoto lapu versijas; kartes dūmu tests — jauns lietotājs ar angļu pārlūku → logs → „Русский” → krieviski (piekrišana,
+  iestatījumi, „Kopā”, „Garāža” bez latviešu teksta), `?lang=en`, 4 jaunās lapas bez CSP pārkāpumiem; E2E — valodas
+  izvēle pirms piekrišanas (26/26); bezsaistes tests — vārdnīcas kešā.
+- **Nav pārbaudīts:** krievu tulkojumu kvalitāte (vērts, lai izlasa dzimtās valodas runātājs); garu tekstu izkārtojums
+  šauros ekrānos visās panelēs; tulkoto juridisko tekstu atbilstība (jurists).
+- **Netulkots:** admin lapa, Supabase e-pasta vēstules, Android bezsaistes lapa.

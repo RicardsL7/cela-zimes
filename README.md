@@ -151,6 +151,23 @@ GitHub tos palaiž automātiski katrai izmaiņai (cilne **Actions** → „Testi
 - **E2E — kopbrauciens caur lietotni** (Playwright + Chromium + lokāls PostgreSQL + Supabase Auth un PostgREST programmas):
   `PGHOST=localhost PGUSER=postgres PGPASSWORD=… CZ_E2E_BIN=<mape ar auth, postgrest> node tests/e2e/rides-flow.js` — sk. „Uzvedības testi (B17)”.
 
+## Valodas (B20)
+- **Latviešu (pamata), angļu, krievu.** Pirmajā atvēršanā — izvēles logs (iepriekš atzīmēta pārlūka valoda; pirms
+  noteikumu piekrišanas); vēlāk — Iestatījumi → Valoda; saite ar `?lang=en` / `?lang=ru`. Citām valodām — „Cita valoda”:
+  lietotne angliski, un pārlūka tulkotājs (Chrome, Safari) to pārtulko no angļu valodas.
+- **Kā strādā:** kods raksta latviski kā līdz šim. `i18n.js` (pirmais `<head>`) ielādē vārdnīcu `i18n-en.js` / `i18n-ru.js`
+  („latviešu teksts” → tulkojums; `{*}` — mainīgais) un tulko lapā redzamo tekstu un atribūtus, arī visu, ko kods pievieno
+  vēlāk. Netulko elementus ar `data-noi18n`. Nav tulkojuma → paliek latviski (nekas nesalūst). Valodu kods var uzzināt ar
+  `czLang()`, skaitļu formātam `czLocale()`, tekstam ārpus lapas `czT('…')`.
+- **Jauns teksts kodā** → `node tools/i18n-extract.mjs --missing` parāda, kam vajag tulkojumu; pievieno to abās vārdnīcās
+  (vai `i18n-skip.json`, ja lietotājs to neredz — CSS klases, kodi). `tests/run.js` to pārbauda (CI sarkans, ja aizmirsts);
+  kartes dūmu tests atver lietotni krieviski un pārbauda, ka iestatījumos, „Kopā” un „Garāžā” nav latviešu teksta.
+- **Privātuma politika un noteikumi:** `privacy-en.html`, `privacy-ru.html`, `terms-en.html`, `terms-ru.html` — tulkojumi
+  informācijai, **noteicošā ir latviešu versija**. Mainot latviešu tekstu (un versiju) — jāatjauno arī tulkojumi (tests
+  pārbauda, ka versija sakrīt). Pirms īstas lietošanas tulkojumus vērts parādīt juristam.
+- Netulkots: admin lapa (tikai īpašniekam), Supabase e-pasta vēstules (pieslēgšanās saite — Supabase panelī), Android
+  lietotnes bezsaistes lapa. Burts Barlow nesatur kirilicu — krievu tekstam pārlūks lieto sistēmas burtu.
+
 ## Kartes maksājumu pārbaude (B18)
 - **Stripe testa režīmā no sākuma līdz beigām** — soļi, gaidāmais rezultāts un rezultātu tabula: [`PAYMENTS-TEST.md`](PAYMENTS-TEST.md)
   (šofera Connect konts, samaksa, atcelšana ar automātisko atmaksu, šofera atmaksa, daļēja atmaksa, noraidīta karte, webhook
