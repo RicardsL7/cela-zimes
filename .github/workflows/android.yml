@@ -2,8 +2,10 @@
 #   1) build   — precīzas atkarības (npm ci no mobile/package-lock.json), testa (debug) APK vienmēr;
 #                ja GitHub Secrets ir parakstīšanas atslēga — arī parakstīts laidiens: APK (telefonam) un AAB (Google Play),
 #                un growlab.cc/.well-known/assetlinks.json (App Links: saites atver lietotni) atjaunojas pats.
+#                B19: atslēgu pārbauda pirms būvēšanas (scripts/signing-check.sh), laidienu — pēc (scripts/verify-release.sh).
 #   2) device  — ierīces tests Android emulatorā: instalē, palaiž, pārbauda atļaujas, avārijas, growlab.cc ielādi,
-#                spraudņus un to, ka https://growlab.cc saite atveras lietotnē (mobile/scripts/device-test.sh).
+#                spraudņus un to, ka https://growlab.cc saite atveras lietotnē (mobile/scripts/device-test.sh);
+#                parakstītais laidiens — atjaunināšana virs iepriekšējās publicētās versijas (mobile/scripts/release-test.sh).
 #   3) publish — tikai ja ierīces tests izdevās: APK uz laidienu lapu „android-test”
 #                (https://github.com/RicardsL7/cela-zimes/releases/download/android-test/cela-zimes.apk).
 # Parakstīšanas atslēgu izveido un ievada tikai īpašnieks — sk. mobile/README.md. Šajā failā atslēgu nav.
@@ -27,12 +29,10 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     outputs:
       signed: ${{ steps.sign.outputs.signed }}
-    env:
-      HAS_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
     defaults:
       run:
         working-directory: mobile
@@ -55,18 +55,26 @@ jobs:
           fi
           npm ci --no-audit --no-fund --legacy-peer-deps
 
-      - name: Parakstīšanas atslēga (no GitHub Secrets)
+      # B19: atslēgu pārbauda PIRMS būvēšanas — nepareizs GitHub Secrets → skaidra kļūda latviski (scripts/signing-check.sh).
+      #      ANDROID_KEY_ALIAS (noklusējums celazimes) un ANDROID_KEY_PASSWORD (noklusējums = faila parole) nav obligāti.
+      - name: Parakstīšanas atslēga (no GitHub Secrets) — pārbaude
         id: sign
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [ "$HAS_KEY" = "true" ]; then
-            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          mkdir -p out
+          rc=0
+          KS_FILE="$RUNNER_TEMP/release.jks" CERT_OUT=out/release-cert-sha256.txt bash scripts/signing-check.sh || rc=$?
+          if [ $rc -eq 0 ]; then
             echo "CZ_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
             echo "signed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::Parakstīšanas atslēgas nav (mobile/README.md) — būvē tikai testa APK; telefons to nevarēs atjaunināt virs iepriekšējās versijas"
+          elif [ $rc -eq 2 ]; then
             echo "signed=false" >> "$GITHUB_OUTPUT"
+          else
+            exit 1
           fi
 
       - name: Android projekts
@@ -92,22 +100,27 @@ jobs:
         working-directory: mobile/android
         env:
           CZ_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          CZ_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          CZ_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          CZ_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'celazimes' }}
+          CZ_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           ./gradlew assembleRelease bundleRelease --no-daemon
           cp app/build/outputs/apk/release/app-release.apk ../out/cela-zimes.apk
           cp app/build/outputs/bundle/release/app-release.aab ../out/cela-zimes.aab
 
+      # B19: pirms laidiens nonāk telefonos — paraksts derīgs (v2), tieši mūsu atslēga, nav testa būvējums, versionCode
+      - name: Parakstītā laidiena pārbaude
+        if: steps.sign.outputs.signed == 'true'
+        env:
+          CZ_VERSION_CODE: ${{ github.run_number }}
+        run: bash scripts/verify-release.sh out/cela-zimes.apk out/cela-zimes.aab out/release-cert-sha256.txt
+
       - name: assetlinks.json (App Links) no parakstīšanas sertifikāta
         if: steps.sign.outputs.signed == 'true'
         working-directory: .
         env:
-          CZ_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          CZ_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          FP=$(keytool -list -v -keystore "$CZ_KEYSTORE_FILE" -alias "$CZ_KEY_ALIAS" -storepass "$CZ_KEYSTORE_PASSWORD" | sed -n 's/^[[:space:]]*SHA256: *//p' | head -1)
+          FP=$(cat mobile/out/release-cert-sha256.txt)
           if ! echo "$FP" | grep -Eq '^([0-9A-F]{2}:){31}[0-9A-F]{2}$'; then echo "::error::Neizdevās nolasīt sertifikāta SHA-256"; exit 1; fi
           echo "Sertifikāta SHA-256: $FP"
           mkdir -p .well-known
@@ -134,7 +147,7 @@ jobs:
 
   device:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -142,6 +155,10 @@ jobs:
         with:
           name: android
           path: out
+      - name: Iepriekšējā publicētā versija (B19 — atjaunināšanas testam)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download android-test -p cela-zimes.apk -D prev -R "$GITHUB_REPOSITORY" || echo "Iepriekšējās versijas nav"
       - name: KVM emulatoram
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -155,7 +172,10 @@ jobs:
           arch: x86_64
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
-          script: bash mobile/scripts/device-test.sh out/cela-zimes-debug.apk device-test
+          # B19: pēc testa APK — parakstītais laidiens: atjaunināšana virs iepriekšējās versijas, palaišana, App Links
+          script: |
+            bash mobile/scripts/device-test.sh out/cela-zimes-debug.apk device-test
+            if [ -f out/cela-zimes.apk ]; then bash mobile/scripts/release-test.sh out/cela-zimes.apk prev/cela-zimes.apk device-test/release; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -165,7 +185,7 @@ jobs:
 
   publish:
     needs: [build, device]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
         with:
