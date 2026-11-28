@@ -30,7 +30,7 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
   // Piekrišana pašreizējām versijām (no auth.js — pēc versijas maiņas tests neapstājas pie piekrišanas loga)
   const authSrc = require('fs').readFileSync(require('path').join(__dirname, '..', 'auth.js'), 'utf8');
   const consentV = { terms: (authSrc.match(/CZ_TERMS_VERSION = '([^']+)'/) || [])[1], privacy: (authSrc.match(/CZ_PRIVACY_VERSION = '([^']+)'/) || [])[1] };
-  await ctx.addInitScript(v => { try { localStorage.setItem('cz.consent', JSON.stringify({ terms: v.terms, privacy: v.privacy, at: 'x' })); } catch (e) {} }, consentV);
+  await ctx.addInitScript(v => { try { localStorage.setItem('cz.consent', JSON.stringify({ terms: v.terms, privacy: v.privacy, at: 'x' })); localStorage.setItem('cz.lang', 'lv'); } catch (e) {} }, consentV);
   // A10: visi CSP pārkāpumi (arī workerā neredzamie ielādes atteikumi lapā) — jābūt 0
   await ctx.addInitScript(() => { window.__csp = []; document.addEventListener('securitypolicyviolation', e => window.__csp.push(e.effectiveDirective + ' ' + (e.blockedURI || '') + ' ' + location.pathname)); });
   const page = await ctx.newPage();
@@ -170,6 +170,7 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
   res.a11y.garageClosed = await page.evaluate(() => ({ sheet: document.getElementById('garageSheet').hidden, active: document.activeElement && document.activeElement.id }));
   // Piekrišanas ekrāns (jauns lietotājs): fokuss tajā, fons inert, Esc neaizver, solis „Nepiekrītu” nepazaudē fokusu
   { const ctx2 = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 420, height: 860 } });
+    await ctx2.addInitScript(() => { try { localStorage.setItem('cz.lang', 'lv'); } catch (e) {} });   // valoda jau izvēlēta (B20 — zemāk)
     await ctx2.route('**/*', routeAll);
     const pg = await ctx2.newPage(); const errs = [];
     pg.on('pageerror', e => errs.push(String(e && e.message || e).slice(0, 200)));
@@ -186,7 +187,7 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
   res.lazy = await page.evaluate(() => ({ done: [...CZ_LAZY.done], failed: [...CZ_LAZY.failed], queue: CZ_LAZY.queue,
     rides: !!(typeof rides !== 'undefined' && rides.store), garage: typeof garage !== 'undefined', presence: typeof presence !== 'undefined' && !!presence.pollTimer }));
   { const ctx3 = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 420, height: 860 } });
-    await ctx3.addInitScript(v => { try { localStorage.setItem('cz.consent', JSON.stringify({ terms: v.terms, privacy: v.privacy, at: 'x' })); } catch (e) {} }, consentV);
+    await ctx3.addInitScript(v => { try { localStorage.setItem('cz.consent', JSON.stringify({ terms: v.terms, privacy: v.privacy, at: 'x' })); localStorage.setItem('cz.lang', 'lv'); } catch (e) {} }, consentV);
     await ctx3.route('**/*', async route => {
       if (/\/rides-ui\.js/.test(route.request().url())) await new Promise(r => setTimeout(r, 2500));   // lēns tīkls
       return routeAll(route);
@@ -209,7 +210,7 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
     res.redirect = { url: pg.url(), app: await pg.evaluate(() => !!document.getElementById('map')).catch(() => false) };
     await pg.close(); }
   res.pages = {};
-  for (const p of ['admin.html', 'privacy.html', 'terms.html']) {
+  for (const p of ['admin.html', 'privacy.html', 'terms.html', 'privacy-en.html', 'terms-en.html', 'privacy-ru.html', 'terms-ru.html']) {
     const pg = await ctx.newPage(); const errs = [];
     pg.on('pageerror', e => errs.push(String(e && e.message || e).slice(0, 200)));
     await pg.goto('https://app.test/' + p); await pg.waitForTimeout(1500);
@@ -221,6 +222,53 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
     const fr = pg.frames().find(fr => /app\.test\/privacy\.html/.test(fr.url()));
     res.framed = fr ? await fr.evaluate(() => getComputedStyle(document.documentElement).display) : 'rāmis nav atrasts';
     await pg.close(); }
+  // B20: valodas — jauns lietotājs ar angļu pārlūku: izvēles logs (virs piekrišanas, iepriekš atzīmēta „English”);
+  // „Русский” → lapa pārlādējas krieviski; piekrišana, iestatījumi, „Kopā”, „Garāža” — bez latviešu teksta; ?lang=en.
+  { const ctx4 = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 420, height: 860 }, locale: 'en-US',
+      geolocation: { latitude: 56.95, longitude: 24.11 }, permissions: ['geolocation'] });
+    await ctx4.route('**/*', routeAll);
+    const pg = await ctx4.newPage(); const errs = [];
+    pg.on('pageerror', e => errs.push(String(e && e.message || e).slice(0, 200)));
+    const L = { errs };
+    await pg.goto('https://app.test/index.html');
+    await pg.waitForSelector('#langGate', { timeout: 15000 }).catch(() => {});
+    L.first = await pg.evaluate(() => { const g = document.getElementById('langGate'), p = g && g.querySelector('[aria-pressed="true"]');
+      return { gate: !!g, pressed: p && p.dataset.lang, lang: document.documentElement.lang, focus: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.lang : null,
+        consentTitle: document.getElementById('consentTitle').textContent, above: g ? +getComputedStyle(g).zIndex > +getComputedStyle(document.getElementById('consentGate')).zIndex : false }; });
+    await Promise.all([pg.waitForEvent('load', { timeout: 15000 }).catch(() => {}), pg.click('#langGate [data-lang="ru"]')]);
+    await pg.waitForFunction(() => document.documentElement.lang === 'ru' && document.documentElement.style.visibility !== 'hidden' && !document.getElementById('consentGate').hidden, null, { timeout: 15000 }).catch(() => {});
+    L.ru = await pg.evaluate(() => ({ gate: !!document.getElementById('langGate'), lang: document.documentElement.lang, saved: localStorage.getItem('cz.lang'),
+      consentTitle: document.getElementById('consentTitle').textContent, privacy: document.querySelector('#consentGate a[href*="privacy"]').getAttribute('href'),
+      sel: document.getElementById('langSelect').value }));
+    await pg.click('#consentGate [data-act="accept"]').catch(() => {}); await pg.waitForTimeout(400);
+    const lvLeft = () => pg.evaluate(() => {
+      const LV = /[āčēģīķļņšūžĀČĒĢĪĶĻŅŠŪŽ]/, OK = /Ceļa Zīmes|Ričards Liepa|Brīvības iela|Latviešu/;
+      const out = new Set();
+      const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+        const el = n.parentElement;
+        if (!el || el.closest('[data-noi18n],script,style,svg,.maplibregl-ctrl-attrib')) continue;
+        if (LV.test(n.nodeValue) && !OK.test(n.nodeValue)) out.add(n.nodeValue.trim().slice(0, 90));
+      }
+      for (const e of document.querySelectorAll('[title],[aria-label],[placeholder],[alt]')) {
+        if (e.closest('[data-noi18n]')) continue;
+        for (const a of ['title', 'aria-label', 'placeholder', 'alt']) { const v = e.getAttribute(a); if (v && LV.test(v) && !OK.test(v)) out.add(a + ': ' + v.slice(0, 80)); }
+      }
+      return [...out];
+    });
+    L.left = {};
+    L.left.start = await lvLeft();
+    await pg.click('#settingsBtn').catch(() => {}); await pg.waitForTimeout(500); L.left.settings = await lvLeft();
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(300);
+    await pg.waitForFunction(() => typeof CZ_LAZY !== 'undefined' && CZ_LAZY.done.has('rides-ui.js') && CZ_LAZY.done.has('garage.js'), null, { timeout: 20000 }).catch(() => {});
+    await pg.click('#ridesBtn').catch(() => {}); await pg.waitForTimeout(1500); L.left.rides = await lvLeft();
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(300);
+    await pg.click('#garageBtn').catch(() => {}); await pg.waitForTimeout(1200); L.left.garage = await lvLeft();
+    await pg.goto('https://app.test/index.html?lang=en');
+    await pg.waitForFunction(() => document.documentElement.lang === 'en' && document.documentElement.style.visibility !== 'hidden', null, { timeout: 15000 }).catch(() => {});
+    L.en = await pg.evaluate(() => ({ lang: document.documentElement.lang, saved: localStorage.getItem('cz.lang'), gate: !!document.getElementById('langGate'),
+      title: document.getElementById('settingsTitle').textContent, ph: document.getElementById('searchInput').getAttribute('placeholder') }));
+    res.i18n = L; await ctx4.close(); }
   fs.writeFileSync(OUT + '.json', JSON.stringify({ res, logs, net: [...net] }, null, 1));
   console.log(JSON.stringify({ res: { ...res, layers: Array.isArray(res.layers) ? res.layers.length : res.layers }, nlogs: logs.length }, null, 1));
   await browser.close();
@@ -279,6 +327,19 @@ const mime = f => f.endsWith('.js') || f.endsWith('.mjs') ? 'text/javascript' : 
   if (!E.before || E.before.loaded || E.before.open || !E.pending || !E.pending.pending || E.pending.open || !E.after || !E.after.loaded || !E.after.open)
     bad.push('„Kopā” pirms ielādes: ' + JSON.stringify(E));
   if (E.errs && E.errs.length) bad.push('vēlā ielāde (lēns tīkls): ' + E.errs[0]);
+  // B20
+  const I = res.i18n || {};
+  if (!I.first || !I.first.gate || I.first.pressed !== 'en' || I.first.lang !== 'en' || I.first.focus !== 'en' || !I.first.above || I.first.consentTitle !== 'Welcome to Ceļa Zīmes')
+    bad.push('valodas izvēle (pirmā atvēršana): ' + JSON.stringify(I.first));
+  if (!I.ru || I.ru.gate || I.ru.lang !== 'ru' || I.ru.saved !== 'ru' || I.ru.sel !== 'ru' || I.ru.consentTitle !== 'Добро пожаловать в Ceļa Zīmes' || I.ru.privacy !== 'privacy-ru.html')
+    bad.push('„Русский”: ' + JSON.stringify(I.ru));
+  for (const [k, v] of Object.entries(I.left || {})) if (v.length) bad.push('krieviski, bet latviešu teksts (' + k + '): ' + v.slice(0, 6).join(' | '));
+  if (!I.en || I.en.lang !== 'en' || I.en.saved !== 'en' || I.en.gate || I.en.title !== 'Settings' || I.en.ph !== 'Where to? Enter a destination') bad.push('?lang=en: ' + JSON.stringify(I.en));
+  if (I.errs && I.errs.length) bad.push('valodas (B20) lapā kļūda: ' + I.errs[0]);
+  for (const p of ['privacy-en.html', 'terms-en.html', 'privacy-ru.html', 'terms-ru.html']) {
+    const r = res.pages && res.pages[p];
+    if (!r || r.csp.length || r.errs.length || !/Ceļa Zīmes/.test(r.title)) bad.push(p + ': ' + JSON.stringify(r));
+  }
   if (bad.length) { console.error('KARTES TESTS NEIZDEVĀS:\n  ' + bad.join('\n  ')); process.exit(1); }
   console.log('Kartes tests: viss kārtībā (MapLibre ' + res.version + ')');
 })().catch(e => { console.error(e); process.exit(1); });

@@ -2890,14 +2890,14 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
 // ---------- A10 (audits 07.11.2026): drošības politika (CSP), bez sveša JavaScript, rāmja aizsardzība ----------
 {
   const ROOT = path.join(__dirname, '..');
-  const HTML = ['index.html', 'index-gl.html', 'admin.html', 'privacy.html', 'terms.html'];
+  const HTML = ['index.html', 'index-gl.html', 'admin.html', 'privacy.html', 'terms.html', 'privacy-en.html', 'terms-en.html', 'privacy-ru.html', 'terms-ru.html'];
   const cspOf = h => { const m = h.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/); if (!m) return null;
     const d = {}; for (const p of m[1].split(';').map(x => x.trim()).filter(Boolean)) { const [k, ...v] = p.split(/\s+/); d[k] = v; } return d; };
   test('A10: katrā lapā CSP meta tags pirmais pēc charset, stingrs script-src, referrer, rāmja aizsardzība', () => {
     for (const f of HTML) {
       const h = fs.readFileSync(path.join(ROOT, f), 'utf8');
       const head = h.slice(0, h.indexOf('</head>'));
-      ok(/^<!doctype html>\n<html lang="lv">\n<head>\n  <meta charset="utf-8">\n  <!-- A10[^]*?-->\n  <meta http-equiv="Content-Security-Policy" content="[^"]+">\n  <meta name="referrer" content="strict-origin-when-cross-origin">\n  <script src="guard\.js\?v=\d+"><\/script>\n/.test(h),
+      ok(/^<!doctype html>\n<html lang="(?:lv|en|ru)">\n<head>\n  <meta charset="utf-8">\n  <!-- A10[^]*?-->\n  <meta http-equiv="Content-Security-Policy" content="[^"]+">\n  <meta name="referrer" content="strict-origin-when-cross-origin">\n  <script src="guard\.js\?v=\d+"><\/script>\n/.test(h),
         f + ': <head> bez atribūtiem (Android lietotnes skripts nonāk pirms CSP), CSP, referrer, guard.js — pašā sākumā');
       const c = cspOf(h); ok(c, f + ': CSP');
       if (!c) continue;
@@ -2968,7 +2968,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const ms = fs.readFileSync(path.join(__dirname, 'map-smoke.js'), 'utf8');
     ok(/securitypolicyviolation/.test(ms) && /CSP pārkāpumi/.test(ms) && /Content Security Policy/.test(ms), 'CSP pārkāpumi → kļūda');
     ok(/maplibre-gl-worker/.test(ms) && /evil\.test/.test(ms) && /res\.framed !== 'none'/.test(ms), 'worker no lapas adreses, rāmī paslēpts');
-    ok(/for \(const p of \['admin\.html', 'privacy\.html', 'terms\.html'\]\)/.test(ms), 'arī pārējās lapas');
+    ok(ms.includes("for (const p of ['admin.html', 'privacy.html', 'terms.html', 'privacy-en.html', 'terms-en.html', 'privacy-ru.html', 'terms-ru.html'])"), 'arī pārējās lapas (B20 — arī tulkojumi)');
     ok(!/unpkg/.test(ms), 'tests neizmanto CDN');
   });
 }
@@ -4463,7 +4463,7 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     ok(/node tests\/e2e\/rides-flow\.js/.test(e) && /image: postgres:16/.test(e), 'palaiž plūsmu pret PostgreSQL 16');
   });
   test('B17: versijas vienā vietā — katram lapas failam ir ?v= un fails eksistē; testi nepārbauda versiju numurus', () => {
-    for (const page of ['index.html', 'admin.html', 'privacy.html', 'terms.html', 'index-gl.html']) {
+    for (const page of ['index.html', 'admin.html', 'privacy.html', 'terms.html', 'index-gl.html', 'privacy-en.html', 'terms-en.html', 'privacy-ru.html', 'terms-ru.html']) {
       const h = rd(page);
       const refs = [...h.matchAll(/(?:src|href)="(\.?\/?[\w./-]+\.(?:js|css))(\?v=[^"]*)?"/g)].filter(m => !/^(https?:)?\/\//.test(m[1]) && !m[1].startsWith('vendor/'));
       ok(refs.length > 0, page + ': ir faili');
@@ -4482,10 +4482,10 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
     const self = rd('tests/run.js');
     const sqlText = self.split('.test(' + 'sql').length - 1;
     const rx = (self.match(new RegExp('/[gimsuy]*\\.test\\(', 'g')) || []).length;
-    // Robežas — B17 (27.11.2026) stāvoklis: SQL faila teksta pārbaudes 133 → 50, visas regulārās izteiksmes 1268 → 1148 (B18: 1136), versiju numuri 48 → 0.
+    // Robežas — B17 (27.11.2026) stāvoklis: SQL faila teksta pārbaudes 133 → 50, visas regulārās izteiksmes 1268 → 1148 (B18: 1136, B20: 1135), versiju numuri 48 → 0.
     // Ja pārbaudi aizstāj ar uzvedības testu — samazini skaitli. Palielināt nedrīkst: jaunai SQL loģikai — scenārijs tests/*-test.sql.
     ok(sqlText <= 50, 'SQL faila teksta pārbaudes: ' + sqlText + ' (≤ 50)');
-    ok(rx <= 1136, 'regulārās izteiksmes pret tekstu: ' + rx + ' (≤ 1136)');
+    ok(rx <= 1135, 'regulārās izteiksmes pret tekstu: ' + rx + ' (≤ 1135)');
     for (const f of ['reports-test.sql', 'ratings-stats-test.sql', 'permissions-test.sql']) ok(rd('tests/run-sql.sh').includes('t:' + f), f + ' — CI');
   });
 }
@@ -4718,6 +4718,101 @@ exit 0
     for (const s of ['ANDROID_KEYSTORE_BASE64', 'ANDROID_KEYSTORE_PASSWORD', 'nav obligāti', 'Android Studio\\jbr\\bin\\keytool.exe', '-storetype PKCS12', '-validity 10000',
       'Atjaunināšanas tests', '## Rezultāti', '12 testētāji', 'signing-check.sh', 'release-test.sh']) ok(md.includes(s), 'mobile/README.md: ' + s);
     ok(!md.includes('@gmail.com'), 'bez personīga e-pasta');
+  });
+}
+
+// ---------- B20 (audits 2): valodas — latviešu, angļu, krievu (i18n.js + vārdnīcas), pārējās — pārlūka tulkotājs ----------
+{
+  const fs20 = require('fs'), path20 = require('path'), vm20 = require('vm');
+  const ROOT20 = path20.join(__dirname, '..'), rd20 = f => fs20.readFileSync(path20.join(ROOT20, f), 'utf8');
+  const api20 = () => { const w = { CZ_I18N_TEST: true }; vm20.runInNewContext(rd20('i18n.js'), { window: w, globalThis: w }); return w; };
+  const dict20 = lang => { const w = {}; vm20.runInNewContext(rd20('i18n-' + lang + '.js'), { window: w }); return w.CZ_I18N[lang]; };
+  test('B20: valodas izvēle — pārlūka valoda, ?lang=, saglabātā izvēle', () => {
+    const { czLangGuess, czLangPick } = api20().CZ_I18N_API;
+    eq(czLangGuess(['lv-LV']), 'lv'); eq(czLangGuess(['en-US', 'lv']), 'lv', 'latviešu kaut kur sarakstā → latviešu');
+    eq(czLangGuess(['ru-RU', 'en']), 'ru'); eq(czLangGuess(['en-GB']), 'en'); eq(czLangGuess(['de-DE', 'ru']), 'en', 'cita valoda → angļu (pārlūks pārtulko)');
+    eq(czLangGuess([]), 'lv', 'nezināms → latviešu');
+    eq(JSON.stringify(czLangPick('?lang=ru', 'en', ['lv'])), JSON.stringify({ lang: 'ru', chosen: true, fromUrl: true }), '?lang= ir pirmais');
+    eq(JSON.stringify(czLangPick('', 'en', ['lv'])), JSON.stringify({ lang: 'en', chosen: true }), 'saglabātā izvēle');
+    eq(JSON.stringify(czLangPick('?lang=xx', 'de', ['ru'])), JSON.stringify({ lang: 'ru', chosen: false }), 'nederīgas vērtības ignorē; nav izvēlēts → logs');
+  });
+  test('B20: tulkotājs — precīzi, ar mainīgajiem, atstarpes saglabātas, nezināmais paliek', () => {
+    const { czI18nMake, legalHref } = api20().CZ_I18N_API;
+    const t = czI18nMake({ 'Atcelt': 'Cancel', 'Kaķis': 'Cat', 'Tēls „{*}” izvēlēts.': 'Avatar “{*}” chosen.', 'Atmaksāts {*}': 'Refunded {*}',
+      '{*} no {*}': '{*} of {*}', 'Aplī {*}. izbrauktuvē {*}': 'At exit {2} after {1}', '{*} {*}': 'X', 'Bultas krāsa: {*}': 'Arrow colour: {*}' }).tr;
+    eq(t('Atcelt'), 'Cancel'); eq(t('  Atcelt \n'), '  Cancel \n', 'atstarpes ap tekstu paliek');
+    eq(t('Tēls „Kaķis” izvēlēts.'), 'Avatar “Cat” chosen.', 'mainīgais tulkots, ja tas pats ir vārdnīcā');
+    eq(t('Atmaksāts 5,00 €'), 'Refunded 5,00 €'); eq(t('3 no 5'), '3 of 5');
+    eq(t('Aplī 2. izbrauktuvē X'), 'At exit X after 2', '{1}, {2} — cita secība');
+    eq(t('Bultas krāsa: Kaķis'), 'Arrow colour: Cat');
+    eq(t('Ilze'), 'Ilze', 'nav vārdnīcā — nemainās'); eq(t('54'), '54', 'cipari nemainās'); eq(t(''), '');
+    eq(t('a b'), 'a b', '„{*} {*}” (bez teksta) netiek lietots');
+    eq(legalHref('privacy.html', 'en'), 'privacy-en.html'); eq(legalHref('./terms.html#x', 'ru'), './terms-ru.html#x'); eq(legalHref('privacy.html', 'lv'), 'privacy.html');
+    eq(legalHref('https://x/privacy.html', 'en'), 'https://x/privacy.html', 'svešas adreses netiek mainītas');
+  });
+  test('B20: vārdnīcas pilnas — katram lietotnes tekstam angļu un krievu tulkojums (vai i18n-skip.json)', async () => {
+    const ex = await import(path20.join(ROOT20, 'tools', 'i18n-extract.mjs'));
+    const all = ex.czI18nExtract(ROOT20);
+    const en = dict20('en'), ru = dict20('ru');
+    const miss = all.filter(s => !(s in en) || !(s in ru));
+    ok(all.length > 1200, 'teksti atrasti: ' + all.length);
+    ok(!miss.length, 'bez tulkojuma (node tools/i18n-extract.mjs --missing): ' + miss.slice(0, 5).join(' | '));
+    const extra = Object.keys(en).filter(k => !all.includes(k));
+    ok(!extra.length, 'vārdnīcā lieki (kodā vairs nav): ' + extra.slice(0, 5).join(' | '));
+    eq(Object.keys(en).join('\n'), Object.keys(ru).join('\n'), 'abām valodām tie paši teksti');
+    const cnt = (x, re) => (x.match(re) || []).length;
+    for (const [lang, d] of [['en', en], ['ru', ru]]) for (const [k, v] of Object.entries(d)) {
+      ok(typeof v === 'string' && v.trim(), lang + ': tukšs tulkojums ' + k);
+      const n = cnt(k, /\{\*\}/g), m = cnt(v, /\{\*\}/g) + cnt(v, /\{\d\}/g);
+      ok(n === m, lang + ': mainīgo skaits ' + k + ' → ' + v);
+      const rest = v.split('Ceļa Zīmes').join('').split('Škoda').join('').toLowerCase();
+      ok(![...'āčēģīķļņšūž'].some(c => rest.includes(c)), lang + ': latviešu burti tulkojumā: ' + v);
+    }
+    // Izlaistie (i18n-skip.json) — tikai tie, kas kodā joprojām ir (citādi saraksts aug bez jēgas)
+    const skip = JSON.parse(rd20('i18n-skip.json'));
+    const raw = new Set(ex.czI18nExtract(ROOT20, { skip: false }));
+    const stale = skip.filter(x => !raw.has(x));
+    ok(!stale.length, 'i18n-skip.json — kodā vairs nav: ' + stale.slice(0, 5).join(' | '));
+    ok(new Set(skip).size === skip.length && skip.length < 300, 'i18n-skip.json bez dublikātiem');
+  });
+  test('B20: teksta izvilkšana — komentāri un regulārās izteiksmes izlaistas, ${…} un + → {*}, HTML pa gabaliem', async () => {
+    const { czI18nJsStrings, czI18nHtmlParts, czI18nLooksLv } = await import(path20.join(ROOT20, 'tools', 'i18n-extract.mjs'));
+    const s = czI18nJsStrings("// 'Komentārs'\nconst a = /'nav'/g; /* 'Arī ne' */ el.textContent = `Atmaksāts ${eur(x, 'Iekšā')}`; b = 'Bultas krāsa: ' + c; d = x / 2 + 'Ātri';");
+    ok(!s.includes('Komentārs') && !s.includes('nav') && !s.includes('Arī ne'), 'komentāri un regex: ' + JSON.stringify(s));
+    ok(s.includes('Atmaksāts {*}') && s.includes('Iekšā'), '${…} un virknes tajā: ' + JSON.stringify(s));
+    ok(s.includes('Bultas krāsa: {*}') && s.includes('{*}Ātri'), "'…' + x: " + JSON.stringify(s));
+    const h = czI18nHtmlParts('<b>Labi</b> braucieni <button title="Aizvērt &amp; iet">x</button>');
+    ok(h.map(x => x.trim()).filter(Boolean).join('|') === 'Aizvērt & iet|Labi|braucieni|x', 'HTML: ' + JSON.stringify(h));
+    ok(czI18nLooksLv('Atcelt') && czI18nLooksLv('Es braucu') && czI18nLooksLv('braucieni āā') && !czI18nLooksLv('btn-primary') && !czI18nLooksLv('ridesInit') && !czI18nLooksLv('https://growlab.cc'), 'kas ir teksts');
+  });
+  test('B20: index.html — vārdnīcas pirms i18n.js (nav defer), valodas izvēle iestatījumos; lietotāju teksts netiek tulkots', () => {
+    const h = rd20('index.html');
+    const i = h.indexOf('<script src="i18n.js?v='), e = h.indexOf('data-lang="en" src="i18n-en.js?v='), r = h.indexOf('data-lang="ru" src="i18n-ru.js?v=');
+    ok(i > 0 && e > 0 && r > 0 && e < i && r < i && i < h.indexOf('</head>'), 'i18n.js <head> pēc vārdnīcu norādēm');
+    ok(h.includes('<script type="text/x-cz-i18n" data-lang="en"') && h.includes('<script type="text/x-cz-i18n" data-lang="ru"'), 'vārdnīcas netiek izpildītas (tikai i18n.js tās ielādē)');
+    ok(h.indexOf('i18n.js') < h.indexOf('<script defer'), 'pirms lietotnes skriptiem');
+    const sel = h.slice(h.indexOf('<select id="langSelect"'), h.indexOf('</select>', h.indexOf('<select id="langSelect"')));
+    ok(sel.includes('data-noi18n') && ['lv', 'en', 'ru'].every(l => sel.includes('<option value="' + l + '"')), 'iestatījumos 3 valodas (nosaukumi netiek tulkoti)');
+    const css = rd20('style-gl.css');
+    const z = sel2 => { const i = css.indexOf(sel2 + ' {'); return i < 0 ? -1 : +((css.slice(i, css.indexOf('}', i)).split('z-index:')[1] || '').split(';')[0]); };
+    ok(z('.lang-gate') > z('.consent-gate') && z('.consent-gate') > 0, 'valodas logs virs piekrišanas loga');
+  });
+  test('B20: privātuma politika un noteikumi — angliski un krieviski, tā pati versija, noteicošā — latviešu', () => {
+    for (const base of ['privacy', 'terms']) {
+      const lv = rd20(base + '.html');
+      const ver = (lv.match(/<p class="ver">Versija ([^ ·<]+)/) || [])[1];
+      ok(ver, base + ': versija');
+      ok(lv.includes('href="' + base + '-en.html"') && lv.includes('href="' + base + '-ru.html"'), base + '.html: saites uz tulkojumiem');
+      for (const [l, word] of [['en', 'Version'], ['ru', 'Версия']]) {
+        const t = rd20(base + '-' + l + '.html');
+        ok(t.includes('<html lang="' + l + '">'), base + '-' + l + ': lang');
+        eq((t.match(new RegExp('<p class="ver">' + word + ' ([^ ·<]+)')) || [])[1], ver, base + '-' + l + ': tā pati versija kā latviešu (mainot latviešu tekstu — jāatjauno tulkojums)');
+        ok(t.includes('class="tr-note"') && t.includes('href="' + base + '.html"'), base + '-' + l + ': piezīme — noteicošā ir latviešu versija');
+        ok(t.includes('http-equiv="Content-Security-Policy"') && t.includes('src="guard.js?v='), base + '-' + l + ': CSP un guard.js');
+        ok(t.split('<h2>').length === lv.split('<h2>').length, base + '-' + l + ': tikpat sadaļu kā latviešu');
+        ok(t.includes('support.travel24@gmail.com') && !t.includes('ricardsliepa'), base + '-' + l + ': kontakts');
+      }
+    }
   });
 }
 

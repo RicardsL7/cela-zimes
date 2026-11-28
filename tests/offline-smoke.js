@@ -43,7 +43,7 @@ function serve(port) {
   const ctx = await browser.newContext({ viewport: { width: 420, height: 860 } });
   const authSrc = fs.readFileSync(path.join(__dirname, '..', 'auth.js'), 'utf8');
   const consentV = { terms: (authSrc.match(/CZ_TERMS_VERSION = '([^']+)'/) || [])[1], privacy: (authSrc.match(/CZ_PRIVACY_VERSION = '([^']+)'/) || [])[1] };
-  await ctx.addInitScript(v => { try { localStorage.setItem('cz.consent', JSON.stringify({ terms: v.terms, privacy: v.privacy, at: 'x' })); } catch (e) {} }, consentV);
+  await ctx.addInitScript(v => { try { localStorage.setItem('cz.consent', JSON.stringify({ terms: v.terms, privacy: v.privacy, at: 'x' })); localStorage.setItem('cz.lang', 'lv'); } catch (e) {} }, consentV);
   const ext = new Set();
   await ctx.route(u => u.hostname !== '127.0.0.1', route => {
     const u = new URL(route.request().url());
