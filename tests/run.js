@@ -4594,6 +4594,133 @@ test('A08: datubāzes testos ir VISI supabase/*.sql faili un visi SQL scenāriji
   });
 }
 
+// ---------- B19 (audits 2): Android parakstītais laidiens — atslēgas pārbaude, laidiena pārbaude, atjaunināšanas tests ----------
+{
+  const fs19 = require('fs'), path19 = require('path'), os19 = require('os'), cp19 = require('child_process');
+  const ROOT19 = path19.join(__dirname, '..'), rd19 = f => fs19.readFileSync(path19.join(ROOT19, f), 'utf8');
+  test('B19: neviena darbplūsma nav uz ubuntu-latest (26.04 salauza Playwright / pg_dump; Android emulators — tas pats risks)', () => {
+    for (const f of fs19.readdirSync(path19.join(ROOT19, '.github', 'workflows'))) {
+      const y = rd19('.github/workflows/' + f);
+      ok(!y.includes('ubuntu-latest'), f + ': nav ubuntu-latest');
+      ok(y.split('runs-on: ').slice(1).every(r => r.startsWith('ubuntu-24.04') || r.startsWith('${{ matrix.os }}')), f + ': runs-on ubuntu-24.04');
+    }
+  });
+  test('B19: android.yml — atslēgu pārbauda pirms būvēšanas, laidienu pēc; ierīcē — atjaunināšana virs iepriekšējās versijas', () => {
+    const wf = rd19('.github/workflows/android.yml');
+    const at = s => { const i = wf.indexOf(s); ok(i >= 0, 'android.yml: ' + s); return i; };
+    ok(at('bash scripts/signing-check.sh') < at('npx cap add android'), 'atslēgas pārbaude pirms būvēšanas');
+    ok(at('./gradlew assembleRelease bundleRelease') < at('bash scripts/verify-release.sh out/cela-zimes.apk out/cela-zimes.aab out/release-cert-sha256.txt') && wf.indexOf('bash scripts/verify-release.sh') < at('FP=$(cat mobile/out/release-cert-sha256.txt)'), 'laidiena pārbaude pēc būvēšanas, pirms assetlinks.json');
+    at("CZ_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'celazimes' }}"); at('CZ_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || secrets.ANDROID_KEYSTORE_PASSWORD }}');
+    ok(!wf.includes('-storepass'), 'paroles komandrindā darbplūsmā nav (tikai skriptā no vides)');
+    ok(at('gh release download android-test -p cela-zimes.apk -D prev') < at('bash mobile/scripts/release-test.sh out/cela-zimes.apk prev/cela-zimes.apk device-test/release'), 'iepriekšējā versija lejupielādēta pirms ierīces testa');
+    ok(wf.indexOf('bash mobile/scripts/device-test.sh out/cela-zimes-debug.apk device-test\n') < wf.indexOf('bash mobile/scripts/release-test.sh') && wf.indexOf('release-test.sh') < at('needs: [build, device]'), 'publicē tikai pēc abiem ierīces testiem');
+  });
+  if (process.platform !== 'win32') {
+    const tmp = () => fs19.mkdtempSync(path19.join(os19.tmpdir(), 'cz-b19-'));
+    const stub = (dir, name, body) => { const f = path19.join(dir, name); fs19.writeFileSync(f, '#!/usr/bin/env bash\n' + body); fs19.chmodSync(f, 0o755); return f; };
+    const sh = (script, args, env) => { const r = cp19.spawnSync('bash', [path19.join(ROOT19, 'mobile', 'scripts', script)].concat(args), { env: Object.assign({ PATH: process.env.PATH }, env), encoding: 'utf8' }); return { code: r.status, out: r.stdout + r.stderr }; };
+    const FP = Array.from({ length: 32 }, (_, i) => (i * 7 + 16).toString(16).toUpperCase().padStart(2, '0').slice(-2)).join(':');
+    // Viltots keytool: atslēgas fails = "KS:" + aizpildījums; pareizā parole PW; alias celazimes
+    const KT = `a="$*"; get(){ while [ $# -gt 0 ]; do [ "$1" = "$K" ] && { echo "$2"; return; }; shift; done; }
+f=$(K=-keystore get "$@"); sp=$(K=-storepass get "$@"); al=$(K=-alias get "$@"); kp=$(K=-keypass get "$@")
+[ -n "$KT_LOG" ] && echo "alias=$al" >> "$KT_LOG"
+head -c 3 "$f" | grep -q "KS:" || { echo "keytool error: java.io.IOException: Invalid keystore format"; exit 1; }
+[ "$sp" = "\${KT_PASS:-PW}" ] || { echo "keytool error: java.io.IOException: keystore password was incorrect"; exit 1; }
+case "$a" in
+*-certreq*) [ "\${KT_TYPE:-PKCS12}" = PKCS12 ] || [ "$kp" = "\${KT_KEYPASS:-PW}" ] || { echo "keytool error: java.security.UnrecoverableKeyException: Cannot recover key"; exit 1; }; exit 0;;
+*-alias*) [ "$al" = "\${KT_ALIAS:-celazimes}" ] || { echo "keytool error: java.lang.Exception: Alias <$al> does not exist"; exit 1; }
+  printf 'Keystore type: %s\\nAlias name: %s\\nEntry type: %s\\nValid from: Sat Nov 28 12:00:00 UTC 2026 until: %s\\nCertificate fingerprints:\\n\\t SHA1: AA\\n\\t SHA256: ${FP}\\n' "\${KT_TYPE:-PKCS12}" "$al" "\${KT_ENTRY:-PrivateKeyEntry}" "\${KT_UNTIL:-Wed Apr 15 12:00:00 UTC 2054}";;
+*) printf 'Keystore type: PKCS12\\n\\nYour keystore contains 1 entry\\n\\n%s, Nov 28, 2026, PrivateKeyEntry, \\nCertificate fingerprint (SHA-256): ${FP}\\n' "\${KT_ALIAS:-celazimes}";;
+esac
+`;
+    test('B19: signing-check.sh — katrai nepareizai GitHub Secrets vērtībai skaidra kļūda; paroles neizdrukā; derīga atslēga → SHA-256', () => {
+      const d = tmp(), kt = stub(d, 'keytool', KT), ks = path19.join(d, 'r.jks'), cert = path19.join(d, 'cert.txt'), log = path19.join(d, 'log');
+      const good = Buffer.from('KS:' + 'x'.repeat(700)).toString('base64');
+      const run = (env) => sh('signing-check.sh', [], Object.assign({ KEYTOOL: kt, KS_FILE: ks, CERT_OUT: cert, KT_LOG: log }, env));
+      let r = run({}); eq(r.code, 2, 'nav atslēgas → tikai testa APK'); ok(r.out.includes('::warning::'), 'brīdinājums');
+      r = run({ KS_PASS: 'PW' }); eq(r.code, 1, 'parole bez atslēgas faila'); ok(r.out.includes('nav ANDROID_KEYSTORE_BASE64'), r.out);
+      r = run({ KS_B64: good }); eq(r.code, 1); ok(r.out.includes('Nav ANDROID_KEYSTORE_PASSWORD'), r.out);
+      r = run({ KS_B64: '###', KS_PASS: 'PW' }); eq(r.code, 1); ok(r.out.includes('nav derīgs base64'), r.out);
+      r = run({ KS_B64: Buffer.from('KS:short').toString('base64'), KS_PASS: 'PW' }); eq(r.code, 1); ok(r.out.includes('pārāk īss'), r.out);
+      r = run({ KS_B64: Buffer.from('PK' + 'x'.repeat(700)).toString('base64'), KS_PASS: 'PW' }); eq(r.code, 1); ok(r.out.includes('nav atslēgas fails'), r.out);
+      r = run({ KS_B64: good, KS_PASS: 'Nepareiza-Parole-77' }); eq(r.code, 1); ok(r.out.includes('ANDROID_KEYSTORE_PASSWORD nav pareiza') && !r.out.includes('Nepareiza-Parole-77'), 'nepareiza parole (bez paroles izvadē): ' + r.out);
+      r = run({ KS_B64: good, KS_PASS: 'PW', KEY_ALIAS: 'mykey' }); eq(r.code, 1); ok(r.out.includes('Failā ir: celazimes'), 'nepareizs alias — parāda esošos: ' + r.out);
+      r = run({ KS_B64: good, KS_PASS: 'PW', KEY_PASS: 'cita' }); eq(r.code, 1); ok(r.out.includes('ANDROID_KEY_PASSWORD jābūt tādai pašai'), 'PKCS12 ar citu atslēgas paroli: ' + r.out);
+      r = run({ KS_B64: good, KS_PASS: 'PW', KEY_PASS: 'cita', KT_TYPE: 'JKS' }); eq(r.code, 1); ok(r.out.includes('ANDROID_KEY_PASSWORD nav pareiza'), 'JKS nepareiza atslēgas parole: ' + r.out);
+      r = run({ KS_B64: good, KS_PASS: 'PW', KT_ENTRY: 'trustedCertEntry' }); eq(r.code, 1); ok(r.out.includes('nav privātā atslēga'), r.out);
+      r = run({ KS_B64: good, KS_PASS: 'PW', KT_UNTIL: 'Mon Jan 01 00:00:00 UTC 2024' }); eq(r.code, 1); ok(r.out.includes('derīgums beidzies'), r.out);
+      fs19.writeFileSync(log, '');
+      r = run({ KS_B64: good.replace(/(.{40})/g, '$1\r\n '), KS_PASS: 'PW' });
+      eq(r.code, 0, 'derīga atslēga (base64 ar rindiņām un atstarpēm — kā ielīmēts): ' + r.out);
+      eq(fs19.readFileSync(cert, 'utf8').trim(), FP, 'sertifikāta SHA-256 failā');
+      ok(fs19.readFileSync(log, 'utf8').split('\n').filter(Boolean).every(l => l === 'alias=celazimes'), 'bez ANDROID_KEY_ALIAS — celazimes');
+      eq(fs19.statSync(ks).mode & 0o077, 0, 'atslēgas fails tikai īpašniekam (600)');
+      ok(!r.out.includes('::warning::'), 'derīgums līdz 2054 — bez brīdinājuma');
+      r = run({ KS_B64: good, KS_PASS: 'PW', KEY_PASS: 'PW', KEY_ALIAS: 'celazimes', KT_TYPE: 'JKS', KT_UNTIL: 'Fri Jan 01 00:00:00 UTC 2032' });
+      eq(r.code, 0, 'JKS ar pareizu atslēgas paroli'); ok(r.out.includes('Google Play prasa vismaz līdz 22.10.2033'), 'īss derīgums — Play brīdinājums');
+      fs19.rmSync(d, { recursive: true, force: true });
+    });
+    test('B19: verify-release.sh — atrod citu atslēgu, testa būvējumu, v1 parakstu, nepareizu versiju un AAB', () => {
+      const d = tmp(), cert = path19.join(d, 'cert.txt'); fs19.writeFileSync(cert, FP + '\n');
+      const low = FP.replace(/:/g, '').toLowerCase();
+      const tools = {
+        APKSIGNER: stub(d, 'apksigner', `echo "Verifies"; echo "Verified using v1 scheme (JAR signing): true"; echo "Verified using v2 scheme (APK Signature Scheme v2): \${AS_V2:-true}"; echo "Number of signers: 1"; echo "Signer #1 certificate DN: CN=Celazimes"; echo "Signer #1 certificate SHA-256 digest: \${AS_FP}"; exit \${AS_RC:-0}\n`),
+        AAPT: stub(d, 'aapt', `echo "package: name='cc.growlab.celazimes' versionCode='\${AA_VC:-42}' versionName='0.2.0' platformBuildVersionName='15'"; [ -z "$AA_DBG" ] || echo "application-debuggable"\n`),
+        JARSIGNER: stub(d, 'jarsigner', `echo "jar verified."\n`),
+        KEYTOOL: stub(d, 'keytool', `echo "Signer #1:"; echo "	 SHA256: \${KT_AAB:-${FP}}"\n`),
+      };
+      const run = env => sh('verify-release.sh', ['a.apk', 'a.aab', cert], Object.assign({ CZ_VERSION_CODE: '42', AS_FP: low }, tools, env));
+      let r = run({}); eq(r.code, 0, 'pareizs laidiens: ' + r.out); ok(r.out.includes('parakstīts ar mūsu atslēgu') && r.out.includes('AAB parakstīts ar mūsu atslēgu'), r.out);
+      r = run({ AS_FP: 'ab'.repeat(32) }); eq(r.code, 1); ok(r.out.includes('parakstīts ar citu atslēgu'), 'cita atslēga');
+      r = run({ AS_V2: 'false' }); eq(r.code, 1); ok(r.out.includes('v2 shēmu'), 'tikai v1');
+      r = run({ AA_DBG: '1' }); eq(r.code, 1); ok(r.out.includes('testa (debuggable)'), 'debuggable');
+      r = run({ AA_VC: '41' }); eq(r.code, 1); ok(r.out.includes('versionCode 41, gaidīts 42'), 'versionCode');
+      r = run({ AS_RC: '1' }); eq(r.code, 1); ok(r.out.includes('APK paraksts nav derīgs'), 'nederīgs paraksts');
+      r = run({ KT_AAB: '00:'.repeat(31) + '00' }); eq(r.code, 1); ok(r.out.includes('AAB parakstīts ar citu atslēgu'), 'AAB cita atslēga');
+      fs19.rmSync(d, { recursive: true, force: true });
+    });
+    test('B19: release-test.sh — atjaunināšana virs iepriekšējās versijas; cits paraksts / mazāks versionCode / avārija → neizdodas', () => {
+      const d = tmp(), st = path19.join(d, 'state');
+      const adb = `S="${st}"; inst=$(cat "$S" 2>/dev/null)
+case "$1" in
+install) r=0; [ "$2" = -r ] && { r=1; shift; }; f="$2"
+  case "$f" in *prev*) [ -z "$inst" ] || { echo "Failure [INSTALL_FAILED_ALREADY_EXISTS]"; exit 1; }; echo "prev-$ADB_PREV" > "$S"; echo Success;;
+  *) if [ -n "$inst" ]; then [ $r = 1 ] || { echo "Failure [INSTALL_FAILED_ALREADY_EXISTS]"; exit 1; }
+       case "$inst" in prev-debug|prev-other) echo "Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match]"; exit 1;; prev-newer) echo "Failure [INSTALL_FAILED_VERSION_DOWNGRADE]"; exit 1;; esac
+     fi; echo new > "$S"; echo Success;; esac;;
+uninstall) : > "$S";;
+logcat) [ "$2" = -d ] && [ -n "$ADB_CRASH" ] && echo "E AndroidRuntime: FATAL EXCEPTION: main"; exit 0;;
+shell) case "$2 $3" in
+  "dumpsys package") [ -n "$inst" ] && { echo "versionCode=42 minSdk=23"; echo "versionName=0.2.0"; [ "$inst" = prev-debug ] && echo "pkgFlags=[ DEBUGGABLE HAS_CODE ]" || echo "pkgFlags=[ HAS_CODE ]"; };;
+  "pm list") [ -n "$inst" ] && echo "package:cc.growlab.celazimes";;
+  "pidof cc.growlab.celazimes") [ -n "$inst" ] && [ -z "$ADB_CRASH" ] && echo 1234 || exit 1;;
+  "pm get-app-links") echo "  Domain verification state:"; echo "    growlab.cc: \${ADB_LINKS:-legacy_failure}";;
+  esac;;
+esac
+exit 0
+`;
+      stub(d, 'adb', adb);
+      fs19.writeFileSync(path19.join(d, 'prev.apk'), 'x'); fs19.writeFileSync(path19.join(d, 'new.apk'), 'x');
+      const run = (env, prev) => { fs19.writeFileSync(st, 'debug-test\n'); return sh('release-test.sh', [path19.join(d, 'new.apk'), prev === false ? '' : path19.join(d, 'prev.apk'), path19.join(d, 'out')], Object.assign({ PATH: d + ':' + process.env.PATH, CZ_WAIT: '0', CZ_WAIT_LINKS: '0' }, env)); };
+      let r = run({ ADB_PREV: 'same', ADB_LINKS: 'verified' }); eq(r.code, 0, 'tas pats paraksts: ' + r.out);
+      ok(r.out.includes('atjauninās virs iepriekšējās') && r.out.includes('App Links verificēts'), r.out);
+      r = run({ ADB_PREV: 'other' }); eq(r.code, 1, 'cits paraksts'); ok(r.out.includes('PARAKSTS ATŠĶIRAS'), r.out);
+      r = run({ ADB_PREV: 'newer' }); eq(r.code, 1, 'mazāks versionCode'); ok(r.out.includes('versionCode nav lielāks'), r.out);
+      r = run({ ADB_PREV: 'debug' }); eq(r.code, 0, 'iepriekšējā — testa versija (pirmais parakstītais laidiens): ' + r.out);
+      ok(r.out.includes('bija testa (nav parakstīta)') && r.out.includes('instalēts') && r.out.includes('App Links vēl nav verificēts'), r.out);
+      r = run({}, false); eq(r.code, 0, 'bez iepriekšējās versijas'); ok(r.out.includes('atjaunināšanas tests izlaists'), r.out);
+      r = run({ ADB_PREV: 'same', ADB_CRASH: '1' }); eq(r.code, 1, 'avārija'); ok(r.out.includes('FATAL EXCEPTION'), r.out);
+      fs19.rmSync(d, { recursive: true, force: true });
+    });
+  }
+  test('B19: mobile/README.md — 2 obligāti Secrets, keytool Windows, viena parole, telefona tests ar rezultātiem, Play noteikumi', () => {
+    const md = rd19('mobile/README.md');
+    for (const s of ['ANDROID_KEYSTORE_BASE64', 'ANDROID_KEYSTORE_PASSWORD', 'nav obligāti', 'Android Studio\\jbr\\bin\\keytool.exe', '-storetype PKCS12', '-validity 10000',
+      'Atjaunināšanas tests', '## Rezultāti', '12 testētāji', 'signing-check.sh', 'release-test.sh']) ok(md.includes(s), 'mobile/README.md: ' + s);
+    ok(!md.includes('@gmail.com'), 'bez personīga e-pasta');
+  });
+}
+
 Promise.all(pending).then(() => {
   console.log(results.join('\n'));
   console.log(`\n${pass} izdevās, ${fail} neizdevās`);
